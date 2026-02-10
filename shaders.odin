@@ -39,8 +39,8 @@ Shader_Info :: struct {
 		location:u32,
 	},
 	
-	vertex_type:typeid,
-	vertex_info:[]Vertex_Attrs_Info,
+	// vertex_type:typeid,
+	// vertex_info:[]Vertex_Attrs_Info,
 }
 
 Vertex_Attrs_Info::struct{
@@ -87,8 +87,8 @@ load_shader::proc(
 
 load_shader_file::proc(
 	file_path:string,
-	vertex_type:typeid,
-	attrs_info:[]Vertex_Attrs_Info = nil,
+	// vertex_type:typeid,
+	// attrs_info:[]Vertex_Attrs_Info = nil,
 	// stage:sdl.GPUShaderStage,
 	// num_uniform_buffers:u32= 1,
 	// num_samplers:u32= 0,
@@ -124,8 +124,8 @@ load_shader_file::proc(
 	}
 	
 	info:Shader_Info=load_shader_info(file_path)
-	info.vertex_type = vertex_type
-	info.vertex_info = attrs_info
+	// info.vertex_type = vertex_type
+	// info.vertex_info = attrs_info
 	
 	true_file_path:=str.concatenate({file_path, ".spv"},s.frame_allocator)
 	data,ok:=os.read_entire_file_from_filename(true_file_path,s.frame_allocator)
@@ -134,6 +134,7 @@ load_shader_file::proc(
 		data,ok=os.read_entire_file_from_filename(true_file_path,s.frame_allocator)
 		if !ok{ log.error("cant find ",file_path, " or ", true_file_path) }
 	}
+	
 	shader_hd=load_shader(data = data, stage = stage, info = info, format = format, entrypoint=entrypoint)
 	return shader_hd
 }

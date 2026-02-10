@@ -9,7 +9,7 @@ import "core:fmt"
 // import "core:math"
 // import lin"core:math/linalg"
 // import "base:runtime"
-// import hm "handle_map_static_virtual"
+import hm "../../handle_map_static_virtual"
 
 // import "core:image"
 // import "core:image/jpeg"
@@ -36,52 +36,97 @@ main :: proc(){
 	}
 	s=tg.init()
 	
-	window := tg.init_window()
-	_ = sdl.SetWindowRelativeMouseMode(window,true)
+	window_hd := tg.init_window()
+	window_hd2 := tg.init_window()
+	
+	_ = sdl.SetWindowRelativeMouseMode(tg.get_window(window_hd).data,true)
 
-	atr_offset:[]tg.Vertex_Attrs_Info={
-		{cast(u32)offset_of(tg.Vertex_Data, pos),0},
-		{cast(u32)offset_of(tg.Vertex_Data, color),0},
-		{cast(u32)offset_of(tg.Vertex_Data, uv),0}
-	}
-	vert_shader:=tg.load_shader_file(file_path = "shader.vert",vertex_type = tg.Vertex_Data, attrs_info = atr_offset)
-	frag_shader:=tg.load_shader_file(file_path = "shader.frag",vertex_type = tg.Vertex_Data)
+	// atr_offset:[]tg.Vertex_Attrs_Info={
+	// 	{cast(u32)offset_of(tg.Vertex_Data_t, pos),0},
+	// 	{cast(u32)offset_of(tg.Vertex_Data_t, col),0},
+	// 	{cast(u32)offset_of(tg.Vertex_Data_t, uv),0},
+	// 	{cast(u32)offset_of(tg.Vertex_Data_t, col_over),0},
+	// }
+	// vert_shader:=tg.load_shader_file(file_path = "shader.vert",vertex_type = tg.Vertex_Data_t, attrs_info = atr_offset)
+	// frag_shader:=tg.load_shader_file(file_path = "shader.frag",vertex_type = tg.Vertex_Data_t)
+	 
+	vert_shader:=tg.load_shader_file(file_path = "shader.vert")
+	frag_shader:=tg.load_shader_file(file_path = "shader.frag")
 	
 	texture = tg.load_texture_from_file("world_tileset.png")	
-	pass = tg.create_render_pass(window, vert_shader, frag_shader)
+	pass = tg.create_render_pass(window_hd, vert_shader, frag_shader)
 	vertices := []tg.Vertex_Data{
-		{pos={ -.5,  .5, 0},color= {1,1,1,1}, uv= {0,0}},
-		{pos={  .5,  .5, 0},color= {1,1,1,1}, uv= {1,0}},
-		{pos={ -.5, -.5, 0},color= {1,1,1,1}, uv= {0,1}},
-		{pos={  .5, -.5, 0},color= {1,1,1,1}, uv= {1,1}},
 		
-		{pos={ -.5,  .5, -1},color= {1,1,0,1}, uv= {0,0}},
-		{pos={  .5,  .5, -1},color= {1,1,0,1}, uv= {1,0}},
-		{pos={ -.5, -.5, -1},color= {1,1,0,1}, uv= {0,1}},
-		{pos={  .5, -.5, -1},color= {1,1,0,1}, uv= {1,1}},
+		{pos={ -.5, -.5, 0},col= {1,1,1,1}, uv= {0,1}},
+		{pos={  .5,  .5, 0},col= {1,1,1,1}, uv= {1,0}},
+		{pos={ -.5,  .5, 0},col= {1,0,0,1}, uv= {0,0}},
+		// {pos={  .5, -.5, 0},col= {1,1,1,1}, uv= {1,1}},
+		
+		// {pos={ -.5,  .5, -1},col= {1,1,0,1}, uv= {0,0}},
+		// {pos={  .5,  .5, -1},col= {1,1,0,1}, uv= {1,0}},
+		// {pos={ -.5, -.5, -1},col= {1,1,0,1}, uv= {0,1}},
+		// {pos={  .5, -.5, -1},col= {1,1,0,1}, uv= {1,1}},
 	}
-
+	
+	vertices_2 := []tg.Vertex_Data{
+		{pos={ -1.5,  .5, 0},col= {1,0,0,1}, uv= {0,0}},
+		{pos={  1.5,  .5, 0},col= {1,0,0,1}, uv= {1,0}},
+		{pos={ -1.5, -.5, 0},col= {1,0,0,1}, uv= {0,1}},
+		{pos={  1.5, -.5, 0},col= {1,0,0,1}, uv= {1,1}},
+		
+		{pos={ -1.5,  .5, -1},col= {1,1,0,1}, uv= {0,0}},
+		{pos={  1.5,  .5, -1},col= {1,1,0,1}, uv= {1,0}},
+		{pos={ -1.5, -.5, -1},col= {1,1,0,1}, uv= {0,1}},
+		{pos={  1.5, -.5, -1},col= {1,1,0,1}, uv= {1,1}},
+	}
 	vertices_byte_size:= len(vertices) * size_of(vertices[0])
 	indices := []u32 {
 		
-		0+4,1+4,2+4,
-		2+4,1+4,3+4,
+		// 2+4,1+4,1+4,
+		// 2+4,1+4,3+4,
 		
 		0,1,2,
-		2,1,3,
+		// 3,1,0,
+		
+	}
+	indices_2 := []u32 {
+		
+		0+4+12,1+4+12,2+4+12,
+		2+4+12,1+4+12,3+4+12,
+		
+		0+12,1+12,2+12,
+		2+12,1+12,3+12,
 		
 	}
 	indices_byte_size:= len(indices) * size_of(indices[0])
-	mesh_cpu:tg.Mesh_CPU={}
-	resize_dynamic_array(&mesh_cpu.vertex_buf, vertices_byte_size)
-	resize_dynamic_array(&mesh_cpu.index_buf,  indices_byte_size)
+	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data_t}
+	
+	tg.draw_triangle_ex(
+		mesh = &mesh_cpu,
+		pos = {0,0,-5},
+		verts = [3]tg.Vertex_Data_t{
+		{
+			pos = {-.5,  -.5, 0},
+			col = {1,1,1,1},
+			uv = {0,1},
+		},
+		{
+			pos = {.5,  .5, 0},
+			col = {1,1,1,1},
+			uv = {1,0},
+		},
+		{
+			pos = {-.5, .5, 0},
+			col = {1,0,0,1},
+			uv = {0,0},
+		}
+	})
+	
+	
 
-	mem.copy(raw_data(mesh_cpu.vertex_buf), raw_data(vertices), vertices_byte_size)
-	mem.copy(raw_data(mesh_cpu.index_buf), raw_data(indices), indices_byte_size)
-
-	mesh_cpu.attribute_type = tg.Vertex_Data
 	mesh := tg.create_mesh(mesh_cpu)
-	tg.update_mesh(&mesh)
+	new_mesh:=tg.get_mesh(mesh)
+	tg.update_mesh(mesh)
 	
 	new_ticks := sdl.GetTicks()
 	s.delta_time = f32(new_ticks - s.ticks) / 1000
@@ -95,20 +140,29 @@ main :: proc(){
 			#partial switch ev.type{
 			case .QUIT:
 				break main_loop
-				
+			case .WINDOW_CLOSE_REQUESTED:
+				win := sdl.GetWindowFromID(ev.window.windowID)
+				sdl.DestroyWindow(win)
+				tg.remove_closed_windows()
+				if hm.len(s.windows) <= 0 {
+					break main_loop
+				}
 			case .KEY_DOWN:
 				s.key_down[ev.key.scancode] = true
 			case .KEY_UP:
 				s.key_down[ev.key.scancode] = false
 			case .MOUSE_MOTION:
-				s.mouse_move += {ev.motion.xrel, ev.motion.yrel}
+				s.mouse_move += tg.Vec2{ev.motion.xrel, ev.motion.yrel}
 			}
 		}
 		tg.start_frame()
+		// tg.rot+=.01
 		tg.update_camera_3d(&pass.camera, s.delta_time, )
-		tg.start_render_pass(&pass, texture, &mesh)
-		
-		tg.rot+=.01
+	
+		tg.start_render_pass(&pass, texture, mesh, window_hd)
+		tg.finish_render_pass(&pass)
+
+		tg.start_render_pass(&pass, texture, mesh, window_hd2)
 		tg.finish_render_pass(&pass)
 	}
 	
