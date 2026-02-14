@@ -30,7 +30,7 @@ State :: struct{
 	
 	depth_texture_format:sdl.GPUTextureFormat,
 	
-	textures:  hm.Handle_Map(Texture_Data, Texture_Handle, 1024*10),
+	textures_gpu:  hm.Handle_Map(Texture_GPU_Data, Texture_GPU_Handle, 1024*10),
 	shaders:   hm.Handle_Map(Shader, Shader_Handle, 1024*10),
 	windows:   hm.Handle_Map(Window, Window_Handle, 1024*10),
 	meshes:   hm.Handle_Map(Mesh, Mesh_Handle, 1024*10),
@@ -77,7 +77,7 @@ R_Pass ::struct{
 	render_pas: ^sdl.GPURenderPass,
 	cmd_buf: ^sdl.GPUCommandBuffer,
 	sampler: ^sdl.GPUSampler,
-	texture: Texture,
+	texture: Texture_GPU_Handle,
 	mesh:Mesh_Handle,
 	
 	copy_pass :^sdl.GPUCopyPass,
@@ -259,7 +259,7 @@ start_frame::proc(){
 
 }
 
-start_render_pass::proc(pass:^R_Pass, texture:Texture, mesh_hd:Mesh_Handle, window_hd:Window_Handle){
+start_render_pass::proc(pass:^R_Pass, texture:Texture_GPU_Handle, mesh_hd:Mesh_Handle, window_hd:Window_Handle){
 	mesh:=get_mesh(mesh_hd)
 	pass.mesh = mesh_hd
 	window:=get_window(window_hd)
@@ -327,7 +327,7 @@ finish_render_pass::proc(pass:^R_Pass){
 		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
 		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)
 		
-		sdl.BindGPUFragmentSamplers(pass.render_pas, 0, &(sdl.GPUTextureSamplerBinding{texture = get_texture_data(pass.texture.handle), sampler = pass.sampler}),1)
+		sdl.BindGPUFragmentSamplers(pass.render_pas, 0, &(sdl.GPUTextureSamplerBinding{texture = get_gpu_texture(pass.texture).data, sampler = pass.sampler}),1)
 
 		// sdl.DrawGPUIndexedPrimitives(pass.render_pas, mesh.gpu.index_count, 1, 0, 0, 0)
 		sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0)

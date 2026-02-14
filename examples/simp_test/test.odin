@@ -10,6 +10,7 @@ import "core:fmt"
 // import lin"core:math/linalg"
 // import "base:runtime"
 import hm "../../handle_map_static_virtual"
+import an"ansi"
 
 // import "core:image"
 // import "core:image/jpeg"
@@ -23,7 +24,7 @@ USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
 rot:f32=0
 
 pass:tg.R_Pass
-texture:tg.Texture
+texture:tg.Texture_GPU_Handle
 s:^tg.State
 
 main :: proc(){
@@ -165,6 +166,8 @@ main :: proc(){
 		tg.start_render_pass(&pass, texture, mesh, window_hd2)
 		tg.finish_render_pass(&pass)
 	}
+	fmt.print(an.RED,"wafflessada",an.RESET,"\n")
+	fmt.print(an.ansy_t("waffles 2 test",.green, .no_bg_color, {.underline , .dim},{}),"waf")
 	
 	tg.cleane_app()
 	

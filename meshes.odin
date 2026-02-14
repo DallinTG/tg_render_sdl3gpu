@@ -169,7 +169,7 @@ Mesh_vert::union{
 	Mesh,
 	Mesh_CPU,
 }
-draw_triangle_ex :: proc(mesh: ^Mesh_CPU, pos:Vec3, verts:$T/[3]$E , origin: Vec3 = {}, rot: f32 = 0,tex:Texture = {}) {
+draw_triangle_ex :: proc(mesh: ^Mesh_CPU, pos:Vec3, verts:$T/[3]$E , origin: Vec3 = {}, rot: f32 = 0,tex:Texture_GPU_Handle = {}) {
 
 	// v0, v1, v2: Vec2
 	new_v:[3]E = verts
