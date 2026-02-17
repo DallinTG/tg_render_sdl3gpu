@@ -21,9 +21,17 @@ import hm "handle_map_static_virtual"
 
 Texture_GPU_Handle :: distinct Handle
 
+
+Texture_Groop::struct{
+	textures:[10]Texture_GPU_Data,
+	layer_count:[10]u32,
+	textures_cpu:[dynamic]^image.Image,
+}
+
+
 Texture :: struct {
 
-	handle: Texture_GPU_Handle,
+	hd:     Texture_GPU_Handle,
 	layer:  u32,
 	w_h:    [2]i32,
 	offset: [2]i32,
@@ -48,10 +56,42 @@ Load_Texture_Options :: bit_set[Load_Texture_Option]
 
 TEXTURE_NONE :: Texture_GPU_Handle {}
 
-// Load a texture from disk and upload it to the GPU so you can draw it to the screen.
-// Supports PNG, BMP, TGA and baseline PNG. Note that progressive PNG files are not supported!
-//
-// The `options` parameter can be used to specify things things such as premultiplication of alpha.
+// update_texture_groop::proc(groop:^Texture_Groop){
+// 	for tex in groop.textures_cpu{
+	 
+// 	}
+
+// }
+// load_image_into_texture_groop::proc(groop:^Texture_Groop,filename: string, options: Load_Texture_Options = {})->(ok:bool){
+
+// 	when FILESYSTEM_SUPPORTED {
+// 		load_options := image.Options {
+// 			.alpha_add_if_missing,
+// 		}
+
+// 		if .Premultiply_Alpha in options {
+// 			load_options += { .alpha_premultiply }
+// 		}
+// 		// im:[2]i32
+// 		// img:=stb.load(frame_cstring(filename),&im.x,&im.y,nil,4,)
+// 		img, img_err := image.load_from_file(filename, options = load_options, allocator = s.frame_allocator)
+// 		if img_err != nil{
+// 			true_file_path:=str.concatenate({TEXTUR_PATH, filename},s.frame_allocator)
+// 			img, img_err = image.load_from_file(true_file_path, options = load_options, allocator = s.frame_allocator)
+// 			if img_err != nil{log.error("cant find ",filename)}
+// 		}
+// 		if img_err != nil {
+// 			log.errorf("Error loading texture '%v': %v", filename, img_err)
+// 			return false
+// 		}
+// 		append(&groop.textures_cpu,img)
+// 		return true
+// 	} else {
+// 		log.errorf("load_texture_from_file failed: OS %v has no filesystem support! Tip: Use load_texture_from_bytes(#load(\"the_texture.png\")) instead.", ODIN_OS)
+// 		return false
+// 	}
+
+// }
 load_texture_from_file :: proc(filename: string, options: Load_Texture_Options = {}) -> Texture_GPU_Handle {
 	when FILESYSTEM_SUPPORTED {
 		load_options := image.Options {

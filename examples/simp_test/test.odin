@@ -25,6 +25,8 @@ rot:f32=0
 
 pass:tg.R_Pass
 texture:tg.Texture_GPU_Handle
+texture_2:tg.Texture_GPU_Handle
+tex_arr:[2]tg.Texture_GPU_Handle
 s:^tg.State
 
 main :: proc(){
@@ -55,51 +57,11 @@ main :: proc(){
 	frag_shader:=tg.load_shader_file(file_path = "shader.frag")
 	
 	texture = tg.load_texture_from_file("world_tileset.png")	
-	pass = tg.create_render_pass(window_hd, vert_shader, frag_shader)
-	vertices := []tg.Vertex_Data{
-		
-		{pos={ -.5, -.5, 0},col= {1,1,1,1}, uv= {0,1}},
-		{pos={  .5,  .5, 0},col= {1,1,1,1}, uv= {1,0}},
-		{pos={ -.5,  .5, 0},col= {1,0,0,1}, uv= {0,0}},
-		// {pos={  .5, -.5, 0},col= {1,1,1,1}, uv= {1,1}},
-		
-		// {pos={ -.5,  .5, -1},col= {1,1,0,1}, uv= {0,0}},
-		// {pos={  .5,  .5, -1},col= {1,1,0,1}, uv= {1,0}},
-		// {pos={ -.5, -.5, -1},col= {1,1,0,1}, uv= {0,1}},
-		// {pos={  .5, -.5, -1},col= {1,1,0,1}, uv= {1,1}},
-	}
+	// texture_2 = tg.load_texture_from_file("world_tileset.png")	
+	texture_2 = tg.load_texture_from_file("Glass_Block.png")
 	
-	vertices_2 := []tg.Vertex_Data{
-		{pos={ -1.5,  .5, 0},col= {1,0,0,1}, uv= {0,0}},
-		{pos={  1.5,  .5, 0},col= {1,0,0,1}, uv= {1,0}},
-		{pos={ -1.5, -.5, 0},col= {1,0,0,1}, uv= {0,1}},
-		{pos={  1.5, -.5, 0},col= {1,0,0,1}, uv= {1,1}},
-		
-		{pos={ -1.5,  .5, -1},col= {1,1,0,1}, uv= {0,0}},
-		{pos={  1.5,  .5, -1},col= {1,1,0,1}, uv= {1,0}},
-		{pos={ -1.5, -.5, -1},col= {1,1,0,1}, uv= {0,1}},
-		{pos={  1.5, -.5, -1},col= {1,1,0,1}, uv= {1,1}},
-	}
-	vertices_byte_size:= len(vertices) * size_of(vertices[0])
-	indices := []u32 {
-		
-		// 2+4,1+4,1+4,
-		// 2+4,1+4,3+4,
-		
-		0,1,2,
-		// 3,1,0,
-		
-	}
-	indices_2 := []u32 {
-		
-		0+4+12,1+4+12,2+4+12,
-		2+4+12,1+4+12,3+4+12,
-		
-		0+12,1+12,2+12,
-		2+12,1+12,3+12,
-		
-	}
-	indices_byte_size:= len(indices) * size_of(indices[0])
+	tex_arr={texture,texture_2}	
+	pass = tg.create_render_pass(window_hd, vert_shader, frag_shader)
 	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data_t}
 	
 	tg.draw_triangle_ex(
@@ -123,11 +85,80 @@ main :: proc(){
 		}
 	})
 	
+	tg.draw_triangle_ex(
+		mesh = &mesh_cpu,
+		pos = {1,0,-5},
+		verts = [3]tg.Vertex_Data_t{
+		{
+			pos = {-.5,  -.5, 0},
+			col = {1,1,1,1},
+			uv = {0,1},
+			img_index = 1,
+		},
+		{
+			pos = {.5,  .5, 0},
+			col = {1,1,1,1},
+			uv = {1,0},
+			img_index = 1,
+		},
+		{
+			pos = {-.5, .5, 0},
+			col = {1,0,0,1},
+			uv = {0,0},
+			img_index = 1,
+		}
+	})
 	
+		tg.draw_triangle_ex(
+		mesh = &mesh_cpu,
+		pos = {1,0,-5},
+		verts = [3]tg.Vertex_Data_t{
+		{
+			pos = {-.5,  -.5, -1},
+			col = {1,1,1,1},
+			uv = {0,1},
+			img_index = 0,
+		},
+		{
+			pos = {.5,  .5, -1},
+			col = {1,1,1,1},
+			uv = {1,0},
+			img_index = 0,
+		},
+		{
+			pos = {-.5, .5, -1},
+			col = {1,0,0,1},
+			uv = {0,0},
+			img_index = 0,
+		}
+	})
+	
+			tg.draw_triangle_ex(
+		mesh = &mesh_cpu,
+		pos = {1,0,-5},
+		verts = [3]tg.Vertex_Data_t{
+		{
+			pos = {-.5,  -.5, 1},
+			col = {1,1,1,1},
+			uv = {0,1},
+			img_index = 1,
+		},
+		{
+			pos = {.5,  .5, 1},
+			col = {1,1,1,1},
+			uv = {1,0},
+			img_index = 1,
+		},
+		{
+			pos = {-.5, .5, 1},
+			col = {1,0,0,1},
+			uv = {0,0},
+			img_index = 1,
+		}
+	})
 
-	mesh := tg.create_mesh(mesh_cpu)
-	new_mesh:=tg.get_mesh(mesh)
-	tg.update_mesh(mesh)
+	mesh_hd := tg.create_mesh(mesh_cpu)
+	tg.update_mesh(mesh_hd)
 	
 	new_ticks := sdl.GetTicks()
 	s.delta_time = f32(new_ticks - s.ticks) / 1000
@@ -160,11 +191,8 @@ main :: proc(){
 		// tg.rot+=.01
 		tg.update_camera_3d(&pass.camera, s.delta_time, )
 	
-		tg.start_render_pass(&pass, texture, mesh, window_hd)
-		tg.finish_render_pass(&pass)
-
-		tg.start_render_pass(&pass, texture, mesh, window_hd2)
-		tg.finish_render_pass(&pass)
+		tg.do_render_pass(&pass, tex_arr[:], {mesh_hd}, window_hd)
+		tg.do_render_pass(&pass, tex_arr[:], {mesh_hd}, window_hd2)
 	}
 	fmt.print(an.RED,"wafflessada",an.RESET,"\n")
 	fmt.print(an.ansy_t("waffles 2 test",.green, .no_bg_color, {.underline , .dim},{}),"waf")
