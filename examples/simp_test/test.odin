@@ -4,6 +4,7 @@ import tg"../../../tg_render_sdl3"
 import sdl "vendor:sdl3"
 import "core:log"
 import "core:mem"
+import "core:hash"
 // import str"core:strings"
 import "core:fmt"
 // import "core:math"
@@ -11,7 +12,7 @@ import "core:fmt"
 // import "base:runtime"
 import hm "../../handle_map_static_virtual"
 import an"ansi"
-
+import lin"core:math/linalg"
 // import "core:image"
 // import "core:image/jpeg"
 // import "core:image/bmp"
@@ -28,6 +29,10 @@ texture:tg.Texture_GPU_Handle
 texture_2:tg.Texture_GPU_Handle
 tex_arr:[2]tg.Texture_GPU_Handle
 s:^tg.State
+camera :tg.Camera= {
+	pos = {0,0,3},
+	target = {0,0,0},
+}
 
 main :: proc(){
 	context.logger = log.create_console_logger()
@@ -59,103 +64,81 @@ main :: proc(){
 	texture = tg.load_texture_from_file("world_tileset.png")	
 	// texture_2 = tg.load_texture_from_file("world_tileset.png")	
 	texture_2 = tg.load_texture_from_file("Glass_Block.png")
+	tg.reg_texture_from_file("BAD.png")
+	tg.reg_texture_from_file("Glass_Block.png")
+	tg.reg_texture_from_file("world_tileset.png")
+	
+	tg.reg_texture_from_file("0.png")
+	tg.reg_texture_from_file("1.png")
+	tg.reg_texture_from_file("ax_man.png")
+	tg.reg_texture_from_file("castle.png")
+	tg.reg_texture_from_file("mine.png")
+	tg.reg_texture_from_file("Pawn.png")
 	
 	tex_arr={texture,texture_2}	
 	pass = tg.create_render_pass(window_hd, vert_shader, frag_shader)
 	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data_t}
 	
-	tg.draw_triangle_ex(
+	// lin.quaternion_from_pitch_yaw_roll_f32(3,3,3)
+
+	
+	tg.draw_triangle_vx(
 		mesh = &mesh_cpu,
-		pos = {0,0,-5},
+		pos = {0,0,0},
 		verts = [3]tg.Vertex_Data_t{
 		{
-			pos = {-.5,  -.5, 0},
+			pos = {0, 0, 0},
+			col = {1,1,1,1},
+			uv = {0,0},
+			img_index = 2,
+		},
+		{
+			pos = {0,  -1, 0},
 			col = {1,1,1,1},
 			uv = {0,1},
+			img_index = 2,
 		},
 		{
-			pos = {.5,  .5, 0},
-			col = {1,1,1,1},
-			uv = {1,0},
-		},
-		{
-			pos = {-.5, .5, 0},
+			pos = {1, -1, 0},
 			col = {1,0,0,1},
-			uv = {0,0},
+			uv = {1,1},
+			img_index = 2,
 		}
 	})
-	
-	tg.draw_triangle_ex(
+	// // tg.draw_cube(mesh = &mesh_cpu, pos = {})
+	tg.draw_triangle_vx(
 		mesh = &mesh_cpu,
 		pos = {1,0,-5},
 		verts = [3]tg.Vertex_Data_t{
 		{
-			pos = {-.5,  -.5, 0},
+			pos = {0,  0, 1},
+			col = {1,1,1,1},
+			uv = {0,0},
+			img_index = 2,
+		},
+		{
+			pos = {0,  -1, 1},
 			col = {1,1,1,1},
 			uv = {0,1},
-			img_index = 1,
+			img_index = 2,
 		},
 		{
-			pos = {.5,  .5, 0},
-			col = {1,1,1,1},
-			uv = {1,0},
-			img_index = 1,
-		},
-		{
-			pos = {-.5, .5, 0},
+			pos = {1, -1, 1},
 			col = {1,0,0,1},
-			uv = {0,0},
-			img_index = 1,
-		}
+			uv = {1,1},
+			img_index = 2,
+		},
 	})
-	
-		tg.draw_triangle_ex(
-		mesh = &mesh_cpu,
-		pos = {1,0,-5},
-		verts = [3]tg.Vertex_Data_t{
-		{
-			pos = {-.5,  -.5, -1},
-			col = {1,1,1,1},
-			uv = {0,1},
-			img_index = 0,
-		},
-		{
-			pos = {.5,  .5, -1},
-			col = {1,1,1,1},
-			uv = {1,0},
-			img_index = 0,
-		},
-		{
-			pos = {-.5, .5, -1},
-			col = {1,0,0,1},
-			uv = {0,0},
-			img_index = 0,
-		}
-	})
-	
-			tg.draw_triangle_ex(
-		mesh = &mesh_cpu,
-		pos = {1,0,-5},
-		verts = [3]tg.Vertex_Data_t{
-		{
-			pos = {-.5,  -.5, 1},
-			col = {1,1,1,1},
-			uv = {0,1},
-			img_index = 1,
-		},
-		{
-			pos = {.5,  .5, 1},
-			col = {1,1,1,1},
-			uv = {1,0},
-			img_index = 1,
-		},
-		{
-			pos = {-.5, .5, 1},
-			col = {1,0,0,1},
-			uv = {0,0},
-			img_index = 1,
-		}
-	})
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "glass_block", cube = {pos = {0,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "world_tileset", cube = {pos = {3,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "0", cube = {pos = {5,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "1", cube = {pos = {7,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "ax_man", cube = {pos = {10,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "castle", cube = {pos = {13,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "mine", cube = {pos = {14,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "pawn", cube = {pos = {16,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "awn", cube = {pos = {-2,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
 
 	mesh_hd := tg.create_mesh(mesh_cpu)
 	tg.update_mesh(mesh_hd)
@@ -164,21 +147,11 @@ main :: proc(){
 	s.delta_time = f32(new_ticks - s.ticks) / 1000
 	s.ticks = new_ticks
 	
-	main_loop:for{
-		ok:bool
-		ev:sdl.Event
+	main_loop:for tg.start_frame(){
+	
 		s.mouse_move = {}
-		for sdl.PollEvent(&ev) {
+		for ev in &tg.s.events {
 			#partial switch ev.type{
-			case .QUIT:
-				break main_loop
-			case .WINDOW_CLOSE_REQUESTED:
-				win := sdl.GetWindowFromID(ev.window.windowID)
-				sdl.DestroyWindow(win)
-				tg.remove_closed_windows()
-				if hm.len(s.windows) <= 0 {
-					break main_loop
-				}
 			case .KEY_DOWN:
 				s.key_down[ev.key.scancode] = true
 			case .KEY_UP:
@@ -187,21 +160,24 @@ main :: proc(){
 				s.mouse_move += tg.Vec2{ev.motion.xrel, ev.motion.yrel}
 			}
 		}
-		tg.start_frame()
-		// tg.rot+=.01
-		tg.update_camera_3d(&pass.camera, s.delta_time, )
+		tg.update_camera_3d(&camera, s.delta_time, )
 	
-		tg.do_render_pass(&pass, tex_arr[:], {mesh_hd}, window_hd)
-		tg.do_render_pass(&pass, tex_arr[:], {mesh_hd}, window_hd2)
+		tg.do_render_pass(&pass, &camera, tex_arr[:], {mesh_hd}, window_hd)
+		tg.do_render_pass(&pass, &camera, tex_arr[:], {mesh_hd}, window_hd2)
 	}
-	fmt.print(an.RED,"wafflessada",an.RESET,"\n")
-	fmt.print(an.ansy_t("waffles 2 test",.green, .no_bg_color, {.underline , .dim},{}),"waf")
-	
+	tg.delete_r_pass(&pass)
+	tg.delete_mesh(mesh_hd)
 	tg.cleane_app()
 	
 	when USE_TRACKING_ALLOCATOR {
 		for _, value in tracking_allocator.allocation_map {
 			log.errorf("%v: Leaked %v bytes\n", value.location, value.size)
+			if value.size<256 {
+				str_b:=cast([^]u8)value.memory
+				str_d:=str_b[:value.size]
+				str:=cast(string)str_d
+				fmt.print(str)
+			}
 		}
 		mem.tracking_allocator_destroy(&tracking_allocator)
 	}

@@ -13,158 +13,664 @@ struct main0_in
     float4 in_var_TEXCOORD0 [[user(locn0)]];
     float2 in_var_TEXCOORD1 [[user(locn1)]];
     uint in_var_TEXCOORD2 [[user(locn2)]];
+    uint in_var_TEXCOORD3 [[user(locn3)]];
     float4 in_var_TEXCOORD4 [[user(locn4)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> g_Textures_0_ [[texture(0)]], texture2d<float> g_Textures_1_ [[texture(1)]], texture2d<float> g_Textures_2_ [[texture(2)]], texture2d<float> g_Textures_3_ [[texture(3)]], sampler smp_0_ [[sampler(0)]], sampler smp_1_ [[sampler(1)]], sampler smp_2_ [[sampler(2)]], sampler smp_3_ [[sampler(3)]])
+fragment main0_out main0(main0_in in [[stage_in]], texture2d_array<float> g_Textures_0_ [[texture(0)]], texture2d_array<float> g_Textures_1_ [[texture(1)]], texture2d_array<float> g_Textures_2_ [[texture(2)]], texture2d_array<float> g_Textures_3_ [[texture(3)]], texture2d_array<float> g_Textures_4_ [[texture(4)]], texture2d_array<float> g_Textures_5_ [[texture(5)]], texture2d_array<float> g_Textures_6_ [[texture(6)]], texture2d_array<float> g_Textures_7_ [[texture(7)]], texture2d_array<float> g_Textures_8_ [[texture(8)]], texture2d_array<float> g_Textures_9_ [[texture(9)]], sampler smp_0_ [[sampler(0)]], sampler smp_1_ [[sampler(1)]], sampler smp_2_ [[sampler(2)]], sampler smp_3_ [[sampler(3)]], sampler smp_4_ [[sampler(4)]], sampler smp_5_ [[sampler(5)]], sampler smp_6_ [[sampler(6)]], sampler smp_7_ [[sampler(7)]], sampler smp_8_ [[sampler(8)]], sampler smp_9_ [[sampler(9)]])
 {
     main0_out out = {};
-    float4 _134;
+    float3 _57 = float3(in.in_var_TEXCOORD1, float(in.in_var_TEXCOORD3));
+    float4 _600;
     switch (in.in_var_TEXCOORD2)
     {
         case 0u:
         {
-            float4 _64;
+            float4 _122;
             switch (in.in_var_TEXCOORD2)
             {
                 case 0u:
                 {
-                    _64 = g_Textures_0_.sample(smp_0_, in.in_var_TEXCOORD1);
+                    _122 = g_Textures_0_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 1u:
                 {
-                    _64 = g_Textures_0_.sample(smp_1_, in.in_var_TEXCOORD1);
+                    _122 = g_Textures_0_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 2u:
                 {
-                    _64 = g_Textures_0_.sample(smp_2_, in.in_var_TEXCOORD1);
+                    _122 = g_Textures_0_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 3u:
                 {
-                    _64 = g_Textures_0_.sample(smp_3_, in.in_var_TEXCOORD1);
+                    _122 = g_Textures_0_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _122 = g_Textures_0_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _122 = g_Textures_0_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _122 = g_Textures_0_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _122 = g_Textures_0_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _122 = g_Textures_0_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _122 = g_Textures_0_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 default:
                 {
-                    _64 = float4(0.0);
+                    _122 = float4(0.0);
                     break;
                 }
             }
-            _134 = _64;
+            _600 = _122;
             break;
         }
         case 1u:
         {
-            float4 _87;
+            float4 _175;
             switch (in.in_var_TEXCOORD2)
             {
                 case 0u:
                 {
-                    _87 = g_Textures_1_.sample(smp_0_, in.in_var_TEXCOORD1);
+                    _175 = g_Textures_1_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 1u:
                 {
-                    _87 = g_Textures_1_.sample(smp_1_, in.in_var_TEXCOORD1);
+                    _175 = g_Textures_1_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 2u:
                 {
-                    _87 = g_Textures_1_.sample(smp_2_, in.in_var_TEXCOORD1);
+                    _175 = g_Textures_1_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 3u:
                 {
-                    _87 = g_Textures_1_.sample(smp_3_, in.in_var_TEXCOORD1);
+                    _175 = g_Textures_1_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _175 = g_Textures_1_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _175 = g_Textures_1_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _175 = g_Textures_1_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _175 = g_Textures_1_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _175 = g_Textures_1_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _175 = g_Textures_1_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 default:
                 {
-                    _87 = float4(0.0);
+                    _175 = float4(0.0);
                     break;
                 }
             }
-            _134 = _87;
+            _600 = _175;
             break;
         }
         case 2u:
         {
-            float4 _110;
+            float4 _228;
             switch (in.in_var_TEXCOORD2)
             {
                 case 0u:
                 {
-                    _110 = g_Textures_2_.sample(smp_0_, in.in_var_TEXCOORD1);
+                    _228 = g_Textures_2_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 1u:
                 {
-                    _110 = g_Textures_2_.sample(smp_1_, in.in_var_TEXCOORD1);
+                    _228 = g_Textures_2_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 2u:
                 {
-                    _110 = g_Textures_2_.sample(smp_2_, in.in_var_TEXCOORD1);
+                    _228 = g_Textures_2_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 3u:
                 {
-                    _110 = g_Textures_2_.sample(smp_3_, in.in_var_TEXCOORD1);
+                    _228 = g_Textures_2_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _228 = g_Textures_2_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _228 = g_Textures_2_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _228 = g_Textures_2_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _228 = g_Textures_2_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _228 = g_Textures_2_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _228 = g_Textures_2_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 default:
                 {
-                    _110 = float4(0.0);
+                    _228 = float4(0.0);
                     break;
                 }
             }
-            _134 = _110;
+            _600 = _228;
             break;
         }
         case 3u:
         {
-            float4 _133;
+            float4 _281;
             switch (in.in_var_TEXCOORD2)
             {
                 case 0u:
                 {
-                    _133 = g_Textures_3_.sample(smp_0_, in.in_var_TEXCOORD1);
+                    _281 = g_Textures_3_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 1u:
                 {
-                    _133 = g_Textures_3_.sample(smp_1_, in.in_var_TEXCOORD1);
+                    _281 = g_Textures_3_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 2u:
                 {
-                    _133 = g_Textures_3_.sample(smp_2_, in.in_var_TEXCOORD1);
+                    _281 = g_Textures_3_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 case 3u:
                 {
-                    _133 = g_Textures_3_.sample(smp_3_, in.in_var_TEXCOORD1);
+                    _281 = g_Textures_3_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _281 = g_Textures_3_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _281 = g_Textures_3_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _281 = g_Textures_3_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _281 = g_Textures_3_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _281 = g_Textures_3_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _281 = g_Textures_3_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
                     break;
                 }
                 default:
                 {
-                    _133 = float4(0.0);
+                    _281 = float4(0.0);
                     break;
                 }
             }
-            _134 = _133;
+            _600 = _281;
+            break;
+        }
+        case 4u:
+        {
+            float4 _334;
+            switch (in.in_var_TEXCOORD2)
+            {
+                case 0u:
+                {
+                    _334 = g_Textures_4_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 1u:
+                {
+                    _334 = g_Textures_4_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 2u:
+                {
+                    _334 = g_Textures_4_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 3u:
+                {
+                    _334 = g_Textures_4_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _334 = g_Textures_4_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _334 = g_Textures_4_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _334 = g_Textures_4_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _334 = g_Textures_4_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _334 = g_Textures_4_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _334 = g_Textures_4_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                default:
+                {
+                    _334 = float4(0.0);
+                    break;
+                }
+            }
+            _600 = _334;
+            break;
+        }
+        case 5u:
+        {
+            float4 _387;
+            switch (in.in_var_TEXCOORD2)
+            {
+                case 0u:
+                {
+                    _387 = g_Textures_5_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 1u:
+                {
+                    _387 = g_Textures_5_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 2u:
+                {
+                    _387 = g_Textures_5_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 3u:
+                {
+                    _387 = g_Textures_5_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _387 = g_Textures_5_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _387 = g_Textures_5_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _387 = g_Textures_5_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _387 = g_Textures_5_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _387 = g_Textures_5_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _387 = g_Textures_5_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                default:
+                {
+                    _387 = float4(0.0);
+                    break;
+                }
+            }
+            _600 = _387;
+            break;
+        }
+        case 6u:
+        {
+            float4 _440;
+            switch (in.in_var_TEXCOORD2)
+            {
+                case 0u:
+                {
+                    _440 = g_Textures_6_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 1u:
+                {
+                    _440 = g_Textures_6_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 2u:
+                {
+                    _440 = g_Textures_6_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 3u:
+                {
+                    _440 = g_Textures_6_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _440 = g_Textures_6_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _440 = g_Textures_6_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _440 = g_Textures_6_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _440 = g_Textures_6_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _440 = g_Textures_6_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _440 = g_Textures_6_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                default:
+                {
+                    _440 = float4(0.0);
+                    break;
+                }
+            }
+            _600 = _440;
+            break;
+        }
+        case 7u:
+        {
+            float4 _493;
+            switch (in.in_var_TEXCOORD2)
+            {
+                case 0u:
+                {
+                    _493 = g_Textures_7_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 1u:
+                {
+                    _493 = g_Textures_7_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 2u:
+                {
+                    _493 = g_Textures_7_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 3u:
+                {
+                    _493 = g_Textures_7_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _493 = g_Textures_7_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _493 = g_Textures_7_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _493 = g_Textures_7_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _493 = g_Textures_7_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _493 = g_Textures_7_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _493 = g_Textures_7_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                default:
+                {
+                    _493 = float4(0.0);
+                    break;
+                }
+            }
+            _600 = _493;
+            break;
+        }
+        case 8u:
+        {
+            float4 _546;
+            switch (in.in_var_TEXCOORD2)
+            {
+                case 0u:
+                {
+                    _546 = g_Textures_8_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 1u:
+                {
+                    _546 = g_Textures_8_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 2u:
+                {
+                    _546 = g_Textures_8_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 3u:
+                {
+                    _546 = g_Textures_8_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _546 = g_Textures_8_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _546 = g_Textures_8_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _546 = g_Textures_8_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _546 = g_Textures_8_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _546 = g_Textures_8_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _546 = g_Textures_8_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                default:
+                {
+                    _546 = float4(0.0);
+                    break;
+                }
+            }
+            _600 = _546;
+            break;
+        }
+        case 9u:
+        {
+            float4 _599;
+            switch (in.in_var_TEXCOORD2)
+            {
+                case 0u:
+                {
+                    _599 = g_Textures_9_.sample(smp_0_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 1u:
+                {
+                    _599 = g_Textures_9_.sample(smp_1_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 2u:
+                {
+                    _599 = g_Textures_9_.sample(smp_2_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 3u:
+                {
+                    _599 = g_Textures_9_.sample(smp_3_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 4u:
+                {
+                    _599 = g_Textures_9_.sample(smp_4_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 5u:
+                {
+                    _599 = g_Textures_9_.sample(smp_5_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 6u:
+                {
+                    _599 = g_Textures_9_.sample(smp_6_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 7u:
+                {
+                    _599 = g_Textures_9_.sample(smp_7_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 8u:
+                {
+                    _599 = g_Textures_9_.sample(smp_8_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                case 9u:
+                {
+                    _599 = g_Textures_9_.sample(smp_9_, _57.xy, uint(rint(_57.z)));
+                    break;
+                }
+                default:
+                {
+                    _599 = float4(0.0);
+                    break;
+                }
+            }
+            _600 = _599;
             break;
         }
         default:
         {
-            _134 = float4(0.0);
+            _600 = float4(0.0);
             break;
         }
     }
-    out.out_var_SV_Target0 = (_134 * in.in_var_TEXCOORD0) + in.in_var_TEXCOORD4;
+    out.out_var_SV_Target0 = ((_600 * in.in_var_TEXCOORD0) + in.in_var_TEXCOORD4) + float4(0.0, 0.0, 0.0, 0.00999999977648258209228515625);
     return out;
 }
 
