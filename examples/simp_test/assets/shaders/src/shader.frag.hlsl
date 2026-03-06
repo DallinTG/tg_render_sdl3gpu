@@ -15,6 +15,9 @@ float4 main(Input input) : SV_Target0 {
 	// uint texIndex = g_InstanceData[input.img_index].texture_index;
 	Texture2DArray tex = g_Textures[input.img_index];
 	float4 color = tex.Sample(smp[input.img_index], float3(input.uv, input.layer));
-	return color * input.color + input.color2 + float4(0,0,0,.01);
+	return color * input.color + input.color2 + float4(0,0,0,0);
+
+	// float v = tex.Sample(smp[input.img_index], float3(input.uv, input.layer)).r;
+	// return float4(v, v, v, 1.0);
     // return tex.Sample(smp[input.img_index], float3(input.uv, input.layer)) * input.color + input.color2 + float4(0,0,0,.2);
 }

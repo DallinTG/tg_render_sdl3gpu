@@ -36,17 +36,17 @@ DEFALT_DEPTH_TEXTURE_CREATEINFO:sdl.GPUTextureCreateInfo:{
 DEFALT_OPAQUET_DEPTH_STENCIL_STATE :sdl.GPUDepthStencilState:{
 	enable_depth_test = true,
 	enable_depth_write = true,
-	compare_op = .LESS,
+	compare_op = .LESS_OR_EQUAL,
 }
 DEFALT_MASKED_DEPTH_STENCIL_STATE :sdl.GPUDepthStencilState:{
 	enable_depth_test = true,
 	enable_depth_write = true,
-	compare_op = .LESS,
+	compare_op = .LESS_OR_EQUAL,
 }
 DEFALT_TRANSPARENT_DEPTH_STENCIL_STATE :sdl.GPUDepthStencilState:{
 	enable_depth_test = true,
 	enable_depth_write = false,
-	compare_op = .LESS,
+	compare_op = .LESS_OR_EQUAL,
 }
 DEFALT_RASTERRIZER_STATE : sdl.GPURasterizerState:{
 	cull_mode = .BACK,
@@ -85,8 +85,7 @@ DEFALT_OPAQUET_BLEND_STATE :sdl.GPUColorTargetBlendState:{
 	enable_color_write_mask = true,                                  /**< Whether the color write mask is enabled. */
 }
 DEFALT_R_PASS_INFO:Render_Pass_Info:{
-	load_op = .CLEAR, 
-	clear_color = {.3, .3, .3, 1},
+	clear_color = {1, .3, 1, 1},
 	has_depth_stencil_target = true,
 	depth_texture_createinfo = DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =      DEFALT_OPAQUET_DEPTH_STENCIL_STATE,
@@ -96,8 +95,7 @@ DEFALT_R_PASS_INFO:Render_Pass_Info:{
 }
 
 DEFALT_OPAQUE_PASS:Render_Pass_Info:{
-	load_op = .CLEAR, 
-	clear_color = {.3, .3, .3, 1},
+	clear_color = {1, .3, 1, 1},
 	has_depth_stencil_target = true,
 	depth_texture_createinfo = DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =      DEFALT_OPAQUET_DEPTH_STENCIL_STATE,
@@ -106,8 +104,7 @@ DEFALT_OPAQUE_PASS:Render_Pass_Info:{
 	vertex_input_state = sdl.GPUVertexInputState{},
 }
 DEFALT_MASKED_PASS:Render_Pass_Info:{
-	load_op = .CLEAR, 
-	clear_color = {.3, .3, .3, 1},
+	clear_color = {1, .3, 1, 1},
 	has_depth_stencil_target = true,
 	depth_texture_createinfo = DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =      DEFALT_MASKED_DEPTH_STENCIL_STATE,
@@ -116,12 +113,22 @@ DEFALT_MASKED_PASS:Render_Pass_Info:{
 	vertex_input_state = sdl.GPUVertexInputState{},
 }
 DEFALT_TRANSPARENT_PASS:Render_Pass_Info:{
-	load_op = .CLEAR, 
-	clear_color = {.3, .3, .3, 1},
+	clear_color = {1, .3, 1, 1},
 	has_depth_stencil_target = true,
 	depth_texture_createinfo = DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =      DEFALT_TRANSPARENT_DEPTH_STENCIL_STATE,
 	rasterizer_state =         DEFALT_RASTERRIZER_STATE,
 	blend_state =              DEFALT_TRANSPARENT_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},
+}
+
+DEFALT_CLEAR_PASS_INFO:Render_Pass_Info:{
+	load_op = .LOAD, 
+	clear_color = {1, .3, 1, 1},
+	has_depth_stencil_target = true,
+	// depth_texture_createinfo = DEFALT_DEPTH_TEXTURE_CREATEINFO,
+	// depth_stencil_state =      DEFALT_OPAQUET_DEPTH_STENCIL_STATE,
+	// rasterizer_state =         DEFALT_RASTERRIZER_STATE,
+	// blend_state =              DEFALT_OPAQUET_BLEND_STATE,
+	// vertex_input_state = sdl.GPUVertexInputState{},
 }

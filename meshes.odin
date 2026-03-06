@@ -75,10 +75,11 @@ CUBE_INDEXES:[]u32:{
 	0+4*5, 1+4*5, 2+4*5, 0+4*5, 2+4*5, 3+4*5,
 }
 
-create_mesh::proc(cpu_mesh:Mesh_CPU) ->(mesh_hd:Mesh_Handle){
+create_mesh::proc(cpu_mesh:Mesh_CPU, rezerved_buf_size:int = 1000) ->(mesh_hd:Mesh_Handle){
+	mesh_attribute_info:=type_info_of(cpu_mesh.attribute_type)
 	mesh:Mesh
-	vertices_byte_size:=len(cpu_mesh.vertex_buf)
-	indices_byte_size:=len(cpu_mesh.index_buf) * size_of(cpu_mesh.index_buf[0])
+	vertices_byte_size:=len(cpu_mesh.vertex_buf)+(rezerved_buf_size*mesh_attribute_info.size)
+	indices_byte_size:=len(cpu_mesh.index_buf) * size_of(cpu_mesh.index_buf[0])+(rezerved_buf_size*size_of(u32))
 	mesh.cpu = cpu_mesh
 
 	mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
@@ -109,10 +110,12 @@ update_mesh::proc(mesh:Mesh_Handle){
 	mesh:=get_mesh(mesh)
 	vertices_byte_size:=len(mesh.cpu.vertex_buf)
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
-	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, false)
+	if vertices_byte_size == 0 || indices_byte_size == 0 {return }
+	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, false)//TODO may be ablle to remove the mem copyes by seting the transfer buff as cpu data
 	mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf), vertices_byte_size)
-	mem.copy(transfer_mem[vertices_byte_size:], raw_data(mesh.cpu.index_buf), indices_byte_size)	
-	copy_pass: = sdl.BeginGPUCopyPass(s.copy_cmd_buf)
+	mem.copy(transfer_mem[vertices_byte_size:], raw_data(mesh.cpu.index_buf), indices_byte_size)
+	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
+	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
 	sdl.UploadToGPUBuffer(
 		copy_pass = copy_pass,
 		source = {
@@ -140,7 +143,7 @@ update_mesh::proc(mesh:Mesh_Handle){
 	
 	mesh.gpu.index_count = mesh.cpu.index_buf_used
 	sdl.EndGPUCopyPass(copy_pass)
-	ok := sdl.SubmitGPUCommandBuffer(s.copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
+	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 	sdl.ReleaseGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 }
 get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){
@@ -339,6 +342,13 @@ draw_verts_by_quad :: proc(mesh: ^Mesh_CPU, $quad_count:u32, verts:$T/[]$E){
 	}
 	append_to_mesh(mesh, indexes[:],verts[:])
 }
+transform_verts::proc(verts:$T/[]$E , mat:matrix[4, 4]f32 = Mat4(1)){
+	vec4:Vec4
+	for &v , i in verts{
+		vec4 = {v.pos.x,  v.pos.y,  v.pos.z,  1.0}
+		v.pos =  (mat * vec4 ).xyz
+	}
+}
 Cube::struct{
 	pos:[3]f32,
 	w_h_l:[3]f32,
@@ -459,11 +469,293 @@ draw_cube::proc(mesh: ^Mesh_CPU,tex_id:Texture_ID_Types, $vert_t:typeid, col:[4]
 	}
 	draw_verts_by_quad_mat(mesh, 6, verts[:], mat)
 }
+Rect::struct{
+	pos:[3]f32,
+	w_h:[2]f32,
+}
 
-transform_verts::proc(verts:$T/[]$E , mat:matrix[4, 4]f32 = Mat4(1)){
-	vec4:Vec4
-	for &v , i in verts{
-		vec4 = {v.pos.x,  v.pos.y,  v.pos.z,  1.0}
-		v.pos =  (mat * vec4 ).xyz
+DEFALT_QUAD_UV:[4]f32={
+	0,0,
+	// {0,1},
+	1,1,
+	// {1,0},
+}
+draw_rect::proc(mesh: ^Mesh_CPU,tex_id:Texture_ID_Types, $vert_t:typeid, col:[4]f32={1,1,1,1}, rect:Rect, origin: Vec3 = {}, rot:[3]f32 = {},uv:[4]f32=DEFALT_QUAD_UV, mat:matrix[4, 4]f32 = Mat4(1)){
+	tex:=get_texture(tex_id)
+	verts:[4]vert_t
+	// mat:Mat4=mat
+	translate_m4: Mat4 = lin.matrix4_translate_f32(rect.pos)
+	origin_m4:    Mat4 = lin.matrix4_translate_f32(origin)
+	scale_m4:     Mat4 = lin.matrix4_scale_f32({rect.w_h.x,rect.w_h.y,1,})
+	rotate_q:          = lin.quaternion_from_pitch_yaw_roll_f32(rot.x,rot.y,rot.z)
+	rotate_m4:    Mat4 = lin.matrix4_from_quaternion_f32(rotate_q)
+	mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
+	when intrinsics.type_has_field(vert_t, "pos"){
+		//front
+		verts[0].pos =  { 0,  0,  0}
+		verts[1].pos =  { 0, -1,  0}
+		verts[2].pos =  { 1, -1,  0}
+		verts[3].pos =  { 1,  0,  0}
 	}
+	when intrinsics.type_has_field(vert_t, "col"){
+		verts[0].col = col
+		verts[1].col = col
+		verts[2].col = col
+		verts[3].col = col
+	}
+	when intrinsics.type_has_field(vert_t, "uv"){
+		uvs:=[4][2]f32{
+			{uv.x,uv.y},
+			{uv.x,uv.w},
+			{uv.z,uv.w},
+			{uv.z,uv.y},
+		}
+		verts[0].uv =  uvs.x
+		verts[1].uv =  uvs.y
+		verts[2].uv =  uvs.z
+		verts[3].uv =  uvs.w
+	}
+	when intrinsics.type_has_field(vert_t, "img_index"){
+		for &vert in &verts{
+			vert.img_index = cast(u32)tex.groop_index
+		}
+	}
+	when intrinsics.type_has_field(vert_t, "layer"){
+		for &vert in &verts{
+			vert.layer = tex.layer
+		}
+	}
+	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
+}
+
+draw_rect_rounded::proc(
+	mesh: ^Mesh_CPU,
+	tex_id:Texture_ID_Types,
+	$vert_t:typeid,
+	rec: Rect,
+	roundness: f32 = .25,
+	col:[4]f32={1,1,1,1},
+	origin: Vec3 = {},
+	rot: [3]f32 = 0,
+	segments: int = 3,
+	uv:[4]f32=DEFALT_QUAD_UV,
+	mat:matrix[4, 4]f32 = Mat4(1),
+){
+	roundness := roundness
+	segments := segments * 2
+	verts:[4]vert_t
+	
+	translate_m4: Mat4 = lin.matrix4_translate_f32(rec.pos)
+	origin_m4:    Mat4 = lin.matrix4_translate_f32(origin)
+	scale_m4:     Mat4 = lin.matrix4_scale_f32({rec.w_h.x,rec.w_h.y,1,})
+	rotate_q:          = lin.quaternion_from_pitch_yaw_roll_f32(rot.x,rot.y,rot.z)
+	rotate_m4:    Mat4 = lin.matrix4_from_quaternion_f32(rotate_q)
+	mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
+	// mat :=translate_m4 * rotate_m4 * origin_m4 * mat
+	// 
+	uvs:=[4][2]f32{
+		{uv.x,uv.y},
+		{uv.x,uv.w},
+		{uv.z,uv.w},
+		{uv.z,uv.y},
+	}
+	
+	when intrinsics.type_has_field(vert_t, "col"){
+		verts[0].col = col
+		verts[1].col = col
+		verts[2].col = col
+		verts[3].col = col
+	}
+	
+	when intrinsics.type_has_field(vert_t, "uv"){
+		verts[0].uv =  uvs.x
+		verts[1].uv =  uvs.y
+		verts[2].uv =  uvs.z
+		verts[3].uv =  uvs.w
+	}
+	
+	tex:=get_texture(tex_id)
+	when intrinsics.type_has_field(vert_t, "img_index"){
+		for &vert in &verts{
+			vert.img_index = cast(u32)tex.groop_index
+		}
+	}
+	when intrinsics.type_has_field(vert_t, "layer"){
+		for &vert in &verts{
+			vert.layer = tex.layer
+		}
+	}
+	
+	
+	if roundness <= 0 { // if not a rounded rectangle will just draw a regular rect
+		draw_rect(mesh=mesh,tex_id=tex_id, rect=rec, vert_t=vert_t, origin=origin, rot= rot, col=col)
+		return
+	}
+	if roundness >= 1 {roundness = 1 }// clamps the roundness value to 1
+	
+	stepLength:f32 = 90 / cast(f32)segments
+
+	// Diagram points and part of the math was adapted from Raylib's "DrawRectangleRounded"
+	/*
+	Quick sketch to make sense of all of this,
+	there are 9 parts to draw, also mark the 12 points we'll use
+	      P0____________________P1
+	      /|                    |\
+	     /1|          2         |3\
+	 P7 /__|____________________|__\ P2
+	   |   |P8                P9|   |
+	   | 8 |          9         | 4 |
+	   | __|____________________|__ |
+	 P6 \  |P11              P10|  / P3
+	     \7|          6         |5/
+	      \|____________________|/
+	      P5                    P4
+	*/
+	// Coordinates of the 12 points that define the rounded rect
+	// These cords are in locale space {0,0}
+	point:[12]Vec3
+	point = {
+		{ roundness,				0, 						0},	// P0
+		{(rec.w_h.x) - roundness,	0, 						0},	// P1
+		{ rec.w_h.x,				roundness, 				0},	// P2
+		{ rec.w_h.x,				(rec.w_h.y) - roundness, 	0},	// P3
+		{(rec.w_h.x) - roundness,	rec.w_h.y, 				0},	// P4
+		{ roundness,				rec.w_h.y, 				0},	// P5
+		{ 0,						(rec.w_h.y) - roundness, 	0},	// P6
+		{ 0,						roundness, 				0},	// P7
+		{ roundness,				roundness, 				0},	// P8
+		{(rec.w_h.x) - roundness,	roundness, 				0},	// P9
+		{(rec.w_h.x) - roundness,	(rec.w_h.y) - roundness, 	0},	// P10
+		{ roundness,				(rec.w_h.y) - roundness, 	0},	// P11
+	}
+	
+	point = {
+		{ roundness,		-1, 						0},	// P0
+		{(1) - roundness,	-1, 						0},	// P1
+		{ 1,				-(1)+roundness, 				0},	// P2
+		{ 1,				- roundness, 	0},	// P3
+		{(1) - roundness,	0, 				0},	// P4
+		{ roundness,		0, 				0},	// P5
+		{ 0,				- roundness, 	0},	// P6
+		{ 0,				-(1)+roundness, 				0},	// P7
+		{ roundness,		-(1)+roundness, 				0},	// P8
+		{(1) - roundness,	-(1)+roundness, 				0},	// P9
+		{(1) - roundness,	- roundness, 	0},	// P10
+		{ roundness,		- roundness, 	0},	// P11
+	}
+	
+
+	
+	centers:[4]Vec3= { point[8], point[9], point[10], point[11] }// The center of the 4 rounded corners
+	angles:[4]f32 = { 180, 270, 0, 90 }
+	tl, tr, bl, br :Vec3
+	
+	// Draw all the 4 corners: 
+	// [1] Upper Left Corner, 
+	// [3] Upper Right Corner, 
+	// [5] Lower Right Corner, 
+	// [7] Lower Left Corner
+	for k :int= 0; k < 4; k+=1 {
+		angle :f32= angles[k]
+		center :Vec3= centers[k]
+		// NOTE: Every QUAD actually represents two segments
+		for i := 0; i < segments/2; i+=1 {
+			x := center.x// + rec.pos.x - origin.x
+			y := center.y// + rec.pos.y - origin.y
+			tl = { x, y, 0, }
+			tr = { 
+				x + math.cos_f32((math.PI/180)*(angle + stepLength*2))*roundness,
+				y + math.sin_f32((math.PI/180)*(angle + stepLength*2))*roundness,
+				0,
+			}
+			bl = {
+				x + math.cos_f32((math.PI/180)*(angle + stepLength))*roundness,
+				y + math.sin_f32((math.PI/180)*(angle + stepLength))*roundness,
+				0,
+			}
+			br = {
+				x + math.cos_f32((math.PI/180)*angle)*roundness,
+				y + math.sin_f32((math.PI/180)*angle)*roundness,
+				0,
+			}
+				
+			verts[0].pos = tl
+			verts[1].pos = br
+			verts[2].pos = bl
+			draw_verts_by_tri_mat(mesh, 1, verts[:3],mat)
+
+			verts[0].pos = tl
+			verts[1].pos = bl
+			verts[2].pos = tr
+			draw_verts_by_tri_mat(mesh, 1, verts[:3],mat)
+
+			angle += (stepLength*2)
+		}
+	}
+	// [2] Upper Rectangle
+	tl = point[0]
+	tr = point[8]
+	bl = point[1]
+	br = point[9]
+
+	verts[0].pos = tl
+	verts[1].pos = bl
+	verts[2].pos = br
+	verts[3].pos = tr
+	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
+
+	// [4] Right Rectangle
+	tl = point[2]
+	tr = point[9]
+	bl = point[3]
+	br = point[10]
+	
+
+	verts[0].pos = tl
+	verts[1].pos = bl
+	verts[2].pos = br
+	verts[3].pos = tr
+	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
+
+	// [6] Bottom Rectangle	
+	tl = point[4]
+	tr = point[10]
+	bl = point[5]
+	br = point[11]
+
+	verts[0].pos = tl
+	verts[1].pos = bl
+	verts[2].pos = br
+	verts[3].pos = tr
+
+	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
+
+	// [8] Left Rectangle 
+	
+	tl = point[6]
+	tr = point[11]
+	bl = point[7]
+	br = point[8]
+
+	verts[0].pos = tl
+	verts[1].pos = bl
+	verts[2].pos = br
+	verts[3].pos = tr
+
+	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
+
+	// [9] Middle Rectangle
+
+	
+	tl = point[9]
+	tr = point[8]
+	bl = point[10]
+	br = point[11]
+
+	verts[0].pos = tl
+	verts[1].pos = bl
+	verts[2].pos = br
+	verts[3].pos = tr
+
+	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
 }

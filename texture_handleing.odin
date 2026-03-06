@@ -35,27 +35,38 @@ Texture_Arr_Groop::enum{
 	tex_1024x1024,
 	tex_2048x2048,
 	tex_4096x4096,
+	font_256x256,
 }
 TEXTURE_ARR_INFO:[Texture_Arr_Groop]Texture_Setup:{
-	.tex_8x8 =       {w_h = {8, 8},       layer_count = 100},
-	.tex_16x16 =     {w_h = {16, 16},     layer_count = 100},
-	.tex_32x32 =     {w_h = {32, 32},     layer_count = 100},
-	.tex_64x64 =     {w_h = {64, 64},     layer_count = 100},
-	.tex_128x128 =   {w_h = {128, 128},   layer_count = 100},
-	.tex_256x256 =   {w_h = {256, 256},   layer_count = 10},
-	.tex_512x512 =   {w_h = {512, 512},   layer_count = 10},
-	.tex_1024x1024 = {w_h = {1024, 1024}, layer_count = 10},
-	.tex_2048x2048 = {w_h = {2048, 2048}, layer_count = 1},
-	.tex_4096x4096 = {w_h = {4096, 4096}, layer_count = 1},
+	.tex_8x8 =       {w_h = {8, 8},       layer_count = 100 ,format = .R8G8B8A8_UNORM},
+	.tex_16x16 =     {w_h = {16, 16},     layer_count = 100 ,format = .R8G8B8A8_UNORM},
+	.tex_32x32 =     {w_h = {32, 32},     layer_count = 100 ,format = .R8G8B8A8_UNORM},
+	.tex_64x64 =     {w_h = {64, 64},     layer_count = 100 ,format = .R8G8B8A8_UNORM},
+	.tex_128x128 =   {w_h = {128, 128},   layer_count = 100 ,format = .R8G8B8A8_UNORM},
+	.tex_256x256 =   {w_h = {256, 256},   layer_count = 10  ,format = .R8G8B8A8_UNORM},
+	.tex_512x512 =   {w_h = {512, 512},   layer_count = 10  ,format = .R8G8B8A8_UNORM},
+	.tex_1024x1024 = {w_h = {1024, 1024}, layer_count = 10  ,format = .R8G8B8A8_UNORM},
+	.tex_2048x2048 = {w_h = {2048, 2048}, layer_count = 1   ,format = .R8G8B8A8_UNORM},
+	.tex_4096x4096 = {w_h = {4096, 4096}, layer_count = 1   ,format = .R8G8B8A8_UNORM},
+	.font_256x256 = {w_h =  {256, 256},   layer_count = 10  ,format = .R8_UNORM},
+	
 }
 Texture_Arr_Data::struct{
 	tex_hd:Texture_GPU_Handle,
 	layers_used:u32,
+	format:sdl.GPUTextureFormat,
 }
 Texture_Setup::struct{
 	w_h:[2]u32,
 	layer_count:u32,
+	format:sdl.GPUTextureFormat,
 }
+// Texture_ID::enum u32{
+//     non     = 0,
+//     pig     = #hash("pig","murmur32"),
+//     cow     = #hash("cow","murmur32"),
+//     player  = #hash("player","murmur32"),
+// }
 
 Texture_ID_Types::union{
 	string,
@@ -100,29 +111,38 @@ init_texture_arr_groop::proc(){
 		h:=TEXTURE_ARR_INFO[i].w_h.x
 		w:=TEXTURE_ARR_INFO[i].w_h.x
 		l_c:=TEXTURE_ARR_INFO[i].layer_count
-		s.texture_arr_groop[i].tex_hd = create_gpu_texture(width = w,height = h , layer_count = l_c , type = .D2_ARRAY)
+		format:=TEXTURE_ARR_INFO[i].format
+		s.texture_arr_groop[i].tex_hd = create_gpu_texture(width = w,height = h , layer_count = l_c , type = .D2_ARRAY, format = format)
+		// fmt.print("creating",format ,"\n")
+		s.texture_arr_groop[i].format = format
 	}
 	reg_bad_defalt_texture()
+	reg_white_defalt_texture()
 }
 
 reg_texture_from_file::proc(filename: string,mod_name: string = ""){
 	ARR_INFO:=TEXTURE_ARR_INFO
-	tex_map:=&s.texture_arr_map
-	tex_groop:=&s.texture_arr_groop
+	// tex_map:=&s.texture_arr_map
+	// tex_groop:=&s.texture_arr_groop
 	img, img_err:=load_cpu_texture_file(filename)
 	tex_id:=str.trim_suffix(filename,".png")
 	tex_id=str.to_lower(tex_id,s.frame_allocator)
 	id:[2]string={tex_id,mod_name}
 	reg_texture_from_bits(img,id)
 }
-reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types){
+reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: sdl.GPUTextureFormat = .R8G8B8A8_UNORM){
 	id:=get_texture_id(tex_id)
 	ARR_INFO:=TEXTURE_ARR_INFO
 	tex_map:=&s.texture_arr_map
 	tex_groop:=&s.texture_arr_groop
 	for &tex, i in tex_groop{
-		if cast(u32)img.width <= ARR_INFO[i].w_h.x && cast(u32)img.height <= ARR_INFO[i].w_h.y{
-			uplode_data_to_gpu_texture(tex.tex_hd,img.pixels.buf[:],img.width,img.height,layer = tex.layers_used)
+		if cast(u32)img.width <= ARR_INFO[i].w_h.x && cast(u32)img.height <= ARR_INFO[i].w_h.y && ARR_INFO[i].format == format{
+
+			chanle_count:=4
+			if format == .R8_UNORM{
+				chanle_count = 1
+			}
+			uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = tex.layers_used, chanle_count = chanle_count)
 			value:=Texture{
 				hd = tex.tex_hd,
 				layer = tex.layers_used,
@@ -150,6 +170,21 @@ reg_bad_defalt_texture::proc(){
 	}
 	img,ok:=image.pixels_to_image(pixles[:],8,8)
 	reg_texture_from_bits(&img,[2]u32{0,0})
+}
+reg_white_defalt_texture::proc(){
+	per:[4]u8:{255,255,255,255}
+	pixles:[][4]u8={
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+	}
+	img,ok:=image.pixels_to_image(pixles[:],8,8)
+	reg_texture_from_bits(&img,[2]u32{1,0})
 }
 
 get_texture::proc(tex_id:Texture_ID_Types)->(tex:^Texture){
@@ -182,17 +217,6 @@ get_texture_id::proc(tex_id:Texture_ID_Types)->(new_tex_id:[2]u32){
 	new_tex_id = {tex_id_u32,mod_id_u32}
 	return
 }
-
-
-// Texture_ID::enum u32{
-//     non     = 0,
-//     pig     = #hash("pig","murmur32"),
-//     cow     = #hash("cow","murmur32"),
-//     player  = #hash("player","murmur32"),
-// }
-// reg_texture::proc(){
-
-// }
 
 load_texture_from_file :: proc(filename: string, options: Load_Texture_Options = {}) -> Texture_GPU_Handle {
 		img, img_err :=load_cpu_texture_file(filename, options)
@@ -359,26 +383,23 @@ create_gpu_texture::proc(
 	
 	return backend_tex
 }
-uplode_data_to_gpu_texture::proc(texture:Texture_GPU_Handle,	bytes: []u8, width: int, height: int, layer:u32 = 0){
+uplode_data_to_gpu_texture::proc(texture:Texture_GPU_Handle,	bytes: []u8, width: int, height: int, layer:u32 = 0,chanle_count:int = 4){
 	tex_ptr := get_gpu_texture(texture)
 	assert(cast(u32)width<=tex_ptr.w && cast(u32)height<=tex_ptr.h,"texture data must be = or < texture ")
-	
-	pixels_byte_size := width * height * 4
+	pixels_byte_size := width * height * chanle_count
 	tex_transfer_buf := sdl.CreateGPUTransferBuffer(s.gpu_device,{
 		usage = .UPLOAD,
 		size = cast(u32)(pixels_byte_size),
 	})
-
 	tex_transfer_mem := sdl.MapGPUTransferBuffer(s.gpu_device, tex_transfer_buf, false)
 	mem.copy(tex_transfer_mem, raw_data(bytes), pixels_byte_size)
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, tex_transfer_buf)
-	
 	copy_cmd_buf := sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
 
 	sdl.UploadToGPUTexture(copy_pass, 
 		{transfer_buffer = tex_transfer_buf},
-		{texture = tex_ptr.data,layer = layer, w = cast(u32)width,h = cast(u32)height, d = 1},
+		{texture = tex_ptr.data, layer = layer, w = cast(u32)width, h = cast(u32)height, d = 1},
 		false,
 	)
 	sdl.EndGPUCopyPass(copy_pass)

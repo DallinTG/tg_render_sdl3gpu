@@ -34,12 +34,17 @@ State :: struct{
 	texture_arr_groop:[Texture_Arr_Groop]Texture_Arr_Data,
 	
 	texture_groop: Texture_Groop,
-	shaders:   hm.Handle_Map(Shader, Shader_Handle, 1024*10),
-	windows:   hm.Handle_Map(Window, Window_Handle, 1024*10),
-	meshes:   hm.Handle_Map(Mesh, Mesh_Handle, 1024*10),
+	shaders:        hm.Handle_Map(Shader, Shader_Handle, 200),
+	windows:        hm.Handle_Map(Window, Window_Handle, 50),
+	meshes:         hm.Handle_Map(Mesh, Mesh_Handle, 1024*10),
+	fonts:          hm.Handle_Map(Font, Font_Handle, 200),
+	clay_instances: hm.Handle_Map(Clay_Instance, Clay_I_Handle, 50),
+	
+	defalt_font:Font_Handle,
 
 	gpu_device: ^sdl.GPUDevice,
-	copy_cmd_buf :^sdl.GPUCommandBuffer,
+	copy_cmd_buf   :^sdl.GPUCommandBuffer,
+	render_cmd_buf :^sdl.GPUCommandBuffer,
 
 	delta_time: f32,
 	ticks:u64,
@@ -53,7 +58,7 @@ Window::struct{
 	handle:Window_Handle,
 	data:^sdl.Window,
 	swap_chain_format:sdl.GPUTextureFormat,
-	swap_chain:sdl.GPUTexture,
+	swap_chain:^sdl.GPUTexture,
 }
 
 Init_Dec ::struct{
@@ -82,7 +87,7 @@ R_Pass ::struct{
 	info:Render_Pass_Info,
 	pipeline: ^sdl.GPUGraphicsPipeline,
 	render_pas: ^sdl.GPURenderPass,
-	cmd_buf: ^sdl.GPUCommandBuffer,
+	// cmd_buf: ^sdl.GPUCommandBuffer,
 	sampler: ^sdl.GPUSampler,
 	
 	texture_sampler_binding:[dynamic]sdl.GPUTextureSamplerBinding,//this gets rebuilt per frame
@@ -91,14 +96,14 @@ R_Pass ::struct{
 	// texture: []Texture_GPU_Handle,
 	// mesh: []Mesh_Handle,
 	
-	copy_pass: ^sdl.GPUCopyPass,
+	// copy_pass: ^sdl.GPUCopyPass,
 	
 	// vertex_buf:^sdl.GPUBuffer,
 	// index_buf:^sdl.GPUBuffer,
-	transfer_buf:^sdl.GPUTransferBuffer,
+	// transfer_buf:^sdl.GPUTransferBuffer,
 	
 	// Problobly a swapchain_tex or render texture
-	render_target: ^sdl.GPUTexture,
+	// render_target: ^sdl.GPUTexture,
 	// depth_texture: ^sdl.GPUTexture,
 	
 	win_size:[2]i32,
@@ -193,7 +198,7 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	
 	s.copy_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	init_texture_arr_groop()
-	
+	s.defalt_font = load_font_from_data(font_id = "font_1",height = 16)
 	
 	return
 }
@@ -252,7 +257,7 @@ create_render_pass :: proc (window_hd:Window_Handle, vert_shader_hd: Shader_Hand
 	// assert(vert_shader.shader_info.vertex_type == frag_shader.shader_info.vertex_type,"vert_shader and frag_shader do not have the same atttribute type")
 	// assert(len(vert_shader.shader_info.vertex_info) == len(vert_shader.shader_info.inputs), "vert_shader mismatch vertex_info and inputs")
 	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{})
-	aspect:=sdl.GetWindowSize(window.data,&pass.win_size.x,&pass.win_size.y)
+	sdl.GetWindowSize(window.data,&pass.win_size.x,&pass.win_size.y)
 
 	// pass.info.depth_texture_createinfo.format =  s.depth_texture_format
 	// pass.info.depth_texture_createinfo.width = cast(u32)pass.win_size.x
@@ -279,20 +284,49 @@ create_render_pass :: proc (window_hd:Window_Handle, vert_shader_hd: Shader_Hand
 	})
 	return
 }
-
-
-do_render_pass::proc(pass:^R_Pass, cam:^Camera, textures:[]Texture_GPU_Handle, meshes_hd:[]Mesh_Handle, window_hd:Window_Handle){
-
-	// mesh:=get_mesh(mesh_hd[0])
-	// pass.mesh = meshes_hd
+// stil undesided whether or not to use this
+clear_render::proc(col:[4]f32,pass:^R_Pass,cam:^Camera,window_hd:Window_Handle){
 	window:=get_window(window_hd)
-	// pass.window_hd = window_hd
-	window_valid:bool=hm.valid(s.windows, window_hd)
+	if window == nil{return}
+	render_target := window.swap_chain
 	
+	if render_target != nil{
+		color_target := sdl.GPUColorTargetInfo{
+			texture = render_target,
+			load_op = .CLEAR,
+			clear_color = cast(sdl.FColor)col,
+			store_op = .STORE,
+		}
+		depth_target_info:^sdl.GPUDepthStencilTargetInfo
+		if cam.depth_texture != nil{
+			depth_target_info = &sdl.GPUDepthStencilTargetInfo{
+				texture = cam.depth_texture,
+				load_op = .CLEAR,
+				clear_depth = 1,
+				store_op = .STORE,
+			}
+		}
+		pass.render_pas = sdl.BeginGPURenderPass(s.render_cmd_buf, &color_target, 1, depth_target_info )
+		sdl.EndGPURenderPass(pass.render_pas);
+	}else{
+		log.log(.Debug,"Clear_render() failed render_target == nil\n")
+	}
+}
+do_render_pass::proc(
+	pass:^R_Pass,
+	cam:^Camera,
+	meshes_hd:[]Mesh_Handle,
+	window_hd:Window_Handle,
+	load_op:	sdl.GPULoadOp=.LOAD,
+	d_load_op:	sdl.GPULoadOp=.LOAD,
+	clear_color:[4]f32={.3,.3,.3,1})
+{
+	window:=get_window(window_hd)
+	window_valid:bool=hm.valid(s.windows, window_hd)
 	if !window_valid{return}
 	
 	temp_win_size:[2]i32
-	aspect:=sdl.GetWindowSize(window.data,&temp_win_size.x,&temp_win_size.y)
+	sdl.GetWindowSize(window.data,&temp_win_size.x,&temp_win_size.y)
 	
 	if cam.depth_texture == nil && window_valid{
 		pass.info.depth_texture_createinfo.format =  s.depth_texture_format
@@ -310,45 +344,32 @@ do_render_pass::proc(pass:^R_Pass, cam:^Camera, textures:[]Texture_GPU_Handle, m
 		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = pass.info.depth_texture_createinfo)
 		
 	}
-	// pass.texture = texture
-	// assign_at(&pass.texture, 0, texture[0])
-	// assign_at(&pass.texture, 1, texture[1])
 	view_mat := lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
 	proj_mat := lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)pass.win_size.x / cast(f32)pass.win_size.y, 0.001, 1000)
 	modl_mat := lin.matrix4_translate_f32({0,0,-5})*lin.matrix4_rotate_f32(rot, {0,1,0})
-	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}	
-		
-	pass.cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
-
-	ok:bool
-	if window_valid {ok=sdl.WaitAndAcquireGPUSwapchainTexture(pass.cmd_buf, window.data, &pass.render_target,nil,nil)}
-	if !ok{
-		pass.render_target = nil
-	}
+	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}
 	
-	if pass.render_target != nil{
+	render_target := window.swap_chain
+	if render_target != nil{
 		color_target := sdl.GPUColorTargetInfo{
-			texture = pass.render_target,
-			load_op = pass.info.load_op,
-			clear_color = cast(sdl.FColor)pass.info.clear_color,
+			texture = render_target,
+			load_op = load_op,
+			clear_color = cast(sdl.FColor)clear_color,
 			store_op = .STORE,
 		}
 		depth_target_info:= sdl.GPUDepthStencilTargetInfo{
 			texture = cam.depth_texture,
-			load_op = pass.info.load_op,
+			load_op = d_load_op,
 			clear_depth = 1,
 			store_op = .STORE,
 		}
-		pass.render_pas = sdl.BeginGPURenderPass(pass.cmd_buf, &color_target, 1, &depth_target_info )
+		pass.render_pas = sdl.BeginGPURenderPass(s.render_cmd_buf, &color_target, 1, &depth_target_info )
 		sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline)
-		sdl.PushGPUVertexUniformData(pass.cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
+		sdl.PushGPUVertexUniformData(s.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
 		
 		clear_dynamic_array(&pass.texture_sampler_binding)
 		for &texture in  s.texture_arr_groop{
-		// for &texture in textures{
-		// for &texture in &s.texture_groop.items{
 			if texture != {}{
-				// texture:=get_gpu_texture(texture)
 				texture:=get_gpu_texture(texture.tex_hd)
 				append_elem(&pass.texture_sampler_binding ,sdl.GPUTextureSamplerBinding{ texture = texture.data, sampler = pass.sampler})
 			}
@@ -363,9 +384,22 @@ do_render_pass::proc(pass:^R_Pass, cam:^Camera, textures:[]Texture_GPU_Handle, m
 			sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0)
 		
 		}
-		sdl.EndGPURenderPass(pass.render_pas);
-		ok := sdl.SubmitGPUCommandBuffer(pass.cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
+		sdl.EndGPURenderPass(pass.render_pas)
 	}
+}
+start_render::proc(){
+	s.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
+	update_windows()
+}
+submit_render::proc(){
+	ok := sdl.SubmitGPUCommandBuffer(s.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
+}
+update_windows::proc(){
+	my_iter := hm.make_iter(&s.windows)
+    for win, i in hm.iter(&my_iter) {
+    	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(s.render_cmd_buf, win.data, &win.swap_chain,nil,nil)
+     	if !ok{log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")}
+    }
 }
 remove_closed_windows::proc(){
 	windows_iter := hm.make_iter(&s.windows)
@@ -419,6 +453,7 @@ cleane_app::proc(){
 	hm.delete(&s.texture_groop)
 	hm.delete(&s.windows)
 	hm.delete(&s.shaders)
+	hm.delete(&s.clay_instances)
 	free(s)
 }
 delete_r_pass::proc(pass:^R_Pass){
