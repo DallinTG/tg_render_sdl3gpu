@@ -34,6 +34,12 @@ s:^tg.State
 camera :tg.Camera= {
 	pos = {0,0,3},
 	target = {0,0,0},
+	depth_texture_createinfo = tg.DEFALT_DEPTH_TEXTURE_CREATEINFO,
+}
+camera2 :tg.Camera= {
+	pos = {0,0,3},
+	target = {0,0,0},
+	depth_texture_createinfo = tg.DEFALT_DEPTH_TEXTURE_CREATEINFO,
 }
 
 main :: proc(){
@@ -67,61 +73,14 @@ main :: proc(){
 	tg.reg_texture_from_file("castle.png")
 	tg.reg_texture_from_file("mine.png")
 	tg.reg_texture_from_file("Pawn.png")
-	
+
 	// tex_arr={texture,texture_2}	
 	pass = tg.create_render_pass(window_hd, vert_shader, frag_shader)
 	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data_t}
-	clay_inst:=tg.init_clay_instance(tg.Vertex_Data_t,{20,20},window_hd,vert_shader,frag_shader)
-	render_comands:=create_layout()
-	tg.update_clay_instance(clay_inst,&render_comands)
+	clay_inst:=tg.init_clay_instance(tg.Vertex_Data_t,{20,20},window_hd,vert_shader,frag_shader, gbl_font_size = .1)
+
 	
-	tg.draw_triangle_vx(
-		mesh = &mesh_cpu,
-		pos = {0,0,0},
-		verts = [3]tg.Vertex_Data_t{
-		{
-			pos = {0, 0, 0},
-			col = {1,1,1,1},
-			uv = {0,0},
-			img_index = 2,
-		},
-		{
-			pos = {0,  -1, 0},
-			col = {1,1,1,1},
-			uv = {0,1},
-			img_index = 2,
-		},
-		{
-			pos = {1, -1, 0},
-			col = {1,0,0,1},
-			uv = {1,1},
-			img_index = 2,
-		}
-	})
-	// // tg.draw_cube(mesh = &mesh_cpu, pos = {})
-	tg.draw_triangle_vx(
-		mesh = &mesh_cpu,
-		pos = {1,0,-5},
-		verts = [3]tg.Vertex_Data_t{
-		{
-			pos = {0,  0, 1},
-			col = {1,1,1,1},
-			uv = {0,0},
-			img_index = 2,
-		},
-		{
-			pos = {0,  -1, 1},
-			col = {1,1,1,1},
-			uv = {0,1},
-			img_index = 2,
-		},
-		{
-			pos = {1, -1, 1},
-			col = {1,0,0,1},
-			uv = {1,1},
-			img_index = 2,
-		},
-	})
+
 
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "glass_block", cube = {pos = {0,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "world_tileset", cube = {pos = {3,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
@@ -134,13 +93,15 @@ main :: proc(){
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "awn", cube = {pos = {-2,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
 	tg.draw_text(mesh = &mesh_cpu, text = "FWwaAffFlLe.EsS", scale = 2,pos = {0,0,5},rot = {0,0,3.145},origin = {0,0,0}, vert_t = tg.Vertex_Data_t,fixed_spacing = 12,txt_origin = .top)
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "awn", cube = {pos = {0,0,5},w_h_l = {1,1,1}},rot = {0,0,0},origin = {0,0,0}, vert_t = tg.Vertex_Data_t)
-	tg.draw_rect(mesh = &mesh_cpu, tex_id = "paw", rect = {pos = {3,0,-6},w_h = {15,10}},rot = {0,0,.5},origin = {0,6,0}, vert_t = tg.Vertex_Data_t)
+	tg.draw_rect(mesh = &mesh_cpu, tex_id = "pawn", rect = {pos = {3,0,-6},w_h = {15,10}},rot = {0,0,.5},origin = {0,6,0}, vert_t = tg.Vertex_Data_t)
 	tg.draw_rect_rounded(mesh = &mesh_cpu, tex_id = "pawn", rec = {pos = {3,0,-5},w_h = {15,10}},rot = {0,0,.5},origin = {0,6,0}, vert_t = tg.Vertex_Data_t)
 	mesh_hd := tg.create_mesh(mesh_cpu)
+
 	tg.update_mesh(mesh_hd)
 	new_ticks := sdl.GetTicks()
 	s.delta_time = f32(new_ticks - s.ticks) / 1000
 	s.ticks = new_ticks
+
 	main_loop:for tg.start_frame(){
 		s.mouse_move = {}
 		for ev in &tg.s.events {
@@ -154,16 +115,25 @@ main :: proc(){
 			}
 		}
 		tg.update_camera_3d(&camera, s.delta_time, )
+		tg.update_camera_3d(&camera2, s.delta_time, )
 		tg.start_render()
-		
+
 		// tg.clear_render({.3,.3,1,1},&pass, &camera, window_hd)
 		// tg.clear_render({.3,.3,1,1},&pass, &camera, window_hd2)
-		tg.do_render_pass(&pass, &camera, {mesh_hd}, window_hd,load_op = .CLEAR,d_load_op = .CLEAR)
-		tg.do_render_pass(&pass, &camera, {mesh_hd}, window_hd2,load_op = .CLEAR,d_load_op = .CLEAR)
-		tg.render_clay_instance(clay_inst,&camera,window_hd)
-		tg.render_clay_instance(clay_inst,&camera,window_hd)
 		
+		render_comands:=create_layout()
+
+		tg.update_clay_instance(clay_inst,&render_comands)
+
+
+		tg.do_render_pass(&pass, &camera, {mesh_hd}, window_hd,  load_op = .CLEAR, d_load_op = .CLEAR, store_op = .STORE)
+		tg.render_clay_instance(clay_inst,&camera,window_hd,     load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
+		tg.do_render_pass(&pass, &camera2, {mesh_hd}, window_hd2,load_op = .CLEAR, d_load_op = .CLEAR, store_op = .STORE)
+		tg.render_clay_instance(clay_inst,&camera2,window_hd2,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
+	
+
 		tg.submit_render()
+		
 	}
 	tg.delete_r_pass(&pass)
 	tg.delete_mesh(mesh_hd)
@@ -185,11 +155,6 @@ main :: proc(){
 }
 
 
-errorHandler :: proc "c" (errorData: cl.ErrorData) {
-    if (errorData.errorType == cl.ErrorType.DuplicateId) {
-        // etc
-    }
-}
 
 create_layout :: proc() -> cl.ClayArray(cl.RenderCommand) {
     cl.BeginLayout()
@@ -200,7 +165,12 @@ create_layout :: proc() -> cl.ClayArray(cl.RenderCommand) {
 	    if cl.UI(cl.ID("OuterContainer_5"))({
 	        layout = { layoutDirection = .TopToBottom, sizing = { cl.SizingGrow(), cl.SizingGrow() } },
 	        backgroundColor = {0,1,.5,.3},
-	    }) {}
+	    }) {
+           cl.Text(
+                "Clay - UI Library waffles ",
+                cl.TextConfig({ textColor = {0,0,0,1}, fontSize = 1}),
+            )		
+		}
 	    if cl.UI(cl.ID("OuterContainer_3"))({
 	        layout = { layoutDirection = .TopToBottom, sizing = { cl.SizingGrow(), cl.SizingGrow() } },
 	        backgroundColor = {0,.5,0,.3},

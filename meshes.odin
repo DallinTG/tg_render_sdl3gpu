@@ -110,10 +110,13 @@ update_mesh::proc(mesh:Mesh_Handle){
 	mesh:=get_mesh(mesh)
 	vertices_byte_size:=len(mesh.cpu.vertex_buf)
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
+	// fmt.print("ertices_byte_size",vertices_byte_size,"----","indices_byte_size",indices_byte_size,"\n")
 	if vertices_byte_size == 0 || indices_byte_size == 0 {return }
 	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, false)//TODO may be ablle to remove the mem copyes by seting the transfer buff as cpu data
 	mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf), vertices_byte_size)
 	mem.copy(transfer_mem[vertices_byte_size:], raw_data(mesh.cpu.index_buf), indices_byte_size)
+	sdl.UnmapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
+	
 	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
 	sdl.UploadToGPUBuffer(
@@ -144,7 +147,7 @@ update_mesh::proc(mesh:Mesh_Handle){
 	mesh.gpu.index_count = mesh.cpu.index_buf_used
 	sdl.EndGPUCopyPass(copy_pass)
 	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
-	sdl.ReleaseGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
+	// sdl.ReleaseGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 }
 get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){
 	mesh = hm.get(s.meshes, mesh_hd)
@@ -181,6 +184,13 @@ append_to_mesh::proc(mesh:^Mesh_CPU,indices:[]u32,vertices:$T/[]$E, shift_indice
 
 append_mesh_to_mesh::proc(mesh_form:^Mesh_CPU,mesh_to:^Mesh_CPU){
 	append_to_mesh(mesh_to,mesh_form.index_buf[:],mesh_form.vertex_buf[:])
+}
+clear_mesh_cpu::proc(mesh:^Mesh_CPU){
+	clear(&mesh.index_buf)
+	clear(&mesh.vertex_buf)
+	mesh.index_buf_used = 0
+	mesh.vertex_buf_used = 0
+	mesh.vertex_count = 0
 }
 
 Mesh_vert::union{

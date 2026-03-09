@@ -88,14 +88,15 @@ draw_text :: proc(
 	origin: Vec3 = {}, 
 	rot:[3]f32 = {}, 
 	col:[4]f32={1,1,1,1}, 
-	scale:f32= 1, 
+	scale:f32= 1,
 	fixed_spacing:f32 = 0,
 	txt_origin:Txt_Origin=.top
+	
 	
 ){
 	font:=get_font(s.defalt_font)
 	// scale:=tt.ScaleForMappingEmToPixels(&font.info,scale)
-	debug_text := true
+	debug_text := false
 	// draw glyphs one by one
 	y_origin_offset:f32
 	switch txt_origin {
@@ -110,6 +111,7 @@ draw_text :: proc(
 		
 		advance_x: f32
 		advance_y: f32
+
 		q: tt.aligned_quad
 		tt.GetBakedQuad(&font.char_data[0], font_bitmap_w, font_bitmap_h, cast(i32)char - 32, &advance_x, &advance_y, &q, false)
 		if  fixed_spacing != 0{
@@ -128,13 +130,77 @@ draw_text :: proc(
 		origin := origin
 		origin.x += x*scale
 		origin.y += (y+w_h.y-y_origin_offset)*scale
+		
 		if debug_text {
 			// draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{.01,.01}}, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
 			draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{1,1}}, origin = {}, rot = rot,uv = uv, vert_t = vert_t,)
 			// draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = rect, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
 		}
-		draw_rect(mesh = mesh, tex_id = font.sg_image, rect = rect, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
+		draw_rect(mesh = mesh, tex_id = font.sg_image, rect = rect, origin = origin, rot = rot,uv = uv, col = col, vert_t = vert_t,)
 		x += advance_x
 		y += -advance_y	
 	}
+}
+
+measure_text :: proc(
+	// mesh: ^Mesh_CPU, 
+	// $vert_t:typeid, 
+	// pos: [3]f32, 
+	text: string,
+	// origin: Vec3 = {}, 
+	// rot:[3]f32 = {}, 
+	// col:[4]f32={1,1,1,1}, 
+	scale:f32= 1, 
+	fixed_spacing:f32 = 0,
+	// txt_origin:Txt_Origin=.top
+	
+)->(box:[2]f32){
+	font:=get_font(s.defalt_font)
+	// scale:=tt.ScaleForMappingEmToPixels(&font.info,scale)
+	debug_text := false
+	// draw glyphs one by one
+	y_origin_offset:f32
+	// switch txt_origin {
+	// case .top:  y_origin_offset = (font.ascent - font.descent)
+	// case .top_bace:  y_origin_offset = (font.ascent)
+	// case .bot_bace: y_origin_offset = 0
+	// case .bot:  y_origin_offset = (font.descent)
+	// }
+	x: f32
+	y: f32
+	for char in text {
+		
+		advance_x: f32
+		advance_y: f32
+		q: tt.aligned_quad
+		tt.GetBakedQuad(&font.char_data[0], font_bitmap_w, font_bitmap_h, cast(i32)char - 32, &advance_x, &advance_y, &q, false)
+		if  fixed_spacing != 0{
+			advance_x = fixed_spacing
+		}
+		// size := Vec2{ abs(q.x0 - q.x1), abs(q.y0 - q.y1) }
+		// uv:=[4]f32{
+		// 	q.s0,q.t0,
+		// 	q.s1,q.t1,
+		// }
+		// w_h:=size
+		// rect:Rect={
+		// 	pos = pos,
+		// 	w_h = size*scale,
+		// }
+		// origin := origin
+		// origin.x += x*scale
+		// origin.y += (y+w_h.y-y_origin_offset)*scale
+		// if debug_text {
+		// 	// draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{.01,.01}}, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
+		// 	draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{1,1}}, origin = {}, rot = rot,uv = uv, vert_t = vert_t,)
+		// 	// draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = rect, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
+		// }
+		// draw_rect(mesh = mesh, tex_id = font.sg_image, rect = rect, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
+		x += advance_x
+		y += -advance_y	
+	}
+
+	y +=font.height
+	box = {x*scale,y*scale}
+	return box
 }

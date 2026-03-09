@@ -24,11 +24,14 @@ import "core:image/tga"
 Handle :: hm.Handle
 s:^State
 State :: struct{
+	defalt_context: runtime.Context,
 	allocator: runtime.Allocator,
 	frame_arena: runtime.Arena,
 	frame_allocator: runtime.Allocator,
 	
-	depth_texture_format:sdl.GPUTextureFormat,
+	
+	swap_chain_texture_format:	sdl.GPUTextureFormat,
+	depth_texture_format:		sdl.GPUTextureFormat,
 	
 	texture_arr_map:map[[2]u32]Texture,
 	texture_arr_groop:[Texture_Arr_Groop]Texture_Arr_Data,
@@ -58,12 +61,17 @@ Window::struct{
 	handle:Window_Handle,
 	data:^sdl.Window,
 	swap_chain_format:sdl.GPUTextureFormat,
-	swap_chain:^sdl.GPUTexture,
+	// swap_chain:^sdl.GPUTexture,//TODO move this to Render_Target:
+	// msaa_tex:^sdl.GPUTexture,
+	Render_Target:Render_Target,
+	// msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
+	
 }
 
 Init_Dec ::struct{
 	win_name:string,
 	win_size:[2]i32,
+	msaa_txture_createinfo:sdl.GPUTextureCreateInfo
 }
 ASSETS_PATH:: "assets/"
 SHADER_PATH:: ASSETS_PATH+"shaders/"
@@ -71,6 +79,7 @@ TEXTUR_PATH:: ASSETS_PATH+"textures/"
 INIT_DEC:Init_Dec:{
 	win_name="Defalt win name",
 	win_size= {1280,780},
+	msaa_txture_createinfo=DEFALT_MSAA_TEXTURE_CREATEINFO
 }
 
 Input_EV::union{
@@ -83,40 +92,25 @@ Input_EV::union{
 
 R_Pass ::struct{
 	window_hd: Window_Handle,
-	// camera:Camera,
 	info:Render_Pass_Info,
-	pipeline: ^sdl.GPUGraphicsPipeline,
 	render_pas: ^sdl.GPURenderPass,
-	// cmd_buf: ^sdl.GPUCommandBuffer,
+	pipeline: ^sdl.GPUGraphicsPipeline,
 	sampler: ^sdl.GPUSampler,
 	
+	msaa_texture: ^sdl.GPUTexture,
+	
 	texture_sampler_binding:[dynamic]sdl.GPUTextureSamplerBinding,//this gets rebuilt per frame
-	// sampler2: ^sdl.GPUSampler,
-	
-	// texture: []Texture_GPU_Handle,
-	// mesh: []Mesh_Handle,
-	
-	// copy_pass: ^sdl.GPUCopyPass,
-	
-	// vertex_buf:^sdl.GPUBuffer,
-	// index_buf:^sdl.GPUBuffer,
-	// transfer_buf:^sdl.GPUTransferBuffer,
-	
-	// Problobly a swapchain_tex or render texture
-	// render_target: ^sdl.GPUTexture,
-	// depth_texture: ^sdl.GPUTexture,
-	
-	win_size:[2]i32,
-	
-	
+	// win_size:[2]i32,
 	ubo:UBO,
 }
 
 Render_Pass_Info::struct{
-	load_op : sdl.GPULoadOp, 
+	// load_op : sdl.GPULoadOp, 
 	clear_color : [4]f32,
 	has_depth_stencil_target:bool,
-	depth_texture_createinfo : sdl.GPUTextureCreateInfo,
+	// depth_texture_createinfo : sdl.GPUTextureCreateInfo,
+	// depth_msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
+	// msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
 	depth_stencil_state : sdl.GPUDepthStencilState,
 	rasterizer_state : sdl.GPURasterizerState,
 	blend_state : sdl.GPUColorTargetBlendState,
@@ -132,7 +126,10 @@ Camera ::struct {
 		pitch: f32,
 	},
 	
+	depth_texture_createinfo : sdl.GPUTextureCreateInfo,
 	depth_texture: ^sdl.GPUTexture,
+	texture_size:[2]i32,
+	// msaa_depth_texture: ^sdl.GPUTexture,
 }
 
 Vec2 :: [2]f32
@@ -165,6 +162,8 @@ rot:f32=0// FIXME this should not be heare
 
 
 
+
+
 init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_location)->(new_state:^State){
 	ok:bool
 	sdl.SetLogPriorities(.VERBOSE)
@@ -173,7 +172,6 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 		s = state
 	}else{
 		s = new(State)
-		log.log(.Debug,"no Init_Dec provited now using defalt")
 	}
 	new_state = s
 	
@@ -199,6 +197,7 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	s.copy_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	init_texture_arr_groop()
 	s.defalt_font = load_font_from_data(font_id = "font_1",height = 16)
+	s.defalt_context = context
 	
 	return
 }
@@ -211,10 +210,16 @@ init_window::proc(dec:Init_Dec=INIT_DEC)->(window_hd:Window_Handle){
 	ok:=sdl.ClaimWindowForGPUDevice(s.gpu_device,window_data)
 	assert(ok,"SLD ClaimWindowForGPUDevice failed")
 	
+	// ok = sdl.SetGPUSwapchainParameters(s.gpu_device,window_data,sdl.GPUSwapchainComposition{},sdl.GPUPresentMode{})
+	
 	window:Window={
 		data = window_data,
 		swap_chain_format = sdl.GetGPUSwapchainTextureFormat(s.gpu_device, window_data),
+		Render_Target = Render_Target{
+			msaa_texture_createinfo = dec.msaa_txture_createinfo
+		}
 	}
+	s.swap_chain_texture_format = window.swap_chain_format
 	window_hd = hm.add(&s.windows,window)
 	return
 }
@@ -246,23 +251,18 @@ start_frame::proc()->(ok:bool){
 	}
 	return ok
 }
-
+//TODO remove window_hd:Window_Handl frome this proc
 create_render_pass :: proc (window_hd:Window_Handle, vert_shader_hd: Shader_Handle, frag_shader_hd: Shader_Handle, info:Render_Pass_Info=DEFALT_MASKED_PASS) ->(pass:R_Pass){
 	window:=get_window(window_hd)
-	// pass.window_hd = window_hd
 	vert_shader:=get_shader(vert_shader_hd)
 	frag_shader:=get_shader(frag_shader_hd)
 	pass.info = info
-
-	// assert(vert_shader.shader_info.vertex_type == frag_shader.shader_info.vertex_type,"vert_shader and frag_shader do not have the same atttribute type")
-	// assert(len(vert_shader.shader_info.vertex_info) == len(vert_shader.shader_info.inputs), "vert_shader mismatch vertex_info and inputs")
+	// pass.info.depth_msaa_texture_createinfo.format = s.depth_texture_format
+	// pass.info.depth_texture_createinfo.format = s.depth_texture_format
+	
 	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{})
-	sdl.GetWindowSize(window.data,&pass.win_size.x,&pass.win_size.y)
+	// sdl.GetWindowSize(window.data,&pass.win_size.x,&pass.win_size.y)
 
-	// pass.info.depth_texture_createinfo.format =  s.depth_texture_format
-	// pass.info.depth_texture_createinfo.width = cast(u32)pass.win_size.x
-	// pass.info.depth_texture_createinfo.height = cast(u32)pass.win_size.y
-	// pass.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = pass.info.depth_texture_createinfo)
 	
 	target_info := sdl.GPUGraphicsPipelineTargetInfo{
 		num_color_targets = 1,
@@ -272,6 +272,7 @@ create_render_pass :: proc (window_hd:Window_Handle, vert_shader_hd: Shader_Hand
 		}),
 		has_depth_stencil_target = pass.info.has_depth_stencil_target,
 		depth_stencil_format = s.depth_texture_format,
+		
 	}
 	pass.pipeline = sdl.CreateGPUGraphicsPipeline(s.gpu_device,sdl.GPUGraphicsPipelineCreateInfo{
 		vertex_shader = vert_shader.shader,
@@ -281,81 +282,134 @@ create_render_pass :: proc (window_hd:Window_Handle, vert_shader_hd: Shader_Hand
 		depth_stencil_state = pass.info.depth_stencil_state,
 		rasterizer_state = pass.info.rasterizer_state,
 		target_info = target_info,
+		multisample_state = sdl.GPUMultisampleState{
+			sample_count= ._4,
+			// enable_alpha_to_coverage = true,
+		},
 	})
 	return
 }
 // stil undesided whether or not to use this
-clear_render::proc(col:[4]f32,pass:^R_Pass,cam:^Camera,window_hd:Window_Handle){
-	window:=get_window(window_hd)
-	if window == nil{return}
-	render_target := window.swap_chain
+// clear_render::proc(col:[4]f32,pass:^R_Pass,cam:^Camera,window_hd:Window_Handle){
+// 	window:=get_window(window_hd)
+// 	if window == nil{return}
+// 	render_target := window.swap_chain
 	
-	if render_target != nil{
-		color_target := sdl.GPUColorTargetInfo{
-			texture = render_target,
-			load_op = .CLEAR,
-			clear_color = cast(sdl.FColor)col,
-			store_op = .STORE,
-		}
-		depth_target_info:^sdl.GPUDepthStencilTargetInfo
-		if cam.depth_texture != nil{
-			depth_target_info = &sdl.GPUDepthStencilTargetInfo{
-				texture = cam.depth_texture,
-				load_op = .CLEAR,
-				clear_depth = 1,
-				store_op = .STORE,
-			}
-		}
-		pass.render_pas = sdl.BeginGPURenderPass(s.render_cmd_buf, &color_target, 1, depth_target_info )
-		sdl.EndGPURenderPass(pass.render_pas);
-	}else{
-		log.log(.Debug,"Clear_render() failed render_target == nil\n")
-	}
-}
+// 	if render_target != nil{
+// 		color_target := sdl.GPUColorTargetInfo{
+// 			texture = render_target,
+// 			load_op = .CLEAR,
+// 			clear_color = cast(sdl.FColor)col,
+// 			store_op = .STORE,
+// 		}
+// 		depth_target_info:^sdl.GPUDepthStencilTargetInfo
+// 		if cam.depth_texture != nil{
+// 			depth_target_info = &sdl.GPUDepthStencilTargetInfo{
+// 				texture = cam.depth_texture,
+// 				load_op = .CLEAR,
+// 				clear_depth = 1,
+// 				store_op = .STORE,
+// 			}
+// 		}
+// 		pass.render_pas = sdl.BeginGPURenderPass(s.render_cmd_buf, &color_target, 1, depth_target_info )
+// 		sdl.EndGPURenderPass(pass.render_pas);
+// 	}else{
+// 		log.log(.Debug,"Clear_render() failed render_target == nil\n")
+// 	}
+// }
 do_render_pass::proc(
 	pass:^R_Pass,
 	cam:^Camera,
 	meshes_hd:[]Mesh_Handle,
-	window_hd:Window_Handle,
+	render_target:Render_Targets,
 	load_op:	sdl.GPULoadOp=.LOAD,
 	d_load_op:	sdl.GPULoadOp=.LOAD,
+	store_op:   sdl.GPUStoreOp = .STORE,
+	d_store_op: sdl.GPUStoreOp = .STORE,
 	clear_color:[4]f32={.3,.3,.3,1})
 {
-	window:=get_window(window_hd)
-	window_valid:bool=hm.valid(s.windows, window_hd)
-	if !window_valid{return}
+	// window:=get_window(window_hd)
+	// window_valid:bool=hm.valid(s.windows, window_hd)
+	render_target := get_render_target(render_target)
+	if render_target == nil{return}
+	// if render_target.data == nil{return}
 	
-	temp_win_size:[2]i32
-	sdl.GetWindowSize(window.data,&temp_win_size.x,&temp_win_size.y)
 	
-	if cam.depth_texture == nil && window_valid{
-		pass.info.depth_texture_createinfo.format =  s.depth_texture_format
-		pass.info.depth_texture_createinfo.width = cast(u32)pass.win_size.x
-		pass.info.depth_texture_createinfo.height = cast(u32)pass.win_size.y
-		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = pass.info.depth_texture_createinfo)
-	}
+	rtci:=&render_target.msaa_texture_createinfo
+	cdtci:=&cam.depth_texture_createinfo
 	
-	if temp_win_size != pass.win_size && window_valid{// update depth_texture if screane is resized
-		pass.win_size = temp_win_size
+	
+
+
+
+
+	fmt.print(render_target.wh,"waffles 0\n")
+	// temp_win_size:[2]i32 = render_target.wh
+	
+	if render_target.wh != {cam.texture_size.x, cam.texture_size.y}{// update depth_texture if screane is resized
+		// fmt.print(render_target.wh , render_target.wh,"\n")
+		cam.texture_size.x  = render_target.wh.x
+		cam.texture_size.y = render_target.wh.y
+		// fmt.print("waffles 1\n")
+		cam.texture_size = render_target.wh
 		sdl.ReleaseGPUTexture(s.gpu_device, cam.depth_texture)
-		pass.info.depth_texture_createinfo.format =  s.depth_texture_format
-		pass.info.depth_texture_createinfo.width = cast(u32)pass.win_size.x
-		pass.info.depth_texture_createinfo.height = cast(u32)pass.win_size.y
-		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = pass.info.depth_texture_createinfo)
-		
+		cdtci.format =  s.depth_texture_format
+		cdtci.width = cast(u32)cam.texture_size.x
+		cdtci.height = cast(u32)cam.texture_size.y
+		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)		
+		fmt.print("new cam.depth_texture size\n")
 	}
+		
+	if render_target.wh != {cast(i32)rtci.width,cast(i32)rtci.height}{// update depth_texture if screane is resized
+		rtci.width  = cast(u32)render_target.wh.x
+		rtci.height = cast(u32)render_target.wh.y
+		// fmt.print(render_target.wh , render_target.wh,"\n")
+		
+		sdl.ReleaseGPUTexture(s.gpu_device, render_target.msaa_tex)
+		rtci.format =  s.swap_chain_texture_format
+		rtci.width = cast(u32)render_target.wh.x
+		rtci.height = cast(u32)render_target.wh.y
+		render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+		fmt.print("new pass.msaa_texture size\n")
+	}
+	
+	if cam.depth_texture == nil{
+		cdtci.format =  s.depth_texture_format
+		cdtci.width = cast(u32)cam.texture_size.x
+		cdtci.height = cast(u32)cam.texture_size.y
+		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)
+		fmt.print("new cam.depth_texture == nil\n")
+	}
+	
+	if render_target.msaa_tex == nil{
+		rtci.format =  s.swap_chain_texture_format
+		rtci.width = cast(u32)render_target.wh.x
+		rtci.height = cast(u32)render_target.wh.y
+		render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+		fmt.print("new pass.msaa_texture == nil\n")
+	}
+	
+	// sdl.BlitGPUTexture()
 	view_mat := lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
-	proj_mat := lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)pass.win_size.x / cast(f32)pass.win_size.y, 0.001, 1000)
+	proj_mat := lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
 	modl_mat := lin.matrix4_translate_f32({0,0,-5})*lin.matrix4_rotate_f32(rot, {0,1,0})
 	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}
 	
-	render_target := window.swap_chain
-	if render_target != nil{
+	
+	if render_target.data != nil{
+		texture:=render_target.msaa_tex
+		resolve_texture:^sdl.GPUTexture=nil
+		if store_op == .RESOLVE ||store_op == .RESOLVE_AND_STORE {
+			texture=render_target.msaa_tex
+			resolve_texture=render_target.data
+		}
+
 		color_target := sdl.GPUColorTargetInfo{
-			texture = render_target,
+			texture = texture,
+			resolve_texture = resolve_texture,
 			load_op = load_op,
 			clear_color = cast(sdl.FColor)clear_color,
-			store_op = .STORE,
+			store_op = store_op,
 		}
 		depth_target_info:= sdl.GPUDepthStencilTargetInfo{
 			texture = cam.depth_texture,
@@ -397,7 +451,10 @@ submit_render::proc(){
 update_windows::proc(){
 	my_iter := hm.make_iter(&s.windows)
     for win, i in hm.iter(&my_iter) {
-    	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(s.render_cmd_buf, win.data, &win.swap_chain,nil,nil)
+    	swap_chan_w:u32
+     	swap_chan_h:u32
+    	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(s.render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
+     	win.Render_Target.wh = {cast(i32)swap_chan_w,cast(i32)swap_chan_h}
      	if !ok{log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")}
     }
 }
@@ -444,7 +501,43 @@ get_window::proc(window_hd:Window_Handle) -> (window:^Window){
 	window = hm.get(s.windows,window_hd)
 	return window
 }
+// blit_to_window::proc(pass:R_Pass, win_hd:Window_Handle){
+// 	blit_info:sdl.GPUBlitInfo={
+	
+// 	}
+// 	win:=get_render_target(win_hd)
+// 	sdl.BlitGPUTexture(s.render_cmd_buf,blit_info)
+// }
 
+
+//------------------------------------------------------------------------------
+Render_Target::struct{
+	data:^sdl.GPUTexture,
+	msaa_tex:^sdl.GPUTexture,
+	msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
+	wh:[2]i32,
+}
+Render_Targets::union{
+	Window_Handle,
+	^Render_Target,
+}
+get_render_target::proc(render_target:Render_Targets)->(texture:^Render_Target){
+	
+	switch rt in render_target {
+	case Window_Handle:
+		win:=get_window(rt)
+		if win != nil{
+			texture = &win.Render_Target
+			// texture.data = win.swap_chain
+			sdl.GetWindowSize(win.data,&texture.wh.x,&texture.wh.y)
+		}
+	case ^Render_Target:
+		texture = rt
+	}
+	return texture
+}
+
+//------------------------------------------------------------------------------
 //call befor closing app dus not close app
 cleane_app::proc(){
 	delete(s.events)
