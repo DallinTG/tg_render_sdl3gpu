@@ -31,16 +31,16 @@ texture:tg.Texture_GPU_Handle
 texture_2:tg.Texture_GPU_Handle
 tex_arr:[2]tg.Texture_GPU_Handle
 s:^tg.State
-camera :tg.Camera= {
-	pos = {0,0,3},
-	target = {0,0,0},
-	depth_texture_createinfo = tg.DEFALT_DEPTH_TEXTURE_CREATEINFO,
-}
-camera2 :tg.Camera= {
-	pos = {0,0,3},
-	target = {0,0,0},
-	depth_texture_createinfo = tg.DEFALT_DEPTH_TEXTURE_CREATEINFO,
-}
+camera :tg.Camera//= {
+// 	pos = {0,0,3},
+// 	target = {0,0,0},
+// 	depth_texture_createinfo = tg.DEFALT_DEPTH_TEXTURE_CREATEINFO,
+// }
+camera2 :tg.Camera//= {
+// 	pos = {0,0,3},
+// 	target = {0,0,0},
+// 	depth_texture_createinfo = tg.DEFALT_DEPTH_TEXTURE_CREATEINFO,
+// }
 
 main :: proc(){
 	context.logger = log.create_console_logger()
@@ -55,7 +55,10 @@ main :: proc(){
 	window_hd := tg.init_window()
 	window_hd2 := tg.init_window()
 	
-	_ = sdl.SetWindowRelativeMouseMode(tg.get_window(window_hd).data,true)
+	// _ = sdl.SetWindowRelativeMouseMode(tg.get_window(window_hd).data,true)
+	
+	camera  = tg.create_camera()
+	camera2 = tg.create_camera(type = .orthographic)
 	 
 	vert_shader:=tg.load_shader_file(file_path = "shader.vert")
 	frag_shader:=tg.load_shader_file(file_path = "shader.frag")
@@ -75,9 +78,9 @@ main :: proc(){
 	tg.reg_texture_from_file("Pawn.png")
 
 	// tex_arr={texture,texture_2}	
-	pass = tg.create_render_pass(window_hd, vert_shader, frag_shader)
+	pass = tg.create_render_pass(vert_shader, frag_shader)
 	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data_t}
-	clay_inst:=tg.init_clay_instance(tg.Vertex_Data_t,{20,20},window_hd,vert_shader,frag_shader, gbl_font_size = .1)
+	clay_inst:=tg.init_clay_instance({40,40},vert_shader,frag_shader, gbl_font_size = .1)
 
 	
 
@@ -90,7 +93,7 @@ main :: proc(){
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "castle", cube = {pos = {13,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "mine", cube = {pos = {14,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "pawn", cube = {pos = {16,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
-	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "awn", cube = {pos = {-2,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
+	tg.draw_cube(mesh = &mesh_cpu, tex_id = "awn", cube = {pos = {-2,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
 	tg.draw_text(mesh = &mesh_cpu, text = "FWwaAffFlLe.EsS", scale = 2,pos = {0,0,5},rot = {0,0,3.145},origin = {0,0,0}, vert_t = tg.Vertex_Data_t,fixed_spacing = 12,txt_origin = .top)
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "awn", cube = {pos = {0,0,5},w_h_l = {1,1,1}},rot = {0,0,0},origin = {0,0,0}, vert_t = tg.Vertex_Data_t)
 	tg.draw_rect(mesh = &mesh_cpu, tex_id = "pawn", rect = {pos = {3,0,-6},w_h = {15,10}},rot = {0,0,.5},origin = {0,6,0}, vert_t = tg.Vertex_Data_t)
@@ -138,6 +141,8 @@ main :: proc(){
 	tg.delete_r_pass(&pass)
 	tg.delete_mesh(mesh_hd)
 	tg.delete_clay_instance(clay_inst)
+	tg.delete_camera(&camera)
+	tg.delete_camera(&camera2)
 	tg.cleane_app()
 	
 	when USE_TRACKING_ALLOCATOR {

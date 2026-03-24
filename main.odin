@@ -117,21 +117,6 @@ Render_Pass_Info::struct{
 	vertex_input_state : sdl.GPUVertexInputState,
 }
 
-
-Camera ::struct {
-	pos:[3]f32,
-	target:[3]f32,
-	look: struct {
-		yaw: f32,
-		pitch: f32,
-	},
-	
-	depth_texture_createinfo : sdl.GPUTextureCreateInfo,
-	depth_texture: ^sdl.GPUTexture,
-	texture_size:[2]i32,
-	// msaa_depth_texture: ^sdl.GPUTexture,
-}
-
 Vec2 :: [2]f32
 Vec3 :: [3]f32
 Vec4 :: [4]f32
@@ -251,23 +236,21 @@ start_frame::proc()->(ok:bool){
 	}
 	return ok
 }
-//TODO remove window_hd:Window_Handl frome this proc
-create_render_pass :: proc (window_hd:Window_Handle, vert_shader_hd: Shader_Handle, frag_shader_hd: Shader_Handle, info:Render_Pass_Info=DEFALT_MASKED_PASS) ->(pass:R_Pass){
-	window:=get_window(window_hd)
+
+create_render_pass :: proc (vert_shader_hd: Shader_Handle, frag_shader_hd: Shader_Handle, info:Render_Pass_Info=DEFALT_MASKED_PASS) ->(pass:R_Pass){
+	// window:=get_window(window_hd)
 	vert_shader:=get_shader(vert_shader_hd)
 	frag_shader:=get_shader(frag_shader_hd)
 	pass.info = info
-	// pass.info.depth_msaa_texture_createinfo.format = s.depth_texture_format
-	// pass.info.depth_texture_createinfo.format = s.depth_texture_format
-	
-	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{})
-	// sdl.GetWindowSize(window.data,&pass.win_size.x,&pass.win_size.y)
 
 	
+	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{})
+
 	target_info := sdl.GPUGraphicsPipelineTargetInfo{
 		num_color_targets = 1,
 		color_target_descriptions=&(sdl.GPUColorTargetDescription{
-			format = window.swap_chain_format,
+			// format = window.swap_chain_format,
+			format = s.swap_chain_texture_format,
 			blend_state = pass.info.blend_state,
 		}),
 		has_depth_stencil_target = pass.info.has_depth_stencil_target,
@@ -333,24 +316,14 @@ do_render_pass::proc(
 	render_target := get_render_target(render_target)
 	if render_target == nil{return}
 	// if render_target.data == nil{return}
-	
-	
+
 	rtci:=&render_target.msaa_texture_createinfo
 	cdtci:=&cam.depth_texture_createinfo
-	
-	
 
-
-
-
-	fmt.print(render_target.wh,"waffles 0\n")
-	// temp_win_size:[2]i32 = render_target.wh
-	
 	if render_target.wh != {cam.texture_size.x, cam.texture_size.y}{// update depth_texture if screane is resized
-		// fmt.print(render_target.wh , render_target.wh,"\n")
 		cam.texture_size.x  = render_target.wh.x
 		cam.texture_size.y = render_target.wh.y
-		// fmt.print("waffles 1\n")
+
 		cam.texture_size = render_target.wh
 		sdl.ReleaseGPUTexture(s.gpu_device, cam.depth_texture)
 		cdtci.format =  s.depth_texture_format
@@ -363,7 +336,6 @@ do_render_pass::proc(
 	if render_target.wh != {cast(i32)rtci.width,cast(i32)rtci.height}{// update depth_texture if screane is resized
 		rtci.width  = cast(u32)render_target.wh.x
 		rtci.height = cast(u32)render_target.wh.y
-		// fmt.print(render_target.wh , render_target.wh,"\n")
 		
 		sdl.ReleaseGPUTexture(s.gpu_device, render_target.msaa_tex)
 		rtci.format =  s.swap_chain_texture_format
@@ -390,9 +362,26 @@ do_render_pass::proc(
 	}
 	
 	// sdl.BlitGPUTexture()
-	view_mat := lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
-	proj_mat := lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
-	modl_mat := lin.matrix4_translate_f32({0,0,-5})*lin.matrix4_rotate_f32(rot, {0,1,0})
+	view_mat :Mat4= 1//lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
+	proj_mat :Mat4= 1//lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
+	
+	switch cam.type {
+	case .perspective:
+	view_mat = lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
+	proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y,-100, 100)
+	case .orthographic:
+	pos:=cam.pos
+	view_mat = lin.matrix4_translate_f32(pos*-1)
+	proj_mat = lin.matrix_ortho3d_f32(
+		left= 0, 
+		right= cast(f32)render_target.wh.x, 
+		bottom= -cast(f32)render_target.wh.y, 
+		top= 0, 
+		near= 0.001, 
+		far= 1000,
+		)
+	}
+	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
 	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}
 	
 	
@@ -471,6 +460,55 @@ frame_cstring :: proc(string: string, loc := #caller_location) -> cstring {
 	return str.clone_to_cstring(string, s.frame_allocator, loc)
 }
 
+get_window::proc(window_hd:Window_Handle) -> (window:^Window){
+	window = hm.get(s.windows,window_hd)
+	return window
+}
+// blit_to_window::proc(pass:R_Pass, win_hd:Window_Handle){
+// 	blit_info:sdl.GPUBlitInfo={
+	
+// 	}
+// 	win:=get_render_target(win_hd)
+// 	sdl.BlitGPUTexture(s.render_cmd_buf,blit_info)
+// }
+
+//cam___________________________________________________________________________
+Camera_Types::enum{
+	perspective, 
+	orthographic,
+}
+
+Camera ::struct {
+	pos:[3]f32,
+	target:[3]f32,
+	look: struct {
+		yaw: f32,
+		pitch: f32,
+	},
+	texture_size:[2]i32,
+	type:Camera_Types,
+	depth_texture_createinfo : sdl.GPUTextureCreateInfo,
+	depth_texture: ^sdl.GPUTexture,
+	// msaa_depth_texture: ^sdl.GPUTexture,
+} 
+
+create_camera::proc(
+	type:Camera_Types = .perspective,
+	depth_texture_createinfo:sdl.GPUTextureCreateInfo = DEFALT_DEPTH_TEXTURE_CREATEINFO,
+	
+)->(cam:Camera){
+	cam = {
+		type = type,
+		depth_texture_createinfo = depth_texture_createinfo,
+	}
+	return
+}
+delete_camera::proc(cam:^Camera){
+	if cam.depth_texture != nil{
+		sdl.ReleaseGPUTexture(s.gpu_device,cam.depth_texture)
+	}
+}
+
 // this is a very rudimenty controler and should only be used for testing
 update_camera_3d::proc(cam:^Camera, dt:f32, sensitivity:f32=3, speed:f32=1.5,){
 	move_input:Vec2
@@ -496,19 +534,6 @@ update_camera_3d::proc(cam:^Camera, dt:f32, sensitivity:f32=3, speed:f32=1.5,){
 	cam.pos += motion
 	cam.target = cam.pos + forward
 }
-
-get_window::proc(window_hd:Window_Handle) -> (window:^Window){
-	window = hm.get(s.windows,window_hd)
-	return window
-}
-// blit_to_window::proc(pass:R_Pass, win_hd:Window_Handle){
-// 	blit_info:sdl.GPUBlitInfo={
-	
-// 	}
-// 	win:=get_render_target(win_hd)
-// 	sdl.BlitGPUTexture(s.render_cmd_buf,blit_info)
-// }
-
 
 //------------------------------------------------------------------------------
 Render_Target::struct{

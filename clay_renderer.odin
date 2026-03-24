@@ -91,7 +91,18 @@ import hm "handle_map_static_virtual"
 
 // 	return {width = line_width * scaleFactor + total_spacing, height = f32(config.fontSize)}
 // }
-CLAY_V_T::Vertex_Data_t
+
+UI_Vertex_Data :: struct #align(16){
+	pos:Vec3,
+	_1:f32,
+	col:Vec4,
+	uv: [2]f32,
+	// _2:[2]f32,
+	img_index:u32,
+	layer:u32,
+	col_over:[4]f32,
+}
+DEFALT_UI_VERTEX_DATA::UI_Vertex_Data 
 clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(cl.RenderCommand),mesh:^Mesh_CPU, allocator := context.temp_allocator) {
 	inst:=get_clay_instance(clay_instance)
 	inst.z_offset = 0
@@ -113,7 +124,7 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
 
             // font := raylib_fonts[config.fontId].font
             
-            draw_text(mesh = mesh,vert_t = CLAY_V_T, pos = {bounds.x, bounds.y*-1, 0}, text = text,col = config.textColor ,scale = cast(f32)config.fontSize * inst.gbl_font_size)
+            draw_text(mesh = mesh,vert_t = DEFALT_UI_VERTEX_DATA, pos = {bounds.x, bounds.y*-1, 0}, text = text,col = config.textColor ,scale = cast(f32)config.fontSize * inst.gbl_font_size)
             // rl.DrawTextEx(font, cstr_text, {bounds.x, bounds.y}, f32(config.fontSize), f32(config.letterSpacing), clay_color_to_rl_color(config.textColor))
         case .Image:
             // config := render_command.renderData.image
@@ -262,7 +273,7 @@ draw_rect_clay :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y, w, h: 
      	w_h = {w,h}
     }
     clay_instance.z_offset+=clay_instance.z_offseter
-    draw_rect(mesh = mesh,tex_id= [2]u32{1,0},rect = rect, vert_t = CLAY_V_T,col = color,)
+    draw_rect(mesh = mesh,tex_id= [2]u32{1,0},rect = rect, vert_t = DEFALT_UI_VERTEX_DATA,col = color,)
 }
 
 @(private = "file")
@@ -291,10 +302,11 @@ get_clay_instance::proc(hd:Clay_I_Handle)->(clay_instance:^Clay_Instance){
 	clay_instance = hm.get(s.clay_instances,hd)
 	return
 }
+
 init_clay_instance::proc(
-	$vert_t:       typeid,
+	// $vert_t:       typeid,
 	dimentions:    [2]f32,
-	window_hd:     Window_Handle,
+	// window_hd:     Window_Handle,
 	vert_shader:   Shader_Handle,
 	frag_shader:   Shader_Handle,
 	gpu_buf_size:  int = 5000,
@@ -306,8 +318,8 @@ init_clay_instance::proc(
     inst:=get_clay_instance(instance_hd)
     
     inst.gbl_font_size = gbl_font_size
-	inst.pass = create_render_pass(window_hd, vert_shader, frag_shader, info = DEFALT_TEXT_PASS)
-	mesh_cpu:Mesh_CPU={attribute_type = vert_t}
+	inst.pass = create_render_pass(vert_shader, frag_shader, info = DEFALT_TEXT_PASS)
+	mesh_cpu:Mesh_CPU={attribute_type = DEFALT_UI_VERTEX_DATA}
 	inst.mesh = create_mesh(mesh_cpu,gpu_buf_size)
 	inst.z_offseter = z_offseter
 	
