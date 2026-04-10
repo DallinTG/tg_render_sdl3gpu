@@ -53,8 +53,12 @@ State :: struct{
 	ticks:u64,
 	events:[dynamic]sdl.Event,
 
-	key_down: #sparse[sdl.Scancode]bool,
-	mouse_move: Vec2,
+	input:Input_Data,
+
+	// key_down: #sparse[sdl.Scancode]bool,
+	// mouse_button_down: #sparse[sdl.MouseButtonFlag]bool,
+	// mouse_move: Vec2,
+	// mouse_wheel:sdl.MouseWheelEvent,
 }
 Window_Handle :: distinct Handle
 Window::struct{
@@ -82,11 +86,11 @@ INIT_DEC:Init_Dec:{
 	msaa_txture_createinfo=DEFALT_MSAA_TEXTURE_CREATEINFO
 }
 
-Input_EV::union{
-	sdl.Scancode,
-	sdl.MouseButtonFlag,
-	sdl.GamepadButton,
-	
+Input_Data::struct{
+	key_down: #sparse[sdl.Scancode]bool,
+	mouse_button_down: #sparse[sdl.MouseButtonFlag]bool,
+	mouse_move: Vec2,
+	mouse_wheel:sdl.MouseWheelEvent,
 }
 
 
@@ -123,10 +127,15 @@ Vec4 :: [4]f32
 Mat3 :: lin.Matrix3f32;
 Mat4 :: lin.Matrix4f32;
 
-Vertex_Data :: struct{
+Vertex_Data :: struct #align(16){
 	pos:Vec3,
+	_1:f32,
 	col:Vec4,
 	uv: [2]f32,
+	// _2:[2]f32,
+	img_index:u32,
+	layer:u32,
+	col_over:[4]f32,
 }
 Vertex_Data_t :: struct #align(16){
 	pos:Vec3,
@@ -213,6 +222,8 @@ start_frame::proc()->(ok:bool){
 	free_all(s.frame_allocator)
 	clear(&s.events)
 	event:sdl.Event
+	s.input.mouse_move = {}//reset mouse_move
+	s.input.mouse_wheel = {}//reset mouse_wheel
 	ok = true
 	for sdl.PollEvent(&event) {
 		append(&s.events,event)
@@ -226,12 +237,18 @@ start_frame::proc()->(ok:bool){
 			if hm.len(s.windows) <= 0 {
 				ok = false
 			}
-		// case .KEY_DOWN:
-		// 	s.key_down[ev.key.scancode] = true
-		// case .KEY_UP:
-		// 	s.key_down[ev.key.scancode] = false
-		// case .MOUSE_MOTION:
-		// 	s.mouse_move += tg.Vec2{ev.motion.xrel, ev.motion.yrel}
+			case .KEY_DOWN:
+				s.input.key_down[event.key.scancode] = true
+			case .KEY_UP:
+				s.input.key_down[event.key.scancode] = false
+			case .MOUSE_MOTION:
+				s.input.mouse_move += Vec2{event.motion.xrel, event.motion.yrel}
+			case .MOUSE_BUTTON_DOWN:
+				s.input.mouse_button_down[cast(sdl.MouseButtonFlag)(event.button.button - 1)] = true
+			case .MOUSE_BUTTON_UP:
+				s.input.mouse_button_down[cast(sdl.MouseButtonFlag)(event.button.button - 1)] = false
+			case .MOUSE_WHEEL:
+				s.input.mouse_wheel = event.wheel
 		}
 	}
 	return ok
@@ -367,18 +384,18 @@ do_render_pass::proc(
 	
 	switch cam.type {
 	case .perspective:
-	view_mat = lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
-	proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y,-100, 100)
+		view_mat = lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
+		proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90 * cam.zoom), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y,-100, 100)
 	case .orthographic:
-	pos:=cam.pos
-	view_mat = lin.matrix4_translate_f32(pos*-1)
-	proj_mat = lin.matrix_ortho3d_f32(
-		left= 0, 
-		right= cast(f32)render_target.wh.x, 
-		bottom= -cast(f32)render_target.wh.y, 
-		top= 0, 
-		near= 0.001, 
-		far= 1000,
+		pos:=cam.pos
+		view_mat = lin.matrix4_translate_f32(pos)
+		proj_mat = lin.matrix_ortho3d_f32(
+			left= 0, 
+			right= cast(f32)render_target.wh.x * cam.zoom, 
+			bottom= -cast(f32)render_target.wh.y * cam.zoom, 
+			top= 0, 
+			near= 0.001, 
+			far= 1000,
 		)
 	}
 	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
@@ -481,6 +498,7 @@ Camera_Types::enum{
 Camera ::struct {
 	pos:[3]f32,
 	target:[3]f32,
+	zoom:f32,
 	look: struct {
 		yaw: f32,
 		pitch: f32,
@@ -499,6 +517,7 @@ create_camera::proc(
 )->(cam:Camera){
 	cam = {
 		type = type,
+		zoom = 1,
 		depth_texture_createinfo = depth_texture_createinfo,
 	}
 	return
@@ -512,12 +531,12 @@ delete_camera::proc(cam:^Camera){
 // this is a very rudimenty controler and should only be used for testing
 update_camera_3d::proc(cam:^Camera, dt:f32, sensitivity:f32=3, speed:f32=1.5,){
 	move_input:Vec2
-	if s.key_down[.W] do move_input.y = 1
-	else if s.key_down[.S] do move_input.y = -1
-	if s.key_down[.A] do move_input.x = -1
-	else if s.key_down[.D] do move_input.x = 1
+	if s.input.key_down[.W] do move_input.y = 1
+	else if s.input.key_down[.S] do move_input.y = -1
+	if s.input.key_down[.A] do move_input.x = -1
+	else if s.input.key_down[.D] do move_input.x = 1
 	
-	look_input := s.mouse_move * sensitivity * dt
+	look_input := s.input.mouse_move * sensitivity * dt
 	
 	cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)
 	cam.look.pitch = math.clamp(cam.look.pitch - look_input.y, -89, 89)
@@ -533,6 +552,40 @@ update_camera_3d::proc(cam:^Camera, dt:f32, sensitivity:f32=3, speed:f32=1.5,){
 
 	cam.pos += motion
 	cam.target = cam.pos + forward
+}
+
+
+// this is a very rudimenty controler and should only be used for testing
+update_camera_2d_wasd::proc(cam:^Camera, dt:f32, speed:f32=1.5,){
+	move_input:Vec3
+	if s.input.key_down[.W] do move_input.y = -1
+	else if s.input.key_down[.S] do move_input.y = 1
+	if s.input.key_down[.A] do move_input.x = 1
+	else if s.input.key_down[.D] do move_input.x = -1
+	look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
+	motion := move_input * speed * dt
+	cam.pos += motion
+}
+
+update_camera_zoom::proc(cam:^Camera, speed:f32=1, min_zoom:f32= .1,max_zoom:f32=5){
+	cam.zoom += cast(f32)(s.input.mouse_wheel.integer_y)*.100 * speed
+	if cam.zoom < min_zoom {
+		cam.zoom = min_zoom
+	}
+	if cam.zoom > max_zoom{
+		cam.zoom = max_zoom
+	}
+}
+
+update_camera_2d_pan::proc(cam:^Camera, dt:f32, speed:f32=10,){
+	move_input:Vec3
+	if s.input.mouse_button_down[.RIGHT]{
+		move_input.x = s.input.mouse_move.x
+		move_input.y = s.input.mouse_move.y * -1
+		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
+		motion := move_input * speed * dt
+		cam.pos += motion
+	}
 }
 
 //------------------------------------------------------------------------------

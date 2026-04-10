@@ -116,7 +116,6 @@ update_mesh::proc(mesh:Mesh_Handle){
 	mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf), vertices_byte_size)
 	mem.copy(transfer_mem[vertices_byte_size:], raw_data(mesh.cpu.index_buf), indices_byte_size)
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
-	
 	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
 	sdl.UploadToGPUBuffer(
@@ -147,6 +146,7 @@ update_mesh::proc(mesh:Mesh_Handle){
 	mesh.gpu.index_count = mesh.cpu.index_buf_used
 	sdl.EndGPUCopyPass(copy_pass)
 	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
+	
 	// sdl.ReleaseGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 }
 get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){
@@ -156,9 +156,11 @@ get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){
 
 append_to_mesh::proc(mesh:^Mesh_CPU,indices:[]u32,vertices:$T/[]$E, shift_indices:bool=true){
 	// attribute_info:=type_info_of(mesh.attribute_type,)
+	// assert(mesh != nil)
+	// assert(mesh.attribute_type != nil)
 	mesh_attribute_info:=type_info_of(mesh.attribute_type)
 	attribute_info:=type_info_of(E,)
-	
+
 	assert(mesh_attribute_info.size == attribute_info.size, "mesh vertex data size must == incoming vertices size")
 	indices:=indices
 	if shift_indices{
@@ -490,7 +492,17 @@ DEFALT_QUAD_UV:[4]f32={
 	1,1,
 	// {1,0},
 }
-draw_rect::proc(mesh: ^Mesh_CPU,tex_id:Texture_ID_Types, $vert_t:typeid, col:[4]f32={1,1,1,1}, rect:Rect, origin: Vec3 = {}, rot:[3]f32 = {},uv:[4]f32=DEFALT_QUAD_UV, mat:matrix[4, 4]f32 = Mat4(1)){
+draw_rect::proc(
+	mesh: ^Mesh_CPU,
+	tex_id:Texture_ID_Types, 
+	$vert_t:typeid, 
+	col:[4]f32={1,1,1,1}, 
+	rect:Rect, 
+	origin: Vec3 = {}, 
+	rot:[3]f32 = {},
+	uv:[4]f32=DEFALT_QUAD_UV, 
+	mat:matrix[4, 4]f32 = Mat4(1)
+){
 	tex:=get_texture(tex_id)
 	verts:[4]vert_t
 	// mat:Mat4=mat
@@ -500,6 +512,7 @@ draw_rect::proc(mesh: ^Mesh_CPU,tex_id:Texture_ID_Types, $vert_t:typeid, col:[4]
 	rotate_q:          = lin.quaternion_from_pitch_yaw_roll_f32(rot.x,rot.y,rot.z)
 	rotate_m4:    Mat4 = lin.matrix4_from_quaternion_f32(rotate_q)
 	mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
+
 	when intrinsics.type_has_field(vert_t, "pos"){
 		//front
 		verts[0].pos =  { 0,  0,  0}
@@ -525,17 +538,99 @@ draw_rect::proc(mesh: ^Mesh_CPU,tex_id:Texture_ID_Types, $vert_t:typeid, col:[4]
 		verts[2].uv =  uvs.z
 		verts[3].uv =  uvs.w
 	}
+
 	when intrinsics.type_has_field(vert_t, "img_index"){
 		for &vert in &verts{
 			vert.img_index = cast(u32)tex.groop_index
 		}
 	}
+
 	when intrinsics.type_has_field(vert_t, "layer"){
 		for &vert in &verts{
 			vert.layer = tex.layer
 		}
 	}
+
 	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
+
+}
+Plane_Cell::struct{
+	col:[4]f32,
+}
+
+draw_plane::proc(
+	mesh: ^Mesh_CPU,
+	tex_id:Texture_ID_Types, 
+	$vert_t:typeid, 
+	pos:[3]f32,
+	plane:[$w][$h]Plane_Cell,
+	scale:[2]f32 = {1,1},
+	origin: Vec3 = {}, 
+	rot:[3]f32 = {},
+	uv:[4]f32=DEFALT_QUAD_UV, 
+	mat:matrix[4, 4]f32 = Mat4(1),
+){
+	tex:=get_texture(tex_id)
+	verts:[4]vert_t
+	// mat:Mat4=mat
+	translate_m4: Mat4 = lin.matrix4_translate_f32(pos)
+	origin_m4:    Mat4 = lin.matrix4_translate_f32(origin)
+	scale_m4:     Mat4 = lin.matrix4_scale_f32({scale.x,scale.y,1,})
+	rotate_q:          = lin.quaternion_from_pitch_yaw_roll_f32(rot.x,rot.y,rot.z)
+	rotate_m4:    Mat4 = lin.matrix4_from_quaternion_f32(rotate_q)
+	mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
+
+	for y in 0..<h{
+		for x in 0..<w{
+			when intrinsics.type_has_field(vert_t, "pos"){
+				//front
+				// fmt.print( (x+w_h.x*y)*4 ,x,y," {x*y =",x*y,"}","\n")
+				verts[0].pos =  { 0+cast(f32)x,   0 +(cast(f32)y*-1),  0}
+				verts[1].pos =  { 0+cast(f32)x,  -1 +(cast(f32)y*-1),  0}
+				verts[2].pos =  { 1+cast(f32)x,  -1 +(cast(f32)y*-1),  0}
+				verts[3].pos =  { 1+cast(f32)x,   0 +(cast(f32)y*-1),  0}
+			}
+			when intrinsics.type_has_field(vert_t, "col"){
+				verts[0].col = plane[x][y].col
+				verts[1].col = plane[x][y].col
+				verts[2].col = plane[x][y].col
+				verts[3].col = plane[x][y].col
+
+				// verts[0].col = {1,1,1,1}
+				// verts[1].col = {1,1,1,1}
+				// verts[2].col = {1,1,1,1}
+				// verts[3].col = {1,1,1,1}
+			}
+			
+			when intrinsics.type_has_field(vert_t, "uv"){
+				uvs:=[4][2]f32{
+					{uv.x,uv.y},
+					{uv.x,uv.w},
+					{uv.z,uv.w},
+					{uv.z,uv.y},
+				}
+				verts[0].uv =  uvs.x
+				verts[1].uv =  uvs.y
+				verts[2].uv =  uvs.z
+				verts[3].uv =  uvs.w
+			}
+			when intrinsics.type_has_field(vert_t, "img_index"){
+				for &vert in &verts{
+					vert.img_index = cast(u32)tex.groop_index
+				}
+			}
+			
+			when intrinsics.type_has_field(vert_t, "layer"){
+				for &vert in &verts{
+					vert.layer = tex.layer
+				}
+			}
+			draw_verts_by_quad_mat(mesh, cast(u32)(1), verts[:], mat)
+		}
+	}
+
+
+
 }
 
 draw_rect_rounded::proc(

@@ -4,7 +4,7 @@ import "core:log"
 import "core:strings"
 import "core:slice"
 import "core:path/filepath"
-import os "core:os/os2"
+import os "core:os"
 
 SHADER_CROSS_PATH::"../shader_cross/sc-linux-x64/bin/shadercross"
 
@@ -35,7 +35,7 @@ main :: proc() {
 
 shadercross :: proc(file: os.File_Info, format: string) {
 	basename := filepath.stem(file.name)
-	outfile := filepath.join({SHADER_OUT, strings.concatenate({basename, ".", format})})
+	outfile,err := filepath.join({SHADER_OUT, strings.concatenate({basename, ".", format})},context.allocator)
 	// run({SHADER_CROSS_PATH, file.fullpath, "-o", outfile, "-I", "content/shaders/include"})
 }
 
@@ -59,6 +59,7 @@ run :: proc(cmd: []string) {
 exec :: proc(cmd: []string) -> (code: int, error: os.Error) {
 	process := os.process_start({ command = cmd, stdin = os.stdin, stdout = os.stdout, stderr = os.stderr }) or_return
 	state := os.process_wait(process) or_return
-	os.process_close(process) or_return
+	// os.process_close(process) or_return
+	os.process_kill(process) or_return
 	return state.exit_code, nil
 }

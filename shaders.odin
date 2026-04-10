@@ -13,6 +13,8 @@ import "base:runtime"
 import hm "handle_map_static_virtual"
 import "core:os"
 
+// import hm "core:container/handle_map"
+
 // import sc"shader_cross"
 
 // import "core:image"
@@ -128,11 +130,11 @@ load_shader_file::proc(
 	// info.vertex_info = attrs_info
 	
 	true_file_path:=str.concatenate({file_path, ".spv"},s.frame_allocator)
-	data,ok:=os.read_entire_file_from_filename(true_file_path,s.frame_allocator)
-	if !ok {
+	data,ok:=os.read_entire_file_from_path(true_file_path,s.frame_allocator)
+	if ok != nil  {
 		true_file_path=str.concatenate({SHADER_PATH, true_file_path},s.frame_allocator)
-		data,ok=os.read_entire_file_from_filename(true_file_path,s.frame_allocator)
-		if !ok{ log.error("cant find ",file_path, " or ", true_file_path) }
+		data,ok=os.read_entire_file_from_path(true_file_path,s.frame_allocator)
+		if ok != nil{ log.error("cant find ",file_path, " or ", true_file_path) }
 	}
 	
 	shader_hd=load_shader(data = data, stage = stage, info = info, format = format, entrypoint=entrypoint)
@@ -142,11 +144,11 @@ load_shader_file::proc(
 load_shader_info :: proc(shaderfile: string) -> (result:Shader_Info) {
 
 	json_filename := str.concatenate({shaderfile, ".json"}, s.frame_allocator)
-	json_data, ok := os.read_entire_file_from_filename(json_filename, s.frame_allocator)
-	if !ok{
+	json_data, ok := os.read_entire_file_from_path(json_filename, s.frame_allocator)
+	if ok != nil{
 		json_filename = str.concatenate({SHADER_PATH, shaderfile, ".json"}, s.frame_allocator)
-		json_data, ok = os.read_entire_file_from_filename(json_filename, s.frame_allocator)
-		if !ok{ log.error("cant find ",shaderfile," or ",json_filename) }
+		json_data, ok = os.read_entire_file_from_path(json_filename, s.frame_allocator)
+		if ok != nil{ log.error("cant find ",shaderfile," or ",json_filename) }
 	}
 	err := json.unmarshal(json_data, &result, allocator = s.frame_allocator); assert(err == nil)
 	if err != nil{

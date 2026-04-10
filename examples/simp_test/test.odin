@@ -63,11 +63,11 @@ main :: proc(){
 	vert_shader:=tg.load_shader_file(file_path = "shader.vert")
 	frag_shader:=tg.load_shader_file(file_path = "shader.frag")
 	
-	texture = tg.load_texture_from_file("world_tileset.png")	
+	// texture = tg.load_texture_from_file("world_tileset.png")	
 	// texture_2 = tg.load_texture_from_file("world_tileset.png")	
-	texture_2 = tg.load_texture_from_file("Glass_Block.png")
+	// texture_2 = tg.load_texture_from_file("Glass_Block.png")
 	tg.reg_texture_from_file("BAD.png")
-	tg.reg_texture_from_file("Glass_Block.png")
+	// tg.reg_texture_from_file("Glass_Block.png")
 	tg.reg_texture_from_file("world_tileset.png")
 	
 	tg.reg_texture_from_file("0.png")
@@ -81,8 +81,6 @@ main :: proc(){
 	pass = tg.create_render_pass(vert_shader, frag_shader)
 	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data_t}
 	clay_inst:=tg.init_clay_instance({40,40},vert_shader,frag_shader, gbl_font_size = .1)
-
-	
 
 
 	// tg.draw_cube(mesh = &mesh_cpu, tex_id = "glass_block", cube = {pos = {0,0,0},w_h_l = {2,2,2}},rot = {1,1,1},origin = {-1,1,1}, vert_t = tg.Vertex_Data_t)
@@ -106,31 +104,36 @@ main :: proc(){
 	s.ticks = new_ticks
 
 	main_loop:for tg.start_frame(){
-		s.mouse_move = {}
+		// s.mouse_move = {}
 		for ev in &tg.s.events {
-			#partial switch ev.type{
-			case .KEY_DOWN:
-				s.key_down[ev.key.scancode] = true
-			case .KEY_UP:
-				s.key_down[ev.key.scancode] = false
-			case .MOUSE_MOTION:
-				s.mouse_move += tg.Vec2{ev.motion.xrel, ev.motion.yrel}
-			}
+			// #partial switch ev.type{
+			// case .KEY_DOWN:
+			// 	s.key_down[ev.key.scancode] = true
+			// case .KEY_UP:
+			// 	s.key_down[ev.key.scancode] = false
+			// case .MOUSE_MOTION:
+			// 	s.mouse_move += tg.Vec2{ev.motion.xrel, ev.motion.yrel}
+			// }
 		}
 		tg.update_camera_3d(&camera, s.delta_time, )
-		tg.update_camera_3d(&camera2, s.delta_time, )
+		tg.update_camera_2d_pan(&camera2, s.delta_time, )
+		tg.update_camera_2d_wasd(&camera2, s.delta_time, )
+		tg.update_camera_zoom(&camera)
+		tg.update_camera_zoom(&camera2)
 		tg.start_render()
 
 		// tg.clear_render({.3,.3,1,1},&pass, &camera, window_hd)
 		// tg.clear_render({.3,.3,1,1},&pass, &camera, window_hd2)
 		
 		render_comands:=create_layout()
-
 		tg.update_clay_instance(clay_inst,&render_comands)
-
 
 		tg.do_render_pass(&pass, &camera, {mesh_hd}, window_hd,  load_op = .CLEAR, d_load_op = .CLEAR, store_op = .STORE)
 		tg.render_clay_instance(clay_inst,&camera,window_hd,     load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
+		tg.do_render_pass(&pass, &camera2, {mesh_hd}, window_hd,load_op = .LOAD, d_load_op = .LOAD, store_op = .STORE)
+		tg.render_clay_instance(clay_inst,&camera2,window_hd,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
+
+
 		tg.do_render_pass(&pass, &camera2, {mesh_hd}, window_hd2,load_op = .CLEAR, d_load_op = .CLEAR, store_op = .STORE)
 		tg.render_clay_instance(clay_inst,&camera2,window_hd2,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
 	
