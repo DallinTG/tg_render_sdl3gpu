@@ -15,18 +15,17 @@ import lin"core:math/linalg"
 import cl"../../clay-odin"
 import "base:intrinsics"
 
+MAP_SIZE:[2]int:{8,4}
+CHUNCK_SIZE::64
 
-CHUNCK_SIZE::250
 
-
-// Map::struct{
-// 	info:Map_Info,
-// 	l_r:int,
-// 	cells:[CHUNCK_SIZE][CHUNCK_SIZE]Cell,
-// 	cell_has_moved:[CHUNCK_SIZE][CHUNCK_SIZE]bool,
-// }
+Map::struct{
+	chuncks:[MAP_SIZE.x][MAP_SIZE.y]Chunck,
+	l_r:int,
+	// info:Map_Info,
+}
 Chunck::struct{
-	info:Map_Info,
+	
 	l_r:int,
 	mesh:tg.Mesh_Handle,
 	cells:[CHUNCK_SIZE][CHUNCK_SIZE]Cell,
@@ -227,71 +226,115 @@ Cell_Info:=[Cell_ids]Cell_Data{
 out_of_bounds_cell:Cell={
 	id = .out_of_bounds,
 }
-init_world_mesh::proc(w_map:^Chunck, map_info:=DEFALT_MAP_INFO){
+
+init_chunck_mesh::proc(w_map:^Chunck, map_info:=DEFALT_MAP_INFO){
 	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data}
 	mesh_attribute_info:=type_info_of(mesh_cpu.attribute_type)
 	w_map.mesh = tg.create_mesh(mesh_cpu,cast(int)(map_info.wh.x*map_info.wh.y)*mesh_attribute_info.size)
 }
 
-
-init_map::proc(new_map:^^Chunck, map_info:=DEFALT_MAP_INFO){
+init_map::proc(new_map:^^Map,){
 	delete_map(new_map^)
-	new_map^ = new(Chunck)
-	new_map^.info = map_info
-	init_world_mesh(new_map^)
+	new_map^ = new(Map)
+	for &row in new_map^.chuncks{
+		for &chunck in row{
+			init_chunck_mesh(&chunck)
+		}
+	}
 }
-delete_map::proc(w_map:^Chunck){
+init_chunck::proc(new_chunck:^^Chunck,){
+	delete_chunck(new_chunck^)
+	new_chunck^ = new(Chunck)
+	init_chunck_mesh(new_chunck^)
+}
+delete_map::proc(w_map:^Map){
+	if w_map == nil{return}
+	free(w_map)
+	for &row in w_map^.chuncks{
+		for &chunck in row{
+			tg.delete_mesh(chunck.mesh)
+		}
+	}
+}
+delete_chunck::proc(w_map:^Chunck){
 	if w_map == nil{return}
 	free(w_map)
 }
-plane:[CHUNCK_SIZE][CHUNCK_SIZE]tg.Plane_Cell
-render_map::proc(w_map:^Chunck){
-	for &cells,x in &w_map.cells{
-		for &cell,y in &cells{
-			// render_cell(x,y,cell)
-			plane[x][y].col = Cell_Info[cell.id].color
+
+mesh_map::proc(w_map:^Map){
+	for &chuncks,x in &w_map.chuncks{
+		for &chunck,y in &chuncks{
+			mesh_chunck(&chunck,{x,y})
 		}
 	}
-	// plane:[CHUNCK_SIZE][CHUNCK_SIZE]tg.Plane_Cell
-	mesh:=tg.get_mesh(w_map.mesh)
+}
+
+mesh_chunck::proc(chunck:^Chunck,pos:[2]int){
+	mesh:=tg.get_mesh(chunck.mesh)
+	tg.clear_mesh_cpu(&mesh.cpu)//TODO Clears the mesh every frame this should only do that if somthing has changed
 	draw_chunck(
 		mesh = &mesh.cpu,
 		tex_id = "white",
 		vert_t = tg.Vertex_Data,
-		pos = {0,0,0},
+		pos = {cast(f32)(pos.x*CELL_SIZE*CHUNCK_SIZE),cast(f32)(pos.y*CELL_SIZE*CHUNCK_SIZE*-1),0},
 		// w_h = {CHUNCK_SIZE,CHUNCK_SIZE},
-		w_map = w_map,
+		chunck = chunck,
 		scale = {CELL_SIZE,CELL_SIZE},
 	)
+	tg.update_mesh(chunck.mesh)
 }
-// render_cell::proc(x,y:int,cell:Cell){
-// 	c:=Cell_Info[cell.id]
-// 	mesh:=tg.get_mesh(g.world_mesh)
-// 	tg.draw_rect(&mesh.cpu,"white",tg.Vertex_Data,c.color,{{cast(f32)x*CELL_SIZE,cast(f32)y*-1*CELL_SIZE,0},{CELL_SIZE,CELL_SIZE}})
-// }
+
+render_map::proc(w_map:^Map){
+	meshes:[MAP_SIZE.x*MAP_SIZE.y]tg.Mesh_Handle
+	index:int
+	for &chuncks in w_map.chuncks{
+		for &chunck in chuncks{
+			meshes[index] = chunck.mesh
+			index+=1
+		}
+	}
+	tg.do_render_pass(&g.pass, &g.cam, meshes[:], g.window,  load_op = .CLEAR, d_load_op = .CLEAR, store_op = .RESOLVE)
+}
 
 rand_1_1:[2]int:{1,-1}
-update_map::proc(w_map:^Chunck){
-	w_map.cell_has_moved = {}
+update_map::proc(w_map:^Map){
+	// w_map.cell_has_moved = {}
 	rand_1:[2]int=rand_1_1
 	w_map.l_r=rand.choice(rand_1[:])
-	for &cells,x in &w_map.cells{
-		for &cell,y in &cells{
-			update_cell(x,y,&cell,w_map)
+	// w_map.l_r=rand.choice(rand_1[:])
+	for &chuncks,x in &w_map.chuncks{
+		for &chunck,y in &chuncks{
+			chunck.cell_has_moved = {}
+		}
+	}
+	for &chuncks,x in &w_map.chuncks{
+		for &chunck,y in &chuncks{
+			update_chunck(&chunck,x,y,w_map)
 		}
 	}
 }
-update_cell::proc(x,y:int,cell:^Cell,w_map:^Chunck){
+update_chunck::proc(chunck:^Chunck,c_x:int,c_y:int,w_map:^Map){
+	// chunck.cell_has_moved = {}
+	rand_1:[2]int=rand_1_1
+	chunck.l_r=rand.choice(rand_1[:])
+	for &cells,x in &chunck.cells{
+		for &cell,y in &cells{
+			update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),&cell,w_map)
+		}
+	}
+}
+update_cell::proc(x,y:int,cell:^Cell,w_map:^Map){
 	c:=&Cell_Info[cell.id]
 	if cell.id == .air {return}
-	if !w_map.cell_has_moved[x][y]{
+	if !is_cell_valid({x,y}, w_map){return}
+	if !get_cell_moved({x,y}, w_map){
 		// do_cell_temperature(c, {x,y}, w_map)
 		do_cell_gass(cell, c, {x,y}, w_map)
 		do_cell_grav(cell, c, {x,y}, w_map)
 		do_cell_flow(cell, c, {x,y}, w_map)
 	}
 }
-do_cell_grav::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Chunck){
+do_cell_grav::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
 	if .has_grav not_in cell.flags {return}
 	new_y:int
 	if c.density> 0 {new_y = pos.y+1  }
@@ -312,8 +355,8 @@ do_cell_grav::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Chunck){
 	
 }
 
-do_cell_flow::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Chunck){
-	if w_map.cell_has_moved[pos.x][pos.y]{return}
+do_cell_flow::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
+	if get_cell_moved(pos, w_map){return}
 	if c.flow_rate > 0{ // flowing
 		for i in 1..=c.flow_rate{
 			if can_cell_fall_through(pos,{pos.x+w_map.l_r*i, pos.y},w_map){ //flow right
@@ -326,8 +369,8 @@ do_cell_flow::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Chunck){
 		}
 	}
 }
-do_cell_gass::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Chunck){
-	if w_map.cell_has_moved[pos.x][pos.y]{return}
+do_cell_gass::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
+	if get_cell_moved(pos, w_map){return}
 	if .is_gass not_in cell.flags{return}
 	rand_1:[2]int=rand_1_1
 	l_r:=rand.choice(rand_1[:])
@@ -372,27 +415,39 @@ do_cell_gass::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Chunck){
 // 	if cell_can_cold_trans{cold_transmute_cell(pos, w_map)}
 // }
 
-is_cell_valid::proc(cell:[2]int,w_map:^Chunck)->(is_valid:bool){
+is_cell_valid::proc(cell:[2]int,w_map:^Map)->(is_valid:bool){
 	if cell.x < 0{return false}
 	if cell.y < 0{return false}
-	if cell.x >= cast(int)w_map.info.wh.x{return false}
-	if cell.y >= cast(int)w_map.info.wh.y{return false}
+	if cell.x >= cast(int)CHUNCK_SIZE * MAP_SIZE.x {return false}
+	if cell.y >= cast(int)CHUNCK_SIZE * MAP_SIZE.y {return false}
 	return true
 }
-get_cell::proc(cell:[2]int,w_map:^Chunck)->(cell_data:^Cell){
+get_cell::proc(cell:[2]int,w_map:^Map)->(cell_data:^Cell){
 	if !is_cell_valid(cell,w_map) {return &out_of_bounds_cell}
-	cell_data=&w_map.cells[cell.x][cell.y]
+	cell_data=&get_chunck(cell, w_map).cells[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE]
 	return cell_data
 }
+set_cell_moved::proc(cell:[2]int,w_map:^Map, state:bool = true){
+	if !is_cell_valid(cell,w_map) {return}
+	get_chunck(cell, w_map).cell_has_moved[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE] = state
+}
+get_cell_moved::proc(cell:[2]int,w_map:^Map,)->(bool){
+	if !is_cell_valid(cell,w_map) {return true}
+	return get_chunck(cell, w_map).cell_has_moved[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE]
+}
+get_chunck::proc(cell:[2]int,w_map:^Map)->(chunck_data:^Chunck){
+	chunck_data = &w_map.chuncks[cell.x/CHUNCK_SIZE][cell.y/CHUNCK_SIZE]
+	return chunck_data
+}
 
-get_cell_data::proc(cell:[2]int,w_map:^Chunck)->(cell_data:^Cell_Data){
+get_cell_data::proc(cell:[2]int,w_map:^Map)->(cell_data:^Cell_Data){
 	if !is_cell_valid(cell,w_map) {return &Cell_Info[.air]}
 	cell_d:=get_cell(cell,w_map)
 	cell_data=&Cell_Info[cell_d.id]
 	return cell_data
 }
 
-can_cell_fall_through::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Chunck) ->(can_cell_fall_through:bool){
+can_cell_fall_through::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map) ->(can_cell_fall_through:bool){
 	cell_a_data:=get_cell_data(cell_a,w_map)
 	cell_b_data:=get_cell_data(cell_b,w_map)
 	cell_b:=get_cell(cell_b,w_map)
@@ -401,7 +456,7 @@ can_cell_fall_through::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Chunck) ->(can_
 	if math.abs(cell_a_data.density) > cell_b_data.density {return true}
 	return false
 }
-can_cell_hot_transmute::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Chunck) ->(can_cell_a_hot_transmute:bool,can_cell_b_hot_transmute:bool,){
+can_cell_hot_transmute::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map) ->(can_cell_a_hot_transmute:bool,can_cell_b_hot_transmute:bool,){
 	cell_b_data:=get_cell_data(cell_b,w_map)
 	// if cell_b_data.temperature == 0 {return false, false}
 	cell_a_data:=get_cell_data(cell_a,w_map)
@@ -409,7 +464,7 @@ can_cell_hot_transmute::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Chunck) ->(can
 	// if cell_a_data.hot_transmute_temp < cell_b_data.temperature/2 {can_cell_a_hot_transmute = true}
 	return 
 }
-can_cell_cold_transmute::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Chunck) ->(can_cell_a_cold_transmute:bool,can_cell_b_cold_transmute:bool,){
+can_cell_cold_transmute::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map) ->(can_cell_a_cold_transmute:bool,can_cell_b_cold_transmute:bool,){
 	cell_b_data:=get_cell_data(cell_b,w_map)
 	// if cell_b_data.temperature == 0 {return false, false}
 	cell_a_data:=get_cell_data(cell_a,w_map)
@@ -426,25 +481,30 @@ can_cell_cold_transmute::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Chunck) ->(ca
 // 	set_cell(cell,{cell_d.cold_transmute}, w_map)
 // }
 
-swap_cell::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Chunck){
+swap_cell::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map){
 	if !is_cell_valid(cell_a,w_map) {return}
 	if !is_cell_valid(cell_b,w_map) {return}
-	cell_a_val:=w_map.cells[cell_a.x][cell_a.y]
-	cell_b_val:=w_map.cells[cell_b.x][cell_b.y]
+
+	cell_a_p:=get_cell(cell_a, w_map)
+	cell_b_p:=get_cell(cell_b, w_map)
+
+	cell_a_val:=get_cell(cell_a, w_map)^
+	cell_b_val:=get_cell(cell_b, w_map)^
 
 	// swaps the values
-	w_map.cells[cell_a.x][cell_a.y] = cell_b_val
-	w_map.cells[cell_b.x][cell_b.y] = cell_a_val
+	cell_a_p^ = cell_b_val
+	cell_b_p^ = cell_a_val
 
 	// set that the cell has moved this frame to stop it frome moving multipul times
-	w_map.cell_has_moved[cell_a.x][cell_a.y] = true
-	w_map.cell_has_moved[cell_b.x][cell_b.y] = true
+	set_cell_moved(cell_a, w_map, true)
+	set_cell_moved(cell_b, w_map, true)
 }
-set_cell::proc(cell:[2]int, new_cell_data:Cell, w_map:^Chunck){
+set_cell::proc(cell:[2]int, new_cell_data:Cell, w_map:^Map){
 	if !is_cell_valid(cell,w_map) {return}
-	w_map.cells[cell.x][cell.y] = new_cell_data
+	// w_map.cells[cell.x][cell.y] = new_cell_data
+	get_cell(cell,w_map)^ = new_cell_data
 }
-set_cell_by_id::proc(cell:[2]int, id:Cell_ids, w_map:^Chunck){
+set_cell_by_id::proc(cell:[2]int, id:Cell_ids, w_map:^Map){
 	set_cell(cell, {id =id, temperature = Cell_Info[id].starting_temperature ,hp = Cell_Info[id].starting_hp, flags = Cell_Info[id].flags}, w_map)
 }
 
@@ -461,7 +521,7 @@ draw_chunck::proc(
 	pos:[3]f32,
 	// $w_h:[2]int,
 	// plane:[$w][$h]tg.Plane_Cell,
-	w_map:^Chunck,
+	chunck:^Chunck,
 	scale:[2]f32 = {1,1},
 	origin: tg.Vec3 = {}, 
 	rot:[3]f32 = {},
@@ -480,7 +540,7 @@ draw_chunck::proc(
 
 	for y in 0..<CHUNCK_SIZE{
 		for x in 0..<CHUNCK_SIZE{
-			if w_map.cells[x][y].id != .air{
+			if chunck.cells[x][y].id != .air{
 				when intrinsics.type_has_field(vert_t, "pos"){
 					//front
 					// fmt.print( (x+w_h.x*y)*4 ,x,y," {x*y =",x*y,"}","\n")
@@ -490,10 +550,10 @@ draw_chunck::proc(
 					verts[3].pos =  { 1+cast(f32)x,   0 +(cast(f32)y*-1),  0}
 				}
 				when intrinsics.type_has_field(vert_t, "col"){
-					verts[0].col = Cell_Info[w_map.cells[x][y].id].color
-					verts[1].col = Cell_Info[w_map.cells[x][y].id].color
-					verts[2].col = Cell_Info[w_map.cells[x][y].id].color
-					verts[3].col = Cell_Info[w_map.cells[x][y].id].color
+					verts[0].col = Cell_Info[chunck.cells[x][y].id].color
+					verts[1].col = Cell_Info[chunck.cells[x][y].id].color
+					verts[2].col = Cell_Info[chunck.cells[x][y].id].color
+					verts[3].col = Cell_Info[chunck.cells[x][y].id].color
 				}
 				
 				when intrinsics.type_has_field(vert_t, "uv"){

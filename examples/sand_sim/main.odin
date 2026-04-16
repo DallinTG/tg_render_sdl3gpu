@@ -18,7 +18,7 @@ s:^tg.State
 g:Game
 Game::struct{
 	cam:tg.Camera,
-	w_map:^Chunck,
+	w_map:^Map,
 	// world_mesh:tg.Mesh_Handle,
 	pass:tg.R_Pass,
 	window:tg.Window_Handle, 
@@ -48,24 +48,48 @@ main :: proc(){
 	g.pass = tg.create_render_pass(vert_shader, frag_shader)
 
 
-
-	
+	server:tg.Server
+	client:tg.Client
+	// temp_t:f32
 	init()
 	main_loop:for tg.start_frame(){
 		for ev in &tg.s.events {
 		}
+		if s.input.key_down[.SPACE] {
+			if !server.is_up{
+				fmt.print("starting server\n")
+				server = tg.init_udp_echo_server("10.0.0.155", 3582)
+			}
+		}
+		if server.is_up {
+			tg.do_udp_echo_server(&server)
+		}
 
-	new_ticks := sdl.GetTicks()
-	s.delta_time = f32(new_ticks - s.ticks) / 1000
-	s.ticks = new_ticks
-	fmt.print(1/s.delta_time,"\n")
+		if s.input.key_down[.Q] {
+			if !client.is_up{
+				fmt.print("conecting to server\n")
+				client = tg.init_udp_echo_client("10.0.0.155", 3582)
+			}
+		}
+		if client.is_up {
+			fmt.print("wewo")
+			tg.do_udp_echo_client(&client)
+		}
 		
+		new_ticks := sdl.GetTicks()
+		s.delta_time = f32(new_ticks - s.ticks) / 1000
+		s.ticks = new_ticks
+		// temp_t+=s.delta_time
+		// fmt.print(1/s.delta_time,"\n")
+		// if temp_t > 1{
+		// 	temp_t = 0
 		set_cell_by_id({10,10}, .sand,g.w_map)
 		// set_cell({12,200},{.up_sand},g.w_map)
 		set_cell_by_id({20,20}, .water,g.w_map)
 		set_cell_by_id({200,20}, .gravel,g.w_map)
 		set_cell_by_id({175,20}, .lava,g.w_map)
 		set_cell_by_id({150,20}, .steam,g.w_map)
+		set_cell_by_id({350,20}, .steam,g.w_map)
 		update_map(g.w_map)
 
 		tg.update_camera_2d_pan(&g.cam, s.delta_time, )
@@ -73,12 +97,13 @@ main :: proc(){
 		tg.update_camera_zoom(&g.cam)
 		tg.start_render()
 		
-		mesh:=tg.get_mesh(g.w_map.mesh)
-		tg.clear_mesh_cpu(&mesh.cpu)
+		// tg.clear_mesh_cpu(&mesh.cpu)
+		mesh_map(g.w_map)
 		render_map(g.w_map)
-		tg.update_mesh(g.w_map.mesh)
-		tg.do_render_pass(&g.pass, &g.cam, {g.w_map.mesh}, g.window,  load_op = .CLEAR, d_load_op = .CLEAR, store_op = .RESOLVE)
+
+		// tg.do_render_pass(&g.pass, &g.cam, {g.w_map.mesh}, g.window,  load_op = .CLEAR, d_load_op = .CLEAR, store_op = .RESOLVE)
 		tg.submit_render()
+		// }
 	}
 	cleane_up_game()
 	
@@ -98,15 +123,11 @@ main :: proc(){
 
 init::proc(){
 	init_map(&g.w_map)
-	// init_world_mesh()
 }
 cleane_up_game::proc(){
 	tg.delete_r_pass(&g.pass)
-	tg.delete_mesh(g.w_map.mesh)
 	delete_map(g.w_map)
-	// tg.delete_clay_instance(clay_inst)
 	tg.delete_camera(&g.cam)
-	// tg.delete_camera(&camera2)
 	tg.cleane_app()
 
 }
