@@ -55,6 +55,9 @@ State :: struct{
 
 	input:Input_Data,
 
+	ui_style:UI_Style,
+	ui_settings:UI_Settings,
+
 	// key_down: #sparse[sdl.Scancode]bool,
 	// mouse_button_down: #sparse[sdl.MouseButtonFlag]bool,
 	// mouse_move: Vec2,
@@ -192,6 +195,8 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	init_texture_arr_groop()
 	s.defalt_font = load_font_from_data(font_id = "font_1",height = 16)
 	s.defalt_context = context
+
+	set_ui_style()
 	
 	return
 }
@@ -480,6 +485,11 @@ frame_cstring :: proc(string: string, loc := #caller_location) -> cstring {
 get_window::proc(window_hd:Window_Handle) -> (window:^Window){
 	window = hm.get(s.windows,window_hd)
 	return window
+}
+get_window_size::proc(window_hd:Window_Handle)-> (win_size:[2]i32) {
+	win:=get_window(window_hd)
+	ok:=sdl.GetWindowSize(win.data,&win_size.x,&win_size.y)
+	return win_size
 }
 // blit_to_window::proc(pass:R_Pass, win_hd:Window_Handle){
 // 	blit_info:sdl.GPUBlitInfo={

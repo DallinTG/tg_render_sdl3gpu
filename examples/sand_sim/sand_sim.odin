@@ -249,12 +249,12 @@ init_chunck::proc(new_chunck:^^Chunck,){
 }
 delete_map::proc(w_map:^Map){
 	if w_map == nil{return}
-	free(w_map)
 	for &row in w_map^.chuncks{
 		for &chunck in row{
 			tg.delete_mesh(chunck.mesh)
 		}
 	}
+	free(w_map)
 }
 delete_chunck::proc(w_map:^Chunck){
 	if w_map == nil{return}

@@ -107,6 +107,7 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
 	inst:=get_clay_instance(clay_instance)
 	inst.z_offset = 0
 	clear_mesh_cpu(mesh)
+	draw_rect_clay(inst, mesh,0, 0, 0, 0, {0,0,0,0})// this is just a blank rect to force it to update
     for i in 0 ..< render_commands.length {
         render_command := cl.RenderCommandArray_Get(render_commands, i)
         bounds := render_command.boundingBox
@@ -332,12 +333,17 @@ init_clay_instance::proc(
     cl.SetMeasureTextFunction(measure_text_clay, inst)
     return
 }
-update_clay_instance::proc(clay_instance:Clay_I_Handle, renderCommands: ^cl.ClayArray(cl.RenderCommand)){
+update_clay_instance::proc(clay_instance:Clay_I_Handle, renderCommands: ^cl.ClayArray(cl.RenderCommand), wh:[2]i32, mouse_pos:[2]f32 = {-1,-1}, mouse_down :bool=false){
 	inst:=get_clay_instance(clay_instance)
 	mesh:=get_mesh(inst.mesh)
+	cl.SetLayoutDimensions({ cast(f32)wh.x, cast(f32)wh.y })
+	cl.SetPointerState( mouse_pos, mouse_down)
 	
+
 	clay_render(clay_instance,renderCommands,&mesh.cpu)
 	update_mesh(inst.mesh)
+
+
 }
 render_clay_instance::proc(
 	clay_instance:Clay_I_Handle,
@@ -360,9 +366,7 @@ render_clay_instance::proc(
 		clear_color = clear_color,
 		store_op = store_op, 
 		d_store_op = d_store_op
-	)
-
-	
+	)	
 }
 update_render_clay_instance::proc(
 	clay_instance:Clay_I_Handle,
@@ -372,8 +376,9 @@ update_render_clay_instance::proc(
 	load_op:	sdl.GPULoadOp=.LOAD,
 	d_load_op:	sdl.GPULoadOp=.LOAD,
 	clear_color:[4]f32={.3,.3,.3,1},
+	 wh:[2]i32
 ){
-	update_clay_instance(clay_instance, renderCommands)
+	update_clay_instance(clay_instance, renderCommands, wh)
 	render_clay_instance(clay_instance, camera, render_target, load_op = load_op, d_load_op = d_load_op, clear_color = clear_color)
 }
 delete_clay_instance::proc(clay_instance:Clay_I_Handle){
