@@ -46,7 +46,7 @@ start_menu::proc(){
 			if cl.UI(cl.ID("Button--Host"))(tg.button_dec()) {
 				tg.button_txt("Host")
 
-				if cl.Hovered() && tg.ui_l_click(){
+				if cl.Hovered() && is_input_event(.ui_l_c){
 					g.next_game_mode = .loby
 					fmt.print("Button--Host\n")
 					start_server()
@@ -55,7 +55,7 @@ start_menu::proc(){
 			if cl.UI(cl.ID("Button--Join"))(tg.button_dec()) {
 				tg.button_txt("Join")
 				
-				if cl.Hovered() && tg.ui_l_click(){
+				if cl.Hovered() && is_input_event(.ui_l_c){
 					g.next_game_mode = .loby
 					fmt.print("Button--Join\n")
 					join_server()
@@ -91,7 +91,7 @@ loby_menu::proc(){
 			if cl.UI(cl.ID("Button--Start"))(tg.button_dec()) {
 				tg.button_txt("Start")
 
-				if cl.Hovered() && tg.ui_l_click(){
+				if cl.Hovered() && is_input_event(.ui_l_c){
 					g.next_game_mode = .in_game
 					fmt.print("Button--in_game\n")
 				}

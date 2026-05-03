@@ -33,6 +33,8 @@ Game::struct{
 	frag_shader:tg.Shader_Handle,
 
 	server:Net_Server_Info,
+
+	input_events:event_data,
 }
 
 Game_Mode::enum{
@@ -48,6 +50,7 @@ init::proc(){
 	wh:=tg.get_window_size(g.window)
 	fmt.print(wh)
 	init_net_thread()
+	reg_input_events()
 	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.vert_shader, g.frag_shader, gbl_font_size = .1)
 }
 
@@ -88,6 +91,11 @@ main :: proc(){
 		// 	temp_t = 0
 		
 		// do_networking()
+		maintain_input_info()
+		// fmt.print(g.input_events.key[.LSHIFT],"\n")
+		if is_input_event(.ui_shift){
+			fmt.print("shift")
+		}
 		manage_gmae_mode_state()
 		switch g.curent_game_mode{
 			case .start:

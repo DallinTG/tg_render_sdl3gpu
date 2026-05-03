@@ -13,6 +13,7 @@ import lin"core:math/linalg"
 import cl"../../clay-odin"
 
 Entity_Handle :: distinct Handle
+
 Entity_Types::enum{
 	player,
 	mob,
