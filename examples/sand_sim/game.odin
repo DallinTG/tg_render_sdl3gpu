@@ -1,5 +1,6 @@
 package sand_sim
 
+import "core:time"
 import tg"../../../tg_render_sdl3"
 import sdl "vendor:sdl3"
 import "core:log"
@@ -7,6 +8,7 @@ import "core:mem"
 import "core:hash"
 import "core:c"
 import "core:fmt"
+import "core:thread"
 import hm "../../handle_map_static_virtual"
 import an"ansi"
 import lin"core:math/linalg"
@@ -23,7 +25,9 @@ Game::struct{
 	cam_ui:tg.Camera,
 	ui_clay_inst:tg.Clay_I_Handle,
 	w_map:^Map,
-	entitys:hm.Handle_Map(Entitys, Entity_Handle, 1000),
+	entitys:Entity_Handle_Map,
+	entitys_mesh:tg.Mesh_Handle,
+	all_player_data:All_Player_data,
 	// world_mesh:tg.Mesh_Handle,
 	pass:tg.R_Pass,
 	window:tg.Window_Handle, 
@@ -31,10 +35,15 @@ Game::struct{
 	next_game_mode:Game_Mode,
 	vert_shader:tg.Shader_Handle,
 	frag_shader:tg.Shader_Handle,
-
+	render_thread:^thread.Thread,
 	server:Net_Server_Info,
-
 	input_events:event_data,
+	game_should_close:bool,
+
+	clay_render_comands:cl.ClayArray(cl.RenderCommand),
+
+
+
 }
 
 Game_Mode::enum{
@@ -51,14 +60,17 @@ init::proc(){
 	fmt.print(wh)
 	init_net_thread()
 	reg_input_events()
+	init_entitys_mesh()
 	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.vert_shader, g.frag_shader, gbl_font_size = .1)
+	init_rendering_thread()
+	// spawn_entity(&g.entitys)
 }
 
 main :: proc(){
 	context.logger = log.create_console_logger()
 	when USE_TRACKING_ALLOCATOR {
-		default_allocator := context.allocator
 		tracking_allocator: mem.Tracking_Allocator
+		default_allocator := context.allocator
 		mem.tracking_allocator_init(&tracking_allocator, default_allocator)
 		context.allocator = mem.tracking_allocator(&tracking_allocator)
 	}
@@ -78,42 +90,36 @@ main :: proc(){
 
 	// temp_t:f32
 	init()
-	main_loop:for tg.start_frame(){
+	main_loop:for !tg.start_frame(){
 		for ev in &tg.s.events {
 		}
-		
-		new_ticks := sdl.GetTicks()
-		s.delta_time = f32(new_ticks - s.ticks) / 1000
-		s.ticks = new_ticks
-		// temp_t+=s.delta_time
-		// fmt.print(1/s.delta_time,"\n")
-		// if temp_t > 1{
-		// 	temp_t = 0
-		
-		// do_networking()
-		maintain_input_info()
-		// fmt.print(g.input_events.key[.LSHIFT],"\n")
-		if is_input_event(.ui_shift){
-			fmt.print("shift")
+		gather_input_info()
+		tg.update_time_info()
+		if s.time.is_60_hz{
+			pros_server_cmd_q()
+			manage_gmae_mode_state()
+			switch g.curent_game_mode{
+				case .start:
+				do_mode_start()
+				case .loby:
+				do_mode_loby()
+				case .in_game:
+				do_mode_game()
+			}
+			maintain_input_info()
 		}
-		manage_gmae_mode_state()
-		switch g.curent_game_mode{
-			case .start:
-			do_mode_start()
-			case .loby:
-			do_mode_loby()
-			case .in_game:
-			do_mode_game()
-		}
+		g.clay_render_comands=create_layout()
+		
+		wh:=tg.get_window_size(g.window)
+		mouse_pos:[2]f32 
+		flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
+		tg.update_clay_instance(g.ui_clay_inst,&g.clay_render_comands,wh,mouse_pos,.LEFT in flag)
 
-		// tg.update_camera_2d_pan(&g.cam, s.delta_time, )
-		// tg.update_camera_2d_wasd(&g.cam, s.delta_time, )
-		// tg.update_camera_zoom(&g.cam)
-
-		do_rendering()
+		// do_rendering()
 	}
+	leave_shutdown_server()
 	cleane_up_game()
-	
+
 	when USE_TRACKING_ALLOCATOR {
 		for _, value in tracking_allocator.allocation_map {
 			log.errorf("%v: Leaked %v bytes\n", value.location, value.size)
@@ -128,9 +134,16 @@ main :: proc(){
 	}
 }
 cleane_up_game::proc(){
+	thread.terminate(g.render_thread,0)
+	thread.terminate(g.server.net_thread,0)
+	thread.destroy(g.render_thread)
+	thread.destroy(g.server.net_thread)
 	tg.delete_r_pass(&g.pass)
 	delete_map(g.w_map)
 	tg.delete_camera(&g.cam)
+	hm.delete(&g.entitys)
+	delete(g.server.clients)
+	delete(g.all_player_data.players)
 	tg.delete_clay_instance(g.ui_clay_inst)
 	tg.cleane_app()
 }
@@ -142,6 +155,8 @@ do_mode_loby::proc(){
 
 }
 do_mode_game::proc(){
+	do_player_inputs()
+
 	set_cell_by_id({10,10}, .sand,g.w_map)
 	set_cell_by_id({20,20}, .water,g.w_map)
 	set_cell_by_id({200,20}, .gravel,g.w_map)
@@ -149,30 +164,84 @@ do_mode_game::proc(){
 	set_cell_by_id({150,20}, .steam,g.w_map)
 	set_cell_by_id({350,20}, .steam,g.w_map)
 	update_map(g.w_map)
+	do_entitys(&g.entitys)
+	if is_input_event(.ui_esc){
+		leave_shutdown_server()
+	}
 
-	tg.update_camera_2d_pan(&g.cam, s.delta_time, )
-	tg.update_camera_2d_wasd(&g.cam, s.delta_time, )
-	tg.update_camera_zoom(&g.cam)
+	update_camera_2d_pan(&g.cam,  )
+	// tg.update_camera_2d_wasd(&g.cam, cast(f32)s.time.tick_time, )
+	update_camera_zoom(&g.cam)
 }
+
+reset_game_state::proc(){
+	g.all_player_data.players = {}
+	hm.clear(&g.entitys)
+	g.next_game_mode = .start
+	for &x in &g.w_map.chuncks{
+		for &chunck in &x{
+			mesh:=tg.get_mesh(chunck.mesh)
+			chunck.cell_has_moved = {}
+			chunck.cells = {}
+		}
+	}
+	g.cam.pos={}
+	g.cam.target={}
+	g.cam.zoom = 1
+	g.server.server = {}
+	g.server.net_state.is_up = false
+}
+
 
 manage_gmae_mode_state::proc(){
 	g.curent_game_mode = g.next_game_mode
 }
 
-do_rendering::proc(){
-	tg.start_render()//----------------------------------------------------------->
-	
-	// tg.clear_mesh_cpu(&mesh.cpu)
-	mesh_map(g.w_map)
-	render_map(g.w_map)
-	
-	wh:=tg.get_window_size(g.window)
-	mouse_pos:[2]f32 
-	flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
-	
-	render_comands:=create_layout()
-	tg.update_clay_instance(g.ui_clay_inst,&render_comands,wh,mouse_pos,.LEFT in flag)
-	tg.render_clay_instance(g.ui_clay_inst,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .CLEAR,  store_op = .RESOLVE)
+init_rendering_thread::proc(){
+	g.render_thread = thread.create_and_start(do_rendering)
+}
 
-	tg.submit_render()//----------------------------------------------------------->
+do_rendering::proc(){
+	rendering_loop:for !g.game_should_close {
+		tg.start_render()//----------------------------------------------------------->
+	
+		mesh_map(g.w_map)
+		render_map(g.w_map)
+		render_entitys(&g.entitys)
+		// wh:=tg.get_window_size(g.window)
+		// mouse_pos:[2]f32 
+		// flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
+		
+		// render_comands:=create_layout()
+		// render_comands:=g.clay_render_comands
+		// tg.update_clay_instance(g.ui_clay_inst,&render_comands,wh,mouse_pos,.LEFT in flag)
+		tg.render_clay_instance(g.ui_clay_inst,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .CLEAR,  store_op = .RESOLVE)
+	
+		tg.submit_render()//----------------------------------------------------------->
+		tg.update_time_fps_info()
+	}
+}
+
+
+update_camera_2d_pan::proc(cam:^tg.Camera, dt:f32=1, speed:f32=1,){
+	move_input:tg.Vec3
+	if s.input.mouse_button_down[.RIGHT]{
+		move_input.x = g.input_events.mouse_move.x
+		move_input.y = g.input_events.mouse_move.y * -1
+		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
+		motion := move_input * (speed*cam.zoom) * dt
+		cam.pos += motion
+		// fmt.print(motion,"pan",move_input,"mouse move" ,g.input_events.mouse_move,"\n")
+	}
+}
+
+update_camera_zoom::proc(cam:^tg.Camera, speed:f32=1, min_zoom:f32= .1,max_zoom:f32=5){
+	cam.zoom += cast(f32)(g.input_events.mouse_wheel.y)*.100 * speed
+	
+	if cam.zoom < min_zoom {
+		cam.zoom = min_zoom
+	}
+	if cam.zoom > max_zoom{
+		cam.zoom = max_zoom
+	}
 }

@@ -9,6 +9,7 @@ import "core:fmt"
 
 import "core:image"
 
+
 import "core:math"
 import "core:math/linalg"
 
@@ -140,6 +141,42 @@ draw_text :: proc(
 		x += advance_x
 		y += -advance_y	
 	}
+}
+
+draw_fps :: proc(
+	mesh: ^Mesh_CPU, 
+	$vert_t:typeid, 
+	pos: [3]f32, 
+	// text: string,
+	origin: Vec3 = {}, 
+	rot:[3]f32 = {}, 
+	col:[4]f32={1,1,1,1}, 
+	scale:f32= 1,
+	fixed_spacing:f32 = 0,
+	txt_origin:Txt_Origin=.top
+	
+	
+){
+	// fmt.print(fmt.tprint("fPS:",math.round(s.time.fps)),"\n")
+	draw_text(mesh,vert_t,pos, fmt.tprint("FPS:",math.round(s.time.smooth_fps)),origin,rot,col,scale,fixed_spacing,txt_origin)
+}
+
+draw_tps :: proc(
+	mesh: ^Mesh_CPU, 
+	$vert_t:typeid, 
+	pos: [3]f32, 
+	// text: string,
+	origin: Vec3 = {}, 
+	rot:[3]f32 = {}, 
+	col:[4]f32={1,1,1,1}, 
+	scale:f32= 1,
+	fixed_spacing:f32 = 0,
+	txt_origin:Txt_Origin=.top
+	
+	
+){
+	// fmt.print(fmt.tprint("TPS:",s.time.tps),"\n")
+	draw_text(mesh,vert_t,pos, fmt.tprint("TPS:",math.round(s.time.smooth_tps)),origin,rot,col,scale,fixed_spacing,txt_origin)
 }
 
 measure_text :: proc(

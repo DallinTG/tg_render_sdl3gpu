@@ -157,7 +157,7 @@ do_udp_server::proc(server:^Networking_State){
 	free_all(context.temp_allocator)
 }
 send_udp::proc(net_st:^Networking_State, endpoint:net.Endpoint, data:[]u8)->(bytes_sent:int, err_send:net.UDP_Send_Error){
-	bytes_sent, err_send = net.send_udp(net_st.sock, data, endpoint)
+	bytes_sent, err_send = net.send_udp(net_st.sock, data[:], endpoint)
 	if err_send != nil {
 		fmt.println("Failed to send data", err_send)
 		return

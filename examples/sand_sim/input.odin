@@ -27,6 +27,9 @@ event_data::struct{
 	mouse_d:[sdl.MouseButtonFlag]bool,
 	mouse_r:[sdl.MouseButtonFlag]bool,
 
+	mouse_pos:[2]f32,
+	mouse_move:[2]f32,
+	mouse_wheel:[2]i32,
 
 }
 input_id::union{
@@ -88,9 +91,11 @@ input_event_data::struct{
 }
 max_key_combo::4
 reg_input_events::proc(){
+	reg_event(.move_l,{{{data=             {id= sdl.Scancode.A,               pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+	reg_event(.move_r,{{{data=             {id= sdl.Scancode.D,               pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.jump,{{{data=               {id= sdl.Scancode.SPACE,           pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.ui_debug,{{{data=           {id= sdl.Scancode.F10,             pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
-    reg_event(.ui_l_c,{{{data=             {id= sdl.MouseButtonFlag.LEFT,      pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+    reg_event(.ui_l_c,{{{data=             {id= sdl.MouseButtonFlag.LEFT,     pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.ui_l_c_d,{{{data=           {id= sdl.MouseButtonFlag.LEFT,     pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.ui_r_c,{{{data=             {id= sdl.MouseButtonFlag.RIGHT,    pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.ui_m_c,{{{data=             {id= sdl.MouseButtonFlag.MIDDLE,   pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
@@ -177,28 +182,11 @@ get_input_event_data::proc(id:input_id)->(data:^input_data){
 	}
 	return
 }
-maintain_input_info::proc(){
-	maintain_input_q()
+
+gather_input_info::proc(){//triger this as fast as the game will run
 	add_input_to_event_q()
 	update_input_q()
-
-	maintain_input_q::proc(){
-		
-		for key_r , e in g.input_events.key_r{
-			if key_r == true{g.input_events.key_d[e] = false}
-		}
-		g.input_events.key_p = {}
-		g.input_events.key_r = {}
-
-		for mouse_r , e in g.input_events.mouse_r{
-			if mouse_r == true{g.input_events.mouse_d[e] = false}
-		}
-		g.input_events.mouse_p = {}
-		g.input_events.mouse_r = {}
-
-
-	}
-
+	
 	add_input_to_event_q::proc(){
 		t_input_data:input_data
 		for &e in &s.events {
@@ -220,14 +208,19 @@ maintain_input_info::proc(){
 					g.input_events.mouse_r[cast(sdl.MouseButtonFlag)(e.button.button - 1)] = true
 	
 				case .MOUSE_WHEEL:
+					g.input_events.mouse_wheel += {e.wheel.integer_x,e.wheel.integer_y}
 	
 				case .MOUSE_MOTION:
+					g.input_events.mouse_pos = {e.motion.x,e.motion.y}
+					g.input_events.mouse_move += {e.motion.xrel,e.motion.yrel}
+					// fmt.print(g.input_events.mouse_move,"mouse move \n")
 			}
 			if t_input_data.id != nil{
 				// append(&g.input_events.q,t_input_data) 
 			}
 		}  
 	}
+
 	update_input_q::proc(){
 		for &key ,e in &g.input_events.key{
 			key.pressed = g.input_events.key_p[e]
@@ -239,6 +232,26 @@ maintain_input_info::proc(){
 			mouse.down = g.input_events.mouse_d[e]
 			mouse.released = g.input_events.mouse_r[e]
 		}
+	}
+}
+
+maintain_input_info::proc(){// only triger this on tickes that use input if trigered faser then the inputs are used you may be mising inputs
+	maintain_input_q()
+	maintain_input_q::proc(){
+		for key_r , e in g.input_events.key_r{
+			if key_r == true{g.input_events.key_d[e] = false}
+		}
+		g.input_events.key_p = {}
+		g.input_events.key_r = {}
+
+		for mouse_r , e in g.input_events.mouse_r{
+			if mouse_r == true{g.input_events.mouse_d[e] = false}
+		}
+		g.input_events.mouse_p = {}
+		g.input_events.mouse_r = {}
+
+		g.input_events.mouse_move = {}
+		g.input_events.mouse_wheel = {}
 	}
 
 }

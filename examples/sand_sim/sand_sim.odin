@@ -233,6 +233,8 @@ init_chunck_mesh::proc(w_map:^Chunck, map_info:=DEFALT_MAP_INFO){
 	w_map.mesh = tg.create_mesh(mesh_cpu,cast(int)(map_info.wh.x*map_info.wh.y)*mesh_attribute_info.size)
 }
 
+
+
 init_map::proc(new_map:^^Map,){
 	delete_map(new_map^)
 	new_map^ = new(Map)

@@ -17,11 +17,19 @@ import "core:thread"
 import "core:time"
 import "core:math/rand"
 
+import vmem "core:mem/virtual"
+
+Server_CMD_Handle :: distinct Handle
+Server_CMD_Handle_Map :: hm.Handle_Map(Server_CMD, Server_CMD_Handle, 1000)
+
 Net_Commands_Type::enum{
 	join,
 	accept_join,
 	regect_join,
 	leave,
+	server_shutdown,
+	player_cmd,
+	sink_all_entity_data,
 	
 }
 Net_Flags::enum{
@@ -42,8 +50,15 @@ Net_Server_Info::struct{
 	id:u16, //this is this game inst id
 	clients:map[u16]Client,//This is only used if you are the server
 	server:Server,//This is only used if you are a Client
-	net_thread:^thread.Thread
+	cmd_q:Server_CMD_Handle_Map,
+	cmd_q_extra_data:vmem.Arena,
+	cmd_q_extra_arena_alloc:mem.Allocator,
+	net_thread:^thread.Thread,
+
+	temp_buff_s:[10000]u8,
+	temp_buff_r:[10000]u8,
 }
+
 
 Client::struct{
 	id:u16,
@@ -68,11 +83,13 @@ Server_Status::enum{
 
 
 
+
 start_server::proc(ip:string="10.0.0.155", port:int=35823){
 	if !g.server.net_state.is_up{
 		fmt.print("starting server\n")
 		g.server.net_state = tg.init_udp_echo_server(ip, port)
 		g.server.status = .hosting
+		add_player_by_id(g.server.id)
 	}
 }
 join_server::proc(ip:string="10.0.0.155", port:int=35823){
@@ -83,50 +100,37 @@ join_server::proc(ip:string="10.0.0.155", port:int=35823){
 	}
 	
 }
+leave_shutdown_server::proc(){
+	if g.server.status == .joined{
+		send_net_command_to_server(cmd={type=.leave,flags={.force_process}})
+		g.server.status = .nil
+		g.curent_game_mode = .start
+	}
+	if g.server.status == .hosting{
+		send_net_command_to_all_clients(cmd={type=.server_shutdown,flags={.force_process}})
+		g.server.status = .nil
+		g.curent_game_mode = .start
+	}
+
+	reset_game_state()
+	
+}
+
 
 do_networking::proc(){
-	for {
+	for !s.app_should_close{
 		switch g.server.net_state.type{
 		case .nil:
 		time.sleep(10000000)
 		case .host:
-			if g.server.net_state.is_up {
-				// tg.do_udp_print_server(&g.server.net_state)
-			}
-			cmd,endpoint,ok:=recv_command()
+			cmd,endpoint,buf,ok:=recv_command()
 			if ok{
-				switch cmd.type{
-				case .join:
-					has_allredy_joined := cmd.id in g.server.clients
-					if !has_allredy_joined {
-						g.server.clients[cmd.id] = {}
-						client_data:=&g.server.clients[cmd.id]
-						client_data.endpoint = endpoint
-						send_net_command_to_client(client_data,Net_Command{type = .accept_join, flags = {.force_process}})
-					}else{
-						send_net_command(endpoint, Net_Command{type = .regect_join, flags = {.force_process}})
-						fmt.print("Received multipul join reqwests\n")
-					}
-				case .leave:
-					delete_key(&g.server.clients, cmd.id)
-				case .accept_join,.regect_join:
-					fmt.print("Server Received Server Commands\n")
-				}
+				add_server_cmd_to_q(cmd,endpoint,buf)
 			}
-
-			if ok{fmt.print(cmd,"\n")}
 		case .client:
-			cmd,endpoint,ok:=recv_command()
+			cmd,endpoint,buf,ok:=recv_command()
 			if ok{
-				switch cmd.type{
-				case .accept_join:
-					g.server.status = .joined
-				case .regect_join:
-					g.server.status = .regected
-				case .join,.leave:
-					fmt.print("Client Received Client Commands\n")
-				}
-				fmt.print(cmd,endpoint,ok,"\n")
+				add_server_cmd_to_q(cmd,endpoint,buf)
 			}
 		}
 	}
@@ -149,39 +153,76 @@ send_join_request::proc(ip:string="10.0.0.155", port:int=35823,){
 	send_net_command(endpoint, cmd)
 }
 
-send_net_command::proc(endpoint:net.Endpoint, cmd:Net_Command){
+send_net_command::proc(endpoint:net.Endpoint, cmd:Net_Command, buf:[]u8 = {}){
 	cmd:=cmd
 	cmd.id =  g.server.id
+	cmd.data_len = cast(u32)len(buf)
 	command:=transmute([size_of(Net_Command)]u8)cmd
-	bsent,err:=tg.send_udp(&g.server.net_state, endpoint, command[:])
+	mem.copy(raw_data(&g.server.temp_buff_s),raw_data(&command),size_of(Net_Command))
+	if len(buf) > 0{
+		// mem.copy(raw_data(&g.server.temp_buff_s),raw_data(buf),size_of(buf))
+		copy(g.server.temp_buff_s[size_of(Net_Command):],buf[:])
+	} 
+	// cmd_full[:size_of(Net_Command)] = command[:]
+	bsent,err:=tg.send_udp(&g.server.net_state, endpoint, g.server.temp_buff_s[:size_of(Net_Command)+len(buf)])
+	
 }
 
-send_net_command_to_server::proc(cmd:Net_Command){
+send_net_command_to_server::proc(cmd:Net_Command, buf:[]u8 = {}){
 	cmd:=cmd
 	g.server.server.last_sent_cmd +=1
 	cmd.count = g.server.server.last_sent_cmd
 	cmd.id =  g.server.id
-	command:=transmute([size_of(Net_Command)]u8)cmd
-	bsent,err:=tg.send_udp(&g.server.net_state, g.server.server.endpoint, command[:])
+	
+	if g.server.status == .hosting{
+		new_buf:[]u8
+		if len(buf) >0{
+			data,err:=vmem.arena_alloc(&g.server.cmd_q_extra_data,len(buf),16)
+			if err == nil{
+				// mem.copy(raw_data(data),raw_data(buf),len(buf))
+				copy(data[:],buf[:])
+				new_buf = data
+			}
+		}
+		add_server_cmd_to_q(cmd,g.server.server.endpoint,new_buf)
+	}else{
+		send_net_command(g.server.server.endpoint, cmd, buf)
+	}
 }
 
-send_net_command_to_client::proc(client:^Client, cmd:Net_Command){
+send_net_command_to_client::proc(client:^Client, cmd:Net_Command, buf:[]u8 = {}){
 	cmd:=cmd
 	client.last_sent_cmd +=1
 	cmd.count = client.last_sent_cmd
 	cmd.id =  g.server.id
-	command:=transmute([size_of(Net_Command)]u8)cmd
-	bsent,err:=tg.send_udp(&g.server.net_state, client.endpoint, command[:])
+	// command:=transmute([size_of(Net_Command)]u8)cmd
+	// bsent,err:=tg.send_udp(&g.server.net_state, client.endpoint, command[:])
+	send_net_command(client.endpoint, cmd, buf)
+}
+send_net_command_to_all_clients::proc(cmd:Net_Command, buf:[]u8 = {}){
+	for client_id,&client in &g.server.clients{
+		send_net_command_to_client(&client, cmd, buf )
+	}
 }
 
-recv_command::proc()->(command:Net_Command, endpoint:net.Endpoint ,ok:bool){
-	raw_command:=transmute([size_of(Net_Command)]u8)command
-	bytes_recv, remote_endpoint, err_recv:=tg.recv_udp(&g.server.net_state ,raw_command[:])
+recv_command::proc()->(command:Net_Command, endpoint:net.Endpoint, buf:[]u8 ,ok:bool){
+	// raw_command:=transmute([size_of(Net_Command)]u8)command
+	// bytes_recv, remote_endpoint, err_recv:=tg.recv_udp(&g.server.net_state ,raw_command[:])
+	bytes_recv, remote_endpoint, err_recv:=tg.recv_udp(&g.server.net_state, g.server.temp_buff_r[:])
+	
+
 	endpoint = remote_endpoint
 	if err_recv == nil{
 		if bytes_recv != 0{
-			fmt.print(bytes_recv," bytes_recv\n")
-			command = transmute(Net_Command)raw_command
+			mem.copy(transmute(rawptr)(&command),raw_data(g.server.temp_buff_r[:]),size_of(Net_Command))
+			if command.data_len > 0{
+				data,err:=vmem.arena_alloc(&g.server.cmd_q_extra_data,cast(uint)command.data_len,16)
+				if err == nil{
+					// mem.copy(raw_data(data),raw_data(data[size_of(Net_Command):command.data_len+size_of(Net_Command)]),cast(int)command.data_len)
+					copy(data[:],g.server.temp_buff_r[size_of(Net_Command):command.data_len + size_of(Net_Command)])
+					buf = data
+				}
+			}
 			ok = true
 		}
 	}
@@ -189,6 +230,82 @@ recv_command::proc()->(command:Net_Command, endpoint:net.Endpoint ,ok:bool){
 }
 
 init_net_thread::proc(){
+	arena_err := vmem.arena_init_growing(&g.server.cmd_q_extra_data)
+	ensure(arena_err == nil)
+	arena_alloc := vmem.arena_allocator(&g.server.cmd_q_extra_data)
+
 	g.server.id = cast(u16)rand.uint32_range(0,4294967290)
 	g.server.net_thread = thread.create_and_start(do_networking)
+}
+
+
+Server_CMD::struct{
+	handle:Server_CMD_Handle,
+	endpoint:net.Endpoint,
+	net_command:Net_Command,
+	buf:[]u8,
+}
+add_server_cmd_to_q::proc(net_cmd:Net_Command, endpoint:net.Endpoint, buf:[]u8){
+	server_cmd:Server_CMD={
+		net_command = net_cmd,
+		endpoint = endpoint,
+		buf = buf
+	}
+	hm.add(&g.server.cmd_q,server_cmd)
+}
+pros_server_cmd_q::proc(){
+	cmd_q_iter := hm.make_iter(&g.server.cmd_q)
+	for server_cmd in hm.iter(&cmd_q_iter) {
+		cmd:=server_cmd.net_command
+		endpoint :=server_cmd.endpoint
+		switch g.server.net_state.type{
+		case .nil:
+		case .host:
+			switch cmd.type{
+			case .join:
+				has_allredy_joined := cmd.id in g.server.clients
+				if !has_allredy_joined {
+					g.server.clients[cmd.id] = {}
+					client_data:=&g.server.clients[cmd.id]
+					client_data.id = cmd.id
+					client_data.endpoint = endpoint
+					send_net_command_to_client(client_data,Net_Command{type = .accept_join, flags = {.force_process}})
+					add_player_by_id(client_data.id)
+				}else{
+					send_net_command(endpoint, Net_Command{type = .regect_join, flags = {.force_process}})
+					fmt.print("Received multipul join reqwests\n")
+				}
+			case .leave:
+				client_data:=&g.server.clients[cmd.id]
+				remove_player_by_id(client_data.id)
+				delete_key(&g.server.clients, cmd.id)
+			case .player_cmd:
+				do_player_cmd(server_cmd)
+			case .accept_join,.regect_join,.sink_all_entity_data,.server_shutdown:
+				fmt.print("Server Received Server Commands\n")
+			}
+			
+		case .client:
+			switch cmd.type{
+			case .accept_join:
+				g.server.status = .joined
+				g.server.server.endpoint = server_cmd.endpoint
+			case .regect_join:
+				g.server.status = .regected
+			case .sink_all_entity_data:
+				items:=mem.slice_data_cast([]Entity,server_cmd.buf)
+				resize_dynamic_array(&g.entitys.items,len(items))
+				copy( g.entitys.items[:],items[:])
+			case .server_shutdown:
+				g.server.status = .nil
+				g.curent_game_mode = .start
+				g.next_game_mode = .start
+			case .join,.leave,.player_cmd:
+				fmt.print("Client Received Client Commands",cmd.type,"\n")
+			}
+
+		}
+	}
+	vmem.arena_free_all(&g.server.cmd_q_extra_data)
+	hm.clear(&g.server.cmd_q)
 }

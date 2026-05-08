@@ -5,6 +5,7 @@ import "core:log"
 import "core:mem"
 import str"core:strings"
 import "core:fmt"
+import "core:time"
 import "core:math"
 import "core:path/filepath"
 import "core:encoding/json"
@@ -24,6 +25,8 @@ import "core:image/tga"
 Handle :: hm.Handle
 s:^State
 State :: struct{
+	app_should_close:bool,
+
 	defalt_context: runtime.Context,
 	allocator: runtime.Allocator,
 	frame_arena: runtime.Arena,
@@ -49,8 +52,8 @@ State :: struct{
 	copy_cmd_buf   :^sdl.GPUCommandBuffer,
 	render_cmd_buf :^sdl.GPUCommandBuffer,
 
-	delta_time: f32,
-	ticks:u64,
+
+	time:Time_Info,
 	events:[dynamic]sdl.Event,
 
 	input:Input_Data,
@@ -155,8 +158,7 @@ UBO ::struct{
 	mvp: matrix[4,4]f32
 }
 
-rot:f32=0// FIXME this should not be heare
-
+// rot:f32=0// FIXME this should not be heare
 
 
 
@@ -171,6 +173,7 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 		s = new(State)
 	}
 	new_state = s
+	
 	
 	s.frame_allocator = runtime.arena_allocator(&s.frame_arena)
 	s.allocator = allocator
@@ -220,27 +223,31 @@ init_window::proc(dec:Init_Dec=INIT_DEC)->(window_hd:Window_Handle){
 	}
 	s.swap_chain_texture_format = window.swap_chain_format
 	window_hd = hm.add(&s.windows,window)
+
+	// swapchane_ok:=sdl.SetGPUSwapchainParameters(s.gpu_device,window.data,.SDR,.IMMEDIATE)
 	return
 }
 
-start_frame::proc()->(ok:bool){
+start_frame::proc()->(app_should_close:bool){//returns true if app_should_close
 	free_all(s.frame_allocator)
 	clear(&s.events)
 	event:sdl.Event
 	s.input.mouse_move = {}//reset mouse_move
 	s.input.mouse_wheel = {}//reset mouse_wheel
-	ok = true
+
+	s.app_should_close = false
 	for sdl.PollEvent(&event) {
 		append(&s.events,event)
 		#partial switch event.type{
 		case .QUIT:
-			ok = false
+
+			s.app_should_close = true
 		case .WINDOW_CLOSE_REQUESTED:
 			win := sdl.GetWindowFromID(event.window.windowID)
 			sdl.DestroyWindow(win)
 			remove_closed_windows()
 			if hm.len(s.windows) <= 0 {
-				ok = false
+				s.app_should_close = true
 			}
 			case .KEY_DOWN:
 				s.input.key_down[event.key.scancode] = true
@@ -256,7 +263,7 @@ start_frame::proc()->(ok:bool){
 				s.input.mouse_wheel = event.wheel
 		}
 	}
-	return ok
+	return s.app_should_close 
 }
 
 create_render_pass :: proc (vert_shader_hd: Shader_Handle, frag_shader_hd: Shader_Handle, info:Render_Pass_Info=DEFALT_MASKED_PASS) ->(pass:R_Pass){
@@ -587,16 +594,18 @@ update_camera_zoom::proc(cam:^Camera, speed:f32=1, min_zoom:f32= .1,max_zoom:f32
 	}
 }
 
-update_camera_2d_pan::proc(cam:^Camera, dt:f32, speed:f32=10,){
+update_camera_2d_pan::proc(cam:^Camera, dt:f32=1, speed:f32=1,){
 	move_input:Vec3
 	if s.input.mouse_button_down[.RIGHT]{
 		move_input.x = s.input.mouse_move.x
 		move_input.y = s.input.mouse_move.y * -1
 		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
-		motion := move_input * speed * dt
+		motion := move_input * (speed*cam.zoom) * dt
 		cam.pos += motion
+		// fmt.print(motion,"pan",move_input,"mouse move" ,g.input_events.mouse_move,"\n")
 	}
 }
+
 
 //------------------------------------------------------------------------------
 Render_Target::struct{
@@ -639,4 +648,157 @@ cleane_app::proc(){
 }
 delete_r_pass::proc(pass:^R_Pass){
 	delete(pass.texture_sampler_binding)
+}
+
+
+
+Time_Info::struct{
+	start_time:time.Time, // time when game was started
+	
+	prev_frame_time:time.Time,
+	frame_time:f64,//time in seconds sence last frame
+
+	prev_tick_time:time.Time,
+	tick_time:f64, //seconds sence last tick
+
+	time:f64, //seconds from game start
+
+	fps:   f64,
+	tps:   f64,
+	smooth_fps:f64,
+	smooth_tps:f64,
+
+	is_120_hz:bool,
+	ti_120_hz:f64,
+	dt_120_hz:f64,
+
+	is_90_hz:bool,
+	ti_90_hz:f64,
+	dt_90_hz:f64,
+
+	is_80_hz:bool,
+	ti_80_hz:f64,
+	dt_80_hz:f64,
+
+	is_60_hz:bool,
+	ti_60_hz:f64,
+	dt_60_hz:f64,
+
+	is_30_hz:bool,
+	ti_30_hz:f64,
+	dt_30_hz:f64,
+
+	is_20_hz:bool,
+	ti_20_hz:f64,
+	dt_20_hz:f64,
+
+	is_15_hz:bool,
+	ti_15_hz:f64,
+	dt_15_hz:f64,
+
+	is_10_hz:bool,
+	ti_10_hz:f64,
+	dt_10_hz:f64,
+
+	temp:int,
+}
+
+update_time_fps_info::proc(){	
+	now := time.now()
+	s.time.temp+=1
+	if s.time.prev_frame_time != {} {
+		since := time.diff(s.time.prev_frame_time, now)
+		s.time.frame_time = time.duration_seconds(since)
+	}else{
+		s.time.frame_time = 100
+	}
+	s.time.prev_frame_time = now
+	if s.time.start_time == {} {
+		s.time.start_time = time.now()
+	}
+	s.time.time = time.duration_seconds(time.since(s.time.start_time))
+	// fmt.print(s.time.temp, s.time.time,s.time.fps,s.time.smooth_fps,"\n")
+	s.time.fps = 1/s.time.frame_time
+	// s.time.smooth_fps=s.time.fps
+	s.time.smooth_fps=math.lerp(s.time.smooth_fps,s.time.fps, 0.05)
+}
+update_time_info::proc(){
+	// new_ticks := sdl.GetTicks()
+	// s.time.delta = f64(new_ticks - s.time.ticks) / 1000
+	// s.time.ticks = new_ticks
+	// s.time.fps = 1/s.time.delta
+	// s.time.tps = 1/s.time.delta
+	// fmt.print(s.time.fps,"\n")
+
+
+	now := time.now()
+	if s.time.prev_tick_time != {} {
+		since := time.diff(s.time.prev_tick_time, now)
+		s.time.tick_time = time.duration_seconds(since)
+	}else{
+		s.time.tick_time = 100
+	}
+	s.time.prev_tick_time = now
+	if s.time.start_time == {} {
+		s.time.start_time = time.now()
+	}
+	s.time.tps = 1/s.time.tick_time
+	s.time.time = time.duration_seconds(time.since(s.time.start_time))
+
+	s.time.smooth_tps=math.lerp(s.time.smooth_tps,s.time.tps, 0.01)
+	s.time.is_120_hz = false
+	s.time.ti_120_hz += s.time.tick_time
+	if 1/s.time.ti_120_hz <=120{
+		s.time.is_120_hz = true
+		s.time.ti_120_hz = 0
+	}
+
+	s.time.is_90_hz = false
+	s.time.ti_90_hz += s.time.tick_time
+	if 1/s.time.ti_90_hz <=90{
+		s.time.is_90_hz = true
+		s.time.ti_90_hz = 0
+	}
+
+	s.time.is_80_hz = false
+	s.time.ti_80_hz += s.time.tick_time
+	if 1/s.time.ti_80_hz <=80{
+		s.time.is_80_hz = true
+		s.time.ti_80_hz = 0
+	}
+
+	s.time.is_60_hz = false
+	s.time.ti_60_hz += s.time.tick_time
+	if 1/s.time.ti_60_hz <=60{
+		s.time.is_60_hz = true
+		s.time.ti_60_hz = 0
+	}
+
+	s.time.is_30_hz = false
+	s.time.ti_30_hz += s.time.tick_time
+	if 1/s.time.ti_30_hz <=30{
+		s.time.is_30_hz = true
+		s.time.ti_30_hz = 0
+	}
+
+	s.time.is_20_hz = false
+	s.time.ti_20_hz += s.time.tick_time
+	if 1/s.time.ti_20_hz <=20{
+		s.time.is_20_hz = true
+		s.time.ti_20_hz = 0
+	}
+
+	s.time.is_15_hz = false
+	s.time.ti_15_hz += s.time.tick_time
+	if 1/s.time.ti_15_hz <=15{
+		s.time.is_15_hz = true
+		s.time.ti_15_hz = 0
+	}
+
+	s.time.is_10_hz = false
+	s.time.ti_10_hz += s.time.tick_time
+	if 1/s.time.ti_10_hz <=10{
+		s.time.is_10_hz = true
+		s.time.ti_10_hz = 0
+	}
 }
