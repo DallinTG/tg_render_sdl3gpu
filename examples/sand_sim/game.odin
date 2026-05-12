@@ -139,7 +139,7 @@ cleane_up_game::proc(){
 	thread.destroy(g.render_thread)
 	thread.destroy(g.server.net_thread)
 	tg.delete_r_pass(&g.pass)
-	delete_map(g.w_map)
+	delete_w_map(g.w_map)
 	tg.delete_camera(&g.cam)
 	hm.delete(&g.entitys)
 	delete(g.server.clients)
@@ -152,18 +152,20 @@ do_mode_start::proc(){
 
 }
 do_mode_loby::proc(){
-
+	update_map(g.w_map)
 }
 do_mode_game::proc(){
 	do_player_inputs()
-
-	set_cell_by_id({10,10}, .sand,g.w_map)
-	set_cell_by_id({20,20}, .water,g.w_map)
-	set_cell_by_id({200,20}, .gravel,g.w_map)
-	set_cell_by_id({175,20}, .lava,g.w_map)
-	set_cell_by_id({150,20}, .steam,g.w_map)
-	set_cell_by_id({350,20}, .steam,g.w_map)
+	if g.server.status == .hosting{
+		server_set_cell_by_id({10,10}, .sand,g.w_map)
+		server_set_cell_by_id({20,20}, .water,g.w_map)
+		server_set_cell_by_id({200,20}, .gravel,g.w_map)
+		server_set_cell_by_id({175,20}, .lava,g.w_map)
+		server_set_cell_by_id({150,20}, .steam,g.w_map)
+		server_set_cell_by_id({350,20}, .steam,g.w_map)
+	}
 	update_map(g.w_map)
+	mesh_map(g.w_map)
 	do_entitys(&g.entitys)
 	if is_input_event(.ui_esc){
 		leave_shutdown_server()
@@ -205,7 +207,7 @@ do_rendering::proc(){
 	rendering_loop:for !g.game_should_close {
 		tg.start_render()//----------------------------------------------------------->
 	
-		mesh_map(g.w_map)
+		// mesh_map(g.w_map)
 		render_map(g.w_map)
 		render_entitys(&g.entitys)
 		// wh:=tg.get_window_size(g.window)

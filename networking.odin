@@ -170,7 +170,7 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 		// fmt.println("Failed to receive data", err_recv)
 		return
 	}
-	received := net_st.buffer[:bytes_recv]
+	// received := net_st.buffer[:bytes_recv]
 	return
 }
 

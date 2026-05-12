@@ -30,6 +30,9 @@ Net_Commands_Type::enum{
 	server_shutdown,
 	player_cmd,
 	sink_all_entity_data,
+	sink_chunck,
+	sink_cell_cmds,
+	sink_w_map_info,
 	
 }
 Net_Flags::enum{
@@ -55,8 +58,8 @@ Net_Server_Info::struct{
 	cmd_q_extra_arena_alloc:mem.Allocator,
 	net_thread:^thread.Thread,
 
-	temp_buff_s:[10000]u8,
-	temp_buff_r:[10000]u8,
+	temp_buff_s:[30000]u8,
+	temp_buff_r:[30000]u8,
 }
 
 
@@ -230,7 +233,7 @@ recv_command::proc()->(command:Net_Command, endpoint:net.Endpoint, buf:[]u8 ,ok:
 }
 
 init_net_thread::proc(){
-	arena_err := vmem.arena_init_growing(&g.server.cmd_q_extra_data)
+	arena_err := vmem.arena_init_growing(&g.server.cmd_q_extra_data,2000000)
 	ensure(arena_err == nil)
 	arena_alloc := vmem.arena_allocator(&g.server.cmd_q_extra_data)
 
@@ -270,6 +273,7 @@ pros_server_cmd_q::proc(){
 					client_data.id = cmd.id
 					client_data.endpoint = endpoint
 					send_net_command_to_client(client_data,Net_Command{type = .accept_join, flags = {.force_process}})
+					sink_all_chuncks(g.w_map)
 					add_player_by_id(client_data.id)
 				}else{
 					send_net_command(endpoint, Net_Command{type = .regect_join, flags = {.force_process}})
@@ -281,7 +285,7 @@ pros_server_cmd_q::proc(){
 				delete_key(&g.server.clients, cmd.id)
 			case .player_cmd:
 				do_player_cmd(server_cmd)
-			case .accept_join,.regect_join,.sink_all_entity_data,.server_shutdown:
+			case .accept_join,.regect_join,.sink_all_entity_data,.sink_chunck,.sink_cell_cmds,.sink_w_map_info,.server_shutdown:
 				fmt.print("Server Received Server Commands\n")
 			}
 			
@@ -294,18 +298,28 @@ pros_server_cmd_q::proc(){
 				g.server.status = .regected
 			case .sink_all_entity_data:
 				items:=mem.slice_data_cast([]Entity,server_cmd.buf)
+				fmt.print("bad\n")
 				resize_dynamic_array(&g.entitys.items,len(items))
+				// reserve_dynamic_array(&g.entitys.items,len(items))
 				copy( g.entitys.items[:],items[:])
+			case .sink_chunck:
+				resv_sink_chunck(server_cmd)
+			
 			case .server_shutdown:
 				g.server.status = .nil
 				g.curent_game_mode = .start
 				g.next_game_mode = .start
+			case .sink_cell_cmds:
+				resv_set_cell_cmds(server_cmd,g.w_map)
+			case .sink_w_map_info:
+				resv_w_map_info(server_cmd,g.w_map)
 			case .join,.leave,.player_cmd:
 				fmt.print("Client Received Client Commands",cmd.type,"\n")
 			}
 
 		}
 	}
+	// fmt.print("total_reserved",g.server.cmd_q_extra_data.total_reserved,"   total_used",g.server.cmd_q_extra_data.total_used,"\n")
 	vmem.arena_free_all(&g.server.cmd_q_extra_data)
 	hm.clear(&g.server.cmd_q)
 }

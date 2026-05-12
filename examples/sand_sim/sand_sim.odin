@@ -9,27 +9,46 @@ import "core:c"
 import "core:fmt"
 import "core:math"
 import "core:math/rand"
+
 import hm "../../handle_map_static_virtual"
 import an"ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
 import "base:intrinsics"
 
-MAP_SIZE:[2]int:{8,4}
-CHUNCK_SIZE::64
+// MAP_SIZE:[2]int:{32,16}
+// CHUNCK_SIZE::16
+MAP_SIZE:[2]int:{16,8}
+CHUNCK_SIZE::32 
+// MAP_SIZE:[2]int:{8,4}
+// CHUNCK_SIZE::64 
 
+MAX_CELL_CMDS::1000
 
 Map::struct{
+	tick_count:u32,
+	rand_tick_seed:u32,
+	tick_count_loc:u32,
 	chuncks:[MAP_SIZE.x][MAP_SIZE.y]Chunck,
 	l_r:int,
+
+	list_of_add_cell_CMD:[MAX_CELL_CMDS]Add_Cell_CMD,
+	cell_CMD_count:int,
+	next_chunck_to_sink:[2]int,
 	// info:Map_Info,
 }
 Chunck::struct{
-	
-	l_r:int,
+	tick_count:u32,
+	// l_r:int,
 	mesh:tg.Mesh_Handle,
 	cells:[CHUNCK_SIZE][CHUNCK_SIZE]Cell,
 	cell_has_moved:[CHUNCK_SIZE][CHUNCK_SIZE]bool,
+	has_changed:bool,
+	change_count:i32,
+}
+Sink_Chunck_Data::struct{//this is the data that gets sent over udp to sink chunck data
+	pos:[2]int,
+	cells:[CHUNCK_SIZE][CHUNCK_SIZE]Cell,
 }
 waf::2
 Map_Info::struct{
@@ -236,7 +255,7 @@ init_chunck_mesh::proc(w_map:^Chunck, map_info:=DEFALT_MAP_INFO){
 
 
 init_map::proc(new_map:^^Map,){
-	delete_map(new_map^)
+	delete_w_map(new_map^)
 	new_map^ = new(Map)
 	for &row in new_map^.chuncks{
 		for &chunck in row{
@@ -249,7 +268,7 @@ init_chunck::proc(new_chunck:^^Chunck,){
 	new_chunck^ = new(Chunck)
 	init_chunck_mesh(new_chunck^)
 }
-delete_map::proc(w_map:^Map){
+delete_w_map::proc(w_map:^Map){
 	if w_map == nil{return}
 	for &row in w_map^.chuncks{
 		for &chunck in row{
@@ -266,7 +285,15 @@ delete_chunck::proc(w_map:^Chunck){
 mesh_map::proc(w_map:^Map){
 	for &chuncks,x in &w_map.chuncks{
 		for &chunck,y in &chuncks{
-			mesh_chunck(&chunck,{x,y})
+			if chunck.has_changed{
+				mesh_chunck(&chunck,{x,y})
+			}
+		}
+	}
+	for &chuncks,x in &w_map.chuncks{
+		for &chunck,y in &chuncks{
+			chunck.has_changed = false
+			chunck.cell_has_moved = {}
 		}
 	}
 }
@@ -300,28 +327,49 @@ render_map::proc(w_map:^Map){
 
 rand_1_1:[2]int:{1,-1}
 update_map::proc(w_map:^Map){
-	// w_map.cell_has_moved = {}
-	rand_1:[2]int=rand_1_1
-	w_map.l_r=rand.choice(rand_1[:])
-	// w_map.l_r=rand.choice(rand_1[:])
-	for &chuncks,x in &w_map.chuncks{
-		for &chunck,y in &chuncks{
-			chunck.cell_has_moved = {}
-		}
+	fmt.print(hash.ginger_hash16(cast(u16)w_map.tick_count),"\n")
+	w_map.rand_tick_seed = cast(u32)hash.ginger_hash16(cast(u16)w_map.tick_count)
+	if w_map.rand_tick_seed % 2 == 0{
+		w_map.l_r = -1
+	}else{
+		w_map.l_r = 1
 	}
+
+	// w_map.l_r=rand.choice(rand_1[:])
+
+
+
+	proses_set_cell_cmd(w_map)
+	sink_next_chunck(w_map)
+	sink_w_map_info(g.w_map)
+
+
 	for &chuncks,x in &w_map.chuncks{
 		for &chunck,y in &chuncks{
 			update_chunck(&chunck,x,y,w_map)
 		}
 	}
+
+	w_map.tick_count+=1
+	w_map.tick_count_loc+=1
+
+
 }
 update_chunck::proc(chunck:^Chunck,c_x:int,c_y:int,w_map:^Map){
 	// chunck.cell_has_moved = {}
-	rand_1:[2]int=rand_1_1
-	chunck.l_r=rand.choice(rand_1[:])
+	// rand_1:[2]int=rand_1_1
+	// chunck.l_r=rand.choice(rand_1[:])
+
+
 	for &cells,x in &chunck.cells{
-		for &cell,y in &cells{
-			update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),&cell,w_map)
+		if w_map.tick_count % 2 == 0{
+			for &cell,y in &cells{
+				update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),&cell,w_map)
+			}
+		}else{
+			#reverse for &cell,y in &cells{
+				update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),&cell,w_map)
+			}
 		}
 	}
 }
@@ -336,6 +384,7 @@ update_cell::proc(x,y:int,cell:^Cell,w_map:^Map){
 		do_cell_flow(cell, c, {x,y}, w_map)
 	}
 }
+
 do_cell_grav::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
 	if .has_grav not_in cell.flags {return}
 	new_y:int
@@ -354,7 +403,6 @@ do_cell_grav::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
 			}
 		}
 	}
-	
 }
 
 do_cell_flow::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
@@ -371,31 +419,43 @@ do_cell_flow::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
 		}
 	}
 }
+
 do_cell_gass::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
 	if get_cell_moved(pos, w_map){return}
 	if .is_gass not_in cell.flags{return}
-	rand_1:[2]int=rand_1_1
-	l_r:=rand.choice(rand_1[:])
+	// rand_1:[2]int=rand_1_1
+	l_r:int
+	l_r_2:int
+	if hash.ginger_hash16(cast(u16)(w_map.rand_tick_seed*(cast(u32)pos.x+w_map.rand_tick_seed))) % 2 == 0{
+		l_r = 1
+	}else{
+		l_r = -1
+	}
+
+	if hash.ginger_hash16(cast(u16)(w_map.rand_tick_seed*(cast(u32)pos.y+w_map.rand_tick_seed))) % 2 == 0{
+		l_r_2 = 1
+	}else{
+		l_r_2 = -1
+	}
 	if l_r >0{
-		l_r=rand.choice(rand_1[:])
-		if can_cell_fall_through(pos,{pos.x+l_r, pos.y},w_map){ //flow right
+		l_r=l_r_2
+		if can_cell_fall_through(pos,{pos.x+l_r, pos.y},w_map){
 			swap_cell(pos,{pos.x+l_r,pos.y},w_map)
 			return
-		}else if can_cell_fall_through(pos,{pos.x+l_r*-1, pos.y},w_map){ //flow left
+		}else if can_cell_fall_through(pos,{pos.x+l_r*-1, pos.y},w_map){ 
 			swap_cell(pos,{pos.x+l_r*-1, pos.y},w_map)
 			return
 		}
 	}else{
-		l_r=rand.choice(rand_1[:])
-		if can_cell_fall_through(pos,{pos.x, pos.y+l_r},w_map){ //flow left
+		l_r=l_r_2
+		if can_cell_fall_through(pos,{pos.x, pos.y+l_r},w_map){
 			swap_cell(pos,{pos.x, pos.y+l_r},w_map)
 			return
-		}else if can_cell_fall_through(pos,{pos.x, pos.y+l_r*-1},w_map){ //flow left
+		}else if can_cell_fall_through(pos,{pos.x, pos.y+l_r*-1},w_map){
 			swap_cell(pos,{pos.x, pos.y+l_r*-1},w_map)
 			return
 		}
 	}
-	
 }
 
 // do_cell_temperature::proc(c:^Cell_Data,pos:[2]int,w_map:^Chunck){
@@ -431,14 +491,26 @@ get_cell::proc(cell:[2]int,w_map:^Map)->(cell_data:^Cell){
 }
 set_cell_moved::proc(cell:[2]int,w_map:^Map, state:bool = true){
 	if !is_cell_valid(cell,w_map) {return}
-	get_chunck(cell, w_map).cell_has_moved[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE] = state
+	chunck:=get_chunck(cell, w_map)
+	chunck.has_changed =  state
+	if state == true{
+		chunck.change_count += 1
+	}
+	chunck.cell_has_moved[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE] = state
 }
 get_cell_moved::proc(cell:[2]int,w_map:^Map,)->(bool){
 	if !is_cell_valid(cell,w_map) {return true}
-	return get_chunck(cell, w_map).cell_has_moved[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE]
+	chunck:=get_chunck(cell, w_map)
+	return chunck.cell_has_moved[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE]
 }
 get_chunck::proc(cell:[2]int,w_map:^Map)->(chunck_data:^Chunck){
 	chunck_data = &w_map.chuncks[cell.x/CHUNCK_SIZE][cell.y/CHUNCK_SIZE]
+	return chunck_data
+}
+get_chunck_by_pos::proc(pos:[2]int,w_map:^Map)->(chunck_data:^Chunck){
+	if pos.x < 0 || pos.x > MAP_SIZE.x-1{return nil}
+	if pos.y < 0 || pos.y > MAP_SIZE.y-1{return nil}
+	chunck_data = &w_map.chuncks[pos.x][pos.y]
 	return chunck_data
 }
 
@@ -510,6 +582,50 @@ set_cell_by_id::proc(cell:[2]int, id:Cell_ids, w_map:^Map){
 	set_cell(cell, {id =id, temperature = Cell_Info[id].starting_temperature ,hp = Cell_Info[id].starting_hp, flags = Cell_Info[id].flags}, w_map)
 }
 
+
+Add_Cell_CMD::struct{
+	pos:[2]int,
+	cell_data:Cell,
+}
+server_set_cell::proc(cell:[2]int, new_cell_data:Cell, w_map:^Map){
+	if g.server.status != .hosting {return}
+	// set_cell(cell, new_cell_data, w_map)
+	if w_map.cell_CMD_count< 1000{
+		w_map.list_of_add_cell_CMD[w_map.cell_CMD_count] = {cell,new_cell_data}
+		w_map.cell_CMD_count+=1
+	}
+	
+}
+
+server_set_cell_by_id::proc(cell:[2]int, id:Cell_ids, w_map:^Map){
+	server_set_cell(cell, {id =id, temperature = Cell_Info[id].starting_temperature ,hp = Cell_Info[id].starting_hp, flags = Cell_Info[id].flags}, w_map)
+}
+
+
+
+proses_set_cell_cmd::proc(w_map:^Map){
+	if g.server.status == .hosting{
+		cell_cmd := w_map.list_of_add_cell_CMD[:w_map.cell_CMD_count]
+		buf:=mem.slice_data_cast([]u8,cell_cmd)
+		send_net_command_to_all_clients({type = .sink_cell_cmds},buf)
+	}
+	for i := 0; i < w_map.cell_CMD_count; i += 1 {
+		cell:=w_map.list_of_add_cell_CMD[i]
+		set_cell(cell.pos, cell.cell_data,w_map)
+	}
+	w_map.cell_CMD_count = 0
+	w_map.list_of_add_cell_CMD = {}
+}
+
+resv_set_cell_cmds::proc(server_cmd:^Server_CMD,w_map:^Map){
+	cell_cmd:=mem.slice_data_cast([]Add_Cell_CMD,server_cmd.buf)
+	for &cell in &cell_cmd{
+		if w_map.cell_CMD_count < MAX_CELL_CMDS-1{
+			w_map.cell_CMD_count+=1
+			w_map.list_of_add_cell_CMD[w_map.cell_CMD_count] = cell
+		}
+	}
+}
 
 
 
@@ -585,4 +701,68 @@ draw_chunck::proc(
 			}
 		}
 	}
+}
+
+sink_all_chuncks::proc(w_map:^Map){
+	if g.server.status == .hosting{
+		for &row,x in &w_map.chuncks{
+			for &chunck,y in &row{
+				send_sink_chunck({x,y},w_map)
+			}
+		}
+	}
+}
+send_sink_chunck::proc(pos:[2]int,w_map:^Map){
+	chunck:=get_chunck_by_pos(pos, w_map)
+	if chunck == nil{
+		fmt.print("faild to send chunk spesifid cunck is out of bounds\n")
+		return
+	}
+	chunck.change_count = 0
+	sink_chunck:Sink_Chunck_Data={
+		pos = pos,
+		cells = chunck.cells,
+	}
+	temp_buf:=transmute([size_of(Sink_Chunck_Data)]u8)sink_chunck
+	send_net_command_to_all_clients(cmd = {type=.sink_chunck},buf = temp_buf[:])
+}
+
+sink_next_chunck::proc(w_map:^Map){
+	if g.server.status != .hosting{return}
+	w_map.next_chunck_to_sink.x+=1
+	if w_map.next_chunck_to_sink.x > MAP_SIZE.x-1{
+		w_map.next_chunck_to_sink.x = 0
+		w_map.next_chunck_to_sink.y+=1
+	}
+	if w_map.next_chunck_to_sink.y > MAP_SIZE.y-1{
+		w_map.next_chunck_to_sink.y = 0
+		w_map.next_chunck_to_sink.x = 0
+	}
+	send_sink_chunck(w_map.next_chunck_to_sink,w_map,)
+	
+}
+
+resv_sink_chunck::proc(server_cmd:^Server_CMD){
+	sink_chunck_s:=mem.slice_data_cast([]Sink_Chunck_Data,server_cmd.buf)[0:1]
+	chunck:=get_chunck_by_pos(sink_chunck_s[0].pos, g.w_map)
+	chunck.has_changed = true
+	chunck.cell_has_moved = {}
+	chunck.cells = sink_chunck_s[0].cells
+
+}
+
+Sink_W_Map_Info::struct{
+	tick_count:u32,
+}
+sink_w_map_info::proc(w_map:^Map){
+	sink_w_map_info:Sink_W_Map_Info={
+		tick_count = w_map.tick_count,
+	}
+	temp_buf:=transmute([size_of(Sink_W_Map_Info)]u8)sink_w_map_info
+	send_net_command_to_all_clients(cmd = {type=.sink_w_map_info},buf = temp_buf[:])
+}
+
+resv_w_map_info::proc(server_cmd:^Server_CMD,w_map:^Map){
+	w_map_info:=mem.slice_data_cast([]Sink_W_Map_Info,server_cmd.buf)[0:1]
+	w_map.tick_count = w_map_info[0].tick_count
 }

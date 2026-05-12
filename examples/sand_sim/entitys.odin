@@ -120,10 +120,10 @@ add_player_by_id::proc(id:u16){
 		type = .player,
 		type_data = Player_Entitys{},
 	}
-	g.all_player_data.players[id] = spawn_entity(&g.entitys,player)
+	ent_hd:=spawn_entity(&g.entitys,player)
+	g.all_player_data.players[id] = ent_hd
 }
 remove_player_by_id::proc(id:u16){
-	fmt.print("removed player\n")
 	hm.remove(&g.entitys,g.all_player_data.players[id])
 	delete_key(&g.all_player_data.players, id)
 }
