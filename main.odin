@@ -12,6 +12,7 @@ import "core:encoding/json"
 import lin"core:math/linalg"
 import "base:runtime"
 import hm "handle_map_static_virtual"
+import steam "steamworks"
 import "core:os"
 
 import sc"shader_cross"
@@ -26,6 +27,7 @@ Handle :: hm.Handle
 s:^State
 State :: struct{
 	app_should_close:bool,
+	steam:Steam_Info,
 
 	defalt_context: runtime.Context,
 	allocator: runtime.Allocator,
@@ -95,6 +97,7 @@ INIT_DEC:Init_Dec:{
 Input_Data::struct{
 	key_down: #sparse[sdl.Scancode]bool,
 	mouse_button_down: #sparse[sdl.MouseButtonFlag]bool,
+	mouse_pos:Vec2,
 	mouse_move: Vec2,
 	mouse_wheel:sdl.MouseWheelEvent,
 }
@@ -174,7 +177,7 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	}
 	new_state = s
 	
-	
+	init_steam()
 	s.frame_allocator = runtime.arena_allocator(&s.frame_arena)
 	s.allocator = allocator
 
@@ -400,13 +403,13 @@ do_render_pass::proc(
 		proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90 * cam.zoom), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y,-100, 100)
 	case .orthographic:
 		pos:=cam.pos
-		view_mat = lin.matrix4_translate_f32(pos)
+		view_mat = lin.matrix4_translate_f32({-pos.x,-pos.y,-pos.z})
 		proj_mat = lin.matrix_ortho3d_f32(
 			left= 0, 
 			right= cast(f32)render_target.wh.x * cam.zoom, 
 			bottom= -cast(f32)render_target.wh.y * cam.zoom, 
 			top= 0, 
-			near= 0.001, 
+			near= -1.001, 
 			far= 1000,
 		)
 	}
@@ -485,10 +488,6 @@ remove_closed_windows::proc(){
 	}
 }
 
-frame_cstring :: proc(string: string, loc := #caller_location) -> cstring {
-	return str.clone_to_cstring(string, s.frame_allocator, loc)
-}
-
 get_window::proc(window_hd:Window_Handle) -> (window:^Window){
 	window = hm.get(s.windows,window_hd)
 	return window
@@ -544,7 +543,11 @@ delete_camera::proc(cam:^Camera){
 		sdl.ReleaseGPUTexture(s.gpu_device,cam.depth_texture)
 	}
 }
-
+screane_space_to_world_2d::proc(cam:^Camera,pos:[2]f32)->(world:[2]f32){
+	pos_world :[2]f32= {pos.x,pos.y} * cam.zoom
+	world = cam.pos.xy + pos_world
+	return 
+}
 // this is a very rudimenty controler and should only be used for testing
 update_camera_3d::proc(cam:^Camera, dt:f32, sensitivity:f32=3, speed:f32=1.5,){
 	move_input:Vec2
@@ -602,7 +605,6 @@ update_camera_2d_pan::proc(cam:^Camera, dt:f32=1, speed:f32=1,){
 		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
 		motion := move_input * (speed*cam.zoom) * dt
 		cam.pos += motion
-		// fmt.print(motion,"pan",move_input,"mouse move" ,g.input_events.mouse_move,"\n")
 	}
 }
 
@@ -717,18 +719,11 @@ update_time_fps_info::proc(){
 		s.time.start_time = time.now()
 	}
 	s.time.time = time.duration_seconds(time.since(s.time.start_time))
-	// fmt.print(s.time.temp, s.time.time,s.time.fps,s.time.smooth_fps,"\n")
 	s.time.fps = 1/s.time.frame_time
-	// s.time.smooth_fps=s.time.fps
 	s.time.smooth_fps=math.lerp(s.time.smooth_fps,s.time.fps, 0.05)
 }
 update_time_info::proc(){
-	// new_ticks := sdl.GetTicks()
-	// s.time.delta = f64(new_ticks - s.time.ticks) / 1000
-	// s.time.ticks = new_ticks
-	// s.time.fps = 1/s.time.delta
-	// s.time.tps = 1/s.time.delta
-	// fmt.print(s.time.fps,"\n")
+
 
 
 	now := time.now()

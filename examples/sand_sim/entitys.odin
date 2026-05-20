@@ -20,12 +20,14 @@ Entity_Types::enum{
 	mob,
 }
 
+
 Entity::struct{
-	pos:[3]f32,
 	handle:Entity_Handle,
+	pos:[3]f32,
+	velocity:[2]f32,
+	collider:[2]f32,
 	type:Entity_Types,
 	type_data:Entitys_Union,
-	
 }
 
 Entitys_Union::union{
@@ -48,14 +50,14 @@ init_entitys_mesh::proc(){
 }
 
 spawn_entity::proc(entitys:^Entity_Handle_Map,ent:Entity={})->(hd:Entity_Handle){
-	hd = hm.add(entitys,Entity{type_data = Player_Entitys{}})
+	hd = hm.add(entitys,Entity{type_data = Player_Entitys{},collider = {2,3}})
 	return
 }
 
 do_entitys::proc(entitys:^Entity_Handle_Map,){
 	ent_iter := hm.make_iter(entitys)
 	for ent in hm.iter(&ent_iter) {
-		
+		do_entity_physics(ent)
 		switch &e in &ent.type_data{
 			case Player_Entitys:
 			
@@ -94,20 +96,17 @@ get_entity::proc(hd:Entity_Handle)->(ent:^Entity){
 	ent = hm.get(g.entitys,hd)
 	return
 }
-
-Player_CMDs::enum{
-	left,
-	right,
-	up,
-	down,
-	jump,
-}
 All_Player_data::struct{
 	players:map[u16]Entity_Handle,
 }
 Player_CMD::struct{
-	cmd:Player_CMDs,
-	v1:f32,
+	move_vec:[2]f32,
+	mouse_pos:[2]int,
+	jump:bool,
+	l_click_d:bool,
+	l_click_p:bool,
+	r_click_d:bool,
+	r_click_p:bool,
 }
 send_player_cmd::proc(cmd:Player_CMD){
 	temp_data:=transmute([size_of(Player_CMD)]u8)cmd
@@ -130,15 +129,57 @@ remove_player_by_id::proc(id:u16){
 do_players::proc(ent:^Entity,player:^Player_Entitys){
 
 }
+GRAV:[2]f32:{0,-.3}
+AIR_RESIST: f32 : 0.98
+do_entity_physics::proc(ent:^Entity){
+	ent.velocity +=GRAV
+	ent.velocity *= AIR_RESIST
+	if ent.pos.x + ent.velocity.x <= 0{ // MAP_SIZE.x * CHUNCK_SIZE *CELL_SIZE
+		ent.pos.x = 0
+		ent.velocity.x = 0
+	}
+	if ent.pos.y + ent.velocity.y >= 0{
+		ent.pos.y = 0
+		ent.velocity.x = 0
+	}
+	if ent.pos.x + ent.velocity.x >= cast(f32)FULL_MAP_SIZE.x{
+		ent.pos.x = cast(f32)FULL_MAP_SIZE.x
+		ent.velocity.y = 0
+	}
+	if ent.pos.y + ent.velocity.y <= cast(f32)-FULL_MAP_SIZE.y{
+		ent.pos.y = cast(f32)-FULL_MAP_SIZE.y
+		ent.velocity.y = 0
+	}
+	ent.pos.xy += ent.velocity
+}
+
 do_player_inputs::proc(){
+
+	cmd:Player_CMD
+	mouse_pos:=get_cell_pos_by_pos(g.input_events.mouse_pos)
+	cmd.mouse_pos = mouse_pos
 	if is_input_event(.move_l){
-		// ent.pos.x += -1
-		send_player_cmd({cmd=.left})
+		cmd.move_vec+={-1,0}
 	}
 	if is_input_event(.move_r){
-		send_player_cmd({cmd=.right})
-		// ent.pos.x += 1
+		cmd.move_vec+={1,0}
 	}
+	if is_input_event(.jump){
+		cmd.jump = true
+	}
+	if is_input_event(.fire){
+		cmd.l_click_d = true
+	}
+	if is_input_event(.fire_p){
+		cmd.l_click_p = true
+	}
+	if is_input_event(.alt_fire){
+		cmd.r_click_d = true
+	}
+	if is_input_event(.alt_fire_p){
+		cmd.r_click_p = true
+	}
+	send_player_cmd(cmd)
 }
 
 do_player_cmd::proc(cmd:^Server_CMD){
@@ -147,18 +188,12 @@ do_player_cmd::proc(cmd:^Server_CMD){
 	temp:[size_of(Player_CMD)]u8
 	copy(temp[:],cmd.buf[:size_of(Player_CMD)])
 	player_cmd:=transmute(Player_CMD)temp
-	move_vec:[3]f32
-	move_speed:f32=.5
-	switch 	player_cmd.cmd{
-	case .left:
-		move_vec+={-1,0,0}
-	case .right:
-		move_vec+={1,0,0}
-	case .up:
-		move_vec+={0,-1,0}
-	case .down:
-		move_vec+={0,1,0}
-	case .jump:
+	move_speed:f32=.4
+	if player_cmd.jump{
+		player.velocity.y += 10
 	}
-	player.pos +=move_vec * move_speed
+	player.velocity +=player_cmd.move_vec * move_speed
+	if player_cmd.l_click_d {
+		server_set_cell_by_id(player_cmd.mouse_pos,.water,g.w_map)
+	}
 }

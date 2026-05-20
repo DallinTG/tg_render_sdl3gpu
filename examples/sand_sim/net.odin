@@ -65,13 +65,13 @@ Net_Server_Info::struct{
 
 Client::struct{
 	id:u16,
-	endpoint: net.Endpoint,
+	endpoint: tg.Endpoint,
 	last_resv_cmd:u32,
 	last_sent_cmd:u32,
 }
 Server::struct{
 	id:u16,
-	endpoint: net.Endpoint,
+	endpoint: tg.Endpoint,
 	is_in_server:bool,
 	last_resv_cmd:u32,
 	last_sent_cmd:u32,
@@ -156,7 +156,7 @@ send_join_request::proc(ip:string="10.0.0.155", port:int=35823,){
 	send_net_command(endpoint, cmd)
 }
 
-send_net_command::proc(endpoint:net.Endpoint, cmd:Net_Command, buf:[]u8 = {}){
+send_net_command::proc(endpoint:tg.Endpoint, cmd:Net_Command, buf:[]u8 = {}){
 	cmd:=cmd
 	cmd.id =  g.server.id
 	cmd.data_len = cast(u32)len(buf)
@@ -208,7 +208,7 @@ send_net_command_to_all_clients::proc(cmd:Net_Command, buf:[]u8 = {}){
 	}
 }
 
-recv_command::proc()->(command:Net_Command, endpoint:net.Endpoint, buf:[]u8 ,ok:bool){
+recv_command::proc()->(command:Net_Command, endpoint:tg.Endpoint, buf:[]u8 ,ok:bool){
 	// raw_command:=transmute([size_of(Net_Command)]u8)command
 	// bytes_recv, remote_endpoint, err_recv:=tg.recv_udp(&g.server.net_state ,raw_command[:])
 	bytes_recv, remote_endpoint, err_recv:=tg.recv_udp(&g.server.net_state, g.server.temp_buff_r[:])
@@ -244,11 +244,11 @@ init_net_thread::proc(){
 
 Server_CMD::struct{
 	handle:Server_CMD_Handle,
-	endpoint:net.Endpoint,
+	endpoint:tg.Endpoint,
 	net_command:Net_Command,
 	buf:[]u8,
 }
-add_server_cmd_to_q::proc(net_cmd:Net_Command, endpoint:net.Endpoint, buf:[]u8){
+add_server_cmd_to_q::proc(net_cmd:Net_Command, endpoint:tg.Endpoint, buf:[]u8){
 	server_cmd:Server_CMD={
 		net_command = net_cmd,
 		endpoint = endpoint,
@@ -298,7 +298,6 @@ pros_server_cmd_q::proc(){
 				g.server.status = .regected
 			case .sink_all_entity_data:
 				items:=mem.slice_data_cast([]Entity,server_cmd.buf)
-				fmt.print("bad\n")
 				resize_dynamic_array(&g.entitys.items,len(items))
 				// reserve_dynamic_array(&g.entitys.items,len(items))
 				copy( g.entitys.items[:],items[:])

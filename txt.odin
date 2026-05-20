@@ -157,7 +157,7 @@ draw_fps :: proc(
 	
 	
 ){
-	// fmt.print(fmt.tprint("fPS:",math.round(s.time.fps)),"\n")
+
 	draw_text(mesh,vert_t,pos, fmt.tprint("FPS:",math.round(s.time.smooth_fps)),origin,rot,col,scale,fixed_spacing,txt_origin)
 }
 

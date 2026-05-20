@@ -78,6 +78,10 @@ input_e_id::enum{
     move_r,
     move_d,
     move_u,
+    alt_fire,
+    fire,
+    alt_fire_p,
+    fire_p,
     test,
     
 }
@@ -97,6 +101,10 @@ reg_input_events::proc(){
     reg_event(.ui_debug,{{{data=           {id= sdl.Scancode.F10,             pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.ui_l_c,{{{data=             {id= sdl.MouseButtonFlag.LEFT,     pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.ui_l_c_d,{{{data=           {id= sdl.MouseButtonFlag.LEFT,     pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+    reg_event(.fire,{{{data=               {id= sdl.MouseButtonFlag.LEFT,     pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+    reg_event(.alt_fire,{{{data=           {id= sdl.MouseButtonFlag.RIGHT,    pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+    reg_event(.fire_p,{{{data=             {id= sdl.MouseButtonFlag.LEFT,     pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+    reg_event(.alt_fire_p,{{{data=         {id= sdl.MouseButtonFlag.RIGHT,    pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.ui_r_c,{{{data=             {id= sdl.MouseButtonFlag.RIGHT,    pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.ui_m_c,{{{data=             {id= sdl.MouseButtonFlag.MIDDLE,   pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(.test,{{{data=               {id= sdl.Scancode.LSHIFT,          pressed= false,down= true , released= false}, consum_press= true , consum_down= true ,},{data=        {id= sdl.Scancode.SPACE, pressed= true,down= false, released= false}, consum_press= true, consum_down= true,},{},{}}})
@@ -213,7 +221,6 @@ gather_input_info::proc(){//triger this as fast as the game will run
 				case .MOUSE_MOTION:
 					g.input_events.mouse_pos = {e.motion.x,e.motion.y}
 					g.input_events.mouse_move += {e.motion.xrel,e.motion.yrel}
-					// fmt.print(g.input_events.mouse_move,"mouse move \n")
 			}
 			if t_input_data.id != nil{
 				// append(&g.input_events.q,t_input_data) 

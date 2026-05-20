@@ -20,6 +20,8 @@ import "base:intrinsics"
 // CHUNCK_SIZE::16
 MAP_SIZE:[2]int:{16,8}
 CHUNCK_SIZE::32 
+CELL_SIZE::10
+FULL_MAP_SIZE:[2]int:{ MAP_SIZE.x * CHUNCK_SIZE *CELL_SIZE, (MAP_SIZE.y * CHUNCK_SIZE *CELL_SIZE)}
 // MAP_SIZE:[2]int:{8,4}
 // CHUNCK_SIZE::64 
 
@@ -64,7 +66,7 @@ Cell_Neighbors:[4][2]int:{
 	{-1,0},
 }
 
-CELL_SIZE::10
+
 Cell_Temperature::enum i8{
 	
 	Deth_Cold = 6,
@@ -252,6 +254,10 @@ init_chunck_mesh::proc(w_map:^Chunck, map_info:=DEFALT_MAP_INFO){
 	w_map.mesh = tg.create_mesh(mesh_cpu,cast(int)(map_info.wh.x*map_info.wh.y)*mesh_attribute_info.size)
 }
 
+get_cell_pos_by_pos::proc(pos:[2]f32)->([2]int){
+	cell := tg.screane_space_to_world_2d(&g.cam,{pos.x,-pos.y}) / CELL_SIZE
+	return {cast(int)cell.x,cast(int)-cell.y}
+}
 
 
 init_map::proc(new_map:^^Map,){
@@ -327,7 +333,7 @@ render_map::proc(w_map:^Map){
 
 rand_1_1:[2]int:{1,-1}
 update_map::proc(w_map:^Map){
-	fmt.print(hash.ginger_hash16(cast(u16)w_map.tick_count),"\n")
+	// fmt.print(hash.ginger_hash16(cast(u16)w_map.tick_count),"\n")
 	w_map.rand_tick_seed = cast(u32)hash.ginger_hash16(cast(u16)w_map.tick_count)
 	if w_map.rand_tick_seed % 2 == 0{
 		w_map.l_r = -1

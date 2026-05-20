@@ -110,7 +110,6 @@ update_mesh::proc(mesh:Mesh_Handle){
 	mesh:=get_mesh(mesh)
 	vertices_byte_size:=len(mesh.cpu.vertex_buf)
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
-	// fmt.print("ertices_byte_size",vertices_byte_size,"----","indices_byte_size",indices_byte_size,"\n")
 	// if vertices_byte_size == 0 || indices_byte_size == 0 {return }
 	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, false)//TODO may be ablle to remove the mem copyes by seting the transfer buff as cpu data
 	mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf), vertices_byte_size)
@@ -118,30 +117,34 @@ update_mesh::proc(mesh:Mesh_Handle){
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
-	sdl.UploadToGPUBuffer(
-		copy_pass = copy_pass,
-		source = {
-			transfer_buffer = mesh.gpu.transfer_buf,
-			offset = 0,
-		},
-		destination = {
-			buffer = mesh.gpu.vertex_buf, 
-			size = cast(u32)vertices_byte_size,
-		},
-		cycle = false,
-	)
-	sdl.UploadToGPUBuffer(
-		copy_pass = copy_pass,
-		source = {
-			transfer_buffer = mesh.gpu.transfer_buf,
-			offset = cast(u32)vertices_byte_size,
-		},
-		destination = {
-			buffer = mesh.gpu.index_buf,
-			size = cast(u32)indices_byte_size,
-		},
-		cycle = false,
-	)
+	if vertices_byte_size > 0 {
+		sdl.UploadToGPUBuffer(
+			copy_pass = copy_pass,
+			source = {
+				transfer_buffer = mesh.gpu.transfer_buf,
+				offset = 0,
+			},
+			destination = {
+				buffer = mesh.gpu.vertex_buf, 
+				size = cast(u32)vertices_byte_size,
+			},
+			cycle = false,
+		)
+	}
+	if indices_byte_size > 0 {
+		sdl.UploadToGPUBuffer(
+			copy_pass = copy_pass,
+			source = {
+				transfer_buffer = mesh.gpu.transfer_buf,
+				offset = cast(u32)vertices_byte_size,
+			},
+			destination = {
+				buffer = mesh.gpu.index_buf,
+				size = cast(u32)indices_byte_size,
+			},
+			cycle = false,
+		)
+	}
 	
 	mesh.gpu.index_count = mesh.cpu.index_buf_used
 	sdl.EndGPUCopyPass(copy_pass)

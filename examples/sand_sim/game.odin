@@ -14,6 +14,7 @@ import an"ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
 import st"core:strings"
+import steam "../../steamworks"
 
 USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
 
@@ -55,6 +56,7 @@ Game_Mode::enum{
 
 
 init::proc(){
+	// tg.init_steam()
 	init_map(&g.w_map)
 	wh:=tg.get_window_size(g.window)
 	fmt.print(wh)
@@ -74,6 +76,7 @@ main :: proc(){
 		mem.tracking_allocator_init(&tracking_allocator, default_allocator)
 		context.allocator = mem.tracking_allocator(&tracking_allocator)
 	}
+	// tg.init_steam()
 	s=tg.init()
 	
 	g.window = tg.init_window()
@@ -88,9 +91,10 @@ main :: proc(){
 
 	g.pass = tg.create_render_pass(g.vert_shader, g.frag_shader)
 
-	// temp_t:f32
 	init()
+	tg.get_number_of_current_players()
 	main_loop:for !tg.start_frame(){
+		tg.run_steam_callbacks()
 		for ev in &tg.s.events {
 		}
 		gather_input_info()
@@ -164,17 +168,27 @@ do_mode_game::proc(){
 		server_set_cell_by_id({150,20}, .steam,g.w_map)
 		server_set_cell_by_id({350,20}, .steam,g.w_map)
 	}
+	if is_input_event(.ui_shift){
+		enabled := steam.Utils_IsOverlayEnabled(steam.Utils())
+		fmt.println("overlay enabled:", enabled)
+		friends := steam.Friends()
+		fmt.print(friends,friends != nil)
+		steam.Friends_ActivateGameOverlay(friends,"Friends")
+	}
 	update_map(g.w_map)
 	mesh_map(g.w_map)
 	do_entitys(&g.entitys)
 	if is_input_event(.ui_esc){
 		leave_shutdown_server()
 	}
+	
 
 	update_camera_2d_pan(&g.cam,  )
 	// tg.update_camera_2d_wasd(&g.cam, cast(f32)s.time.tick_time, )
 	update_camera_zoom(&g.cam)
 }
+
+
 
 reset_game_state::proc(){
 	g.all_player_data.players = {}
@@ -228,8 +242,8 @@ do_rendering::proc(){
 update_camera_2d_pan::proc(cam:^tg.Camera, dt:f32=1, speed:f32=1,){
 	move_input:tg.Vec3
 	if s.input.mouse_button_down[.RIGHT]{
-		move_input.x = g.input_events.mouse_move.x
-		move_input.y = g.input_events.mouse_move.y * -1
+		move_input.x = g.input_events.mouse_move.x * -1
+		move_input.y = g.input_events.mouse_move.y
 		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
 		motion := move_input * (speed*cam.zoom) * dt
 		cam.pos += motion
