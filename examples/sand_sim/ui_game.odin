@@ -1,6 +1,6 @@
 package sand_sim
 
-import tg"../../../tg_render_sdl3"
+import tg"../../../tg_render_sdl3gpu"
 import sdl "vendor:sdl3"
 import "core:log"
 import "core:mem"
