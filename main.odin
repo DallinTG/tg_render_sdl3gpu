@@ -345,53 +345,68 @@ do_render_pass::proc(
 {
 	// window:=get_window(window_hd)
 	// window_valid:bool=hm.valid(s.windows, window_hd)
+	check_and_resize_all_frame_buffers(cam,render_target)
 	render_target := get_render_target(render_target)
 	if render_target == nil{return}
 	// if render_target.data == nil{return}
 
-	rtci:=&render_target.msaa_texture_createinfo
-	cdtci:=&cam.depth_texture_createinfo
+	// rtci:=&render_target.msaa_texture_createinfo
+	// cdtci:=&cam.depth_texture_createinfo
 
-	if render_target.wh != {cam.texture_size.x, cam.texture_size.y}{// update depth_texture if screane is resized
-		cam.texture_size.x  = render_target.wh.x
-		cam.texture_size.y = render_target.wh.y
 
-		cam.texture_size = render_target.wh
-		sdl.ReleaseGPUTexture(s.gpu_device, cam.depth_texture)
-		cdtci.format =  s.depth_texture_format
-		cdtci.width = cast(u32)cam.texture_size.x
-		cdtci.height = cast(u32)cam.texture_size.y
-		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)		
-		fmt.print("new cam.depth_texture size\n")
-	}
-		
-	if render_target.wh != {cast(i32)rtci.width,cast(i32)rtci.height}{// update depth_texture if screane is resized
-		rtci.width  = cast(u32)render_target.wh.x
-		rtci.height = cast(u32)render_target.wh.y
-		
-		sdl.ReleaseGPUTexture(s.gpu_device, render_target.msaa_tex)
-		rtci.format =  s.swap_chain_texture_format
-		rtci.width = cast(u32)render_target.wh.x
-		rtci.height = cast(u32)render_target.wh.y
-		render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
-		fmt.print("new pass.msaa_texture size\n")
-	}
+	// if render_target.wh != {cam.texture_size.x, cam.texture_size.y}{// update depth_texture if screane is resized
+	// 	ok:=sdl.WaitForGPUIdle(s.gpu_device)
+	// 	if ok{
+
+	// 		cam.texture_size.x  = render_target.wh.x
+	// 		cam.texture_size.y = render_target.wh.y
 	
-	if cam.depth_texture == nil{
-		cdtci.format =  s.depth_texture_format
-		cdtci.width = cast(u32)cam.texture_size.x
-		cdtci.height = cast(u32)cam.texture_size.y
-		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)
-		fmt.print("new cam.depth_texture == nil\n")
-	}
+	// 		cam.texture_size = render_target.wh
+	// 		sdl.ReleaseGPUTexture(s.gpu_device, cam.depth_texture)
+	// 		cdtci.format =  s.depth_texture_format
+	// 		cdtci.width = cast(u32)cam.texture_size.x
+	// 		cdtci.height = cast(u32)cam.texture_size.y
+	// 		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)		
+	// 		fmt.print("new cam.depth_texture size\n")
+	// 	}
+	// }
+		
+	// if render_target.wh != {cast(i32)rtci.width,cast(i32)rtci.height}{// update depth_texture if screane is resized
+	// 	ok:=sdl.WaitForGPUIdle(s.gpu_device)
+	// 	if ok{
+	// 		rtci.width  = cast(u32)render_target.wh.x
+	// 		rtci.height = cast(u32)render_target.wh.y
+			
+	// 		sdl.ReleaseGPUTexture(s.gpu_device, render_target.msaa_tex)
+	// 		rtci.format =  s.swap_chain_texture_format
+	// 		rtci.width = cast(u32)render_target.wh.x
+	// 		rtci.height = cast(u32)render_target.wh.y
+	// 		render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+	// 		fmt.print("new pass.msaa_texture size\n")
+	// 	}
+	// }
 	
-	if render_target.msaa_tex == nil{
-		rtci.format =  s.swap_chain_texture_format
-		rtci.width = cast(u32)render_target.wh.x
-		rtci.height = cast(u32)render_target.wh.y
-		render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
-		fmt.print("new pass.msaa_texture == nil\n")
-	}
+	// if cam.depth_texture == nil{
+	// 	ok:=sdl.WaitForGPUIdle(s.gpu_device)
+	// 	if ok{
+	// 		cdtci.format =  s.depth_texture_format
+	// 		cdtci.width = cast(u32)cam.texture_size.x
+	// 		cdtci.height = cast(u32)cam.texture_size.y
+	// 		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)
+	// 		fmt.print("new cam.depth_texture == nil\n")
+	// 	}
+	// }
+	
+	// if render_target.msaa_tex == nil{
+	// 	ok:=sdl.WaitForGPUIdle(s.gpu_device)
+	// 	if ok{
+	// 		rtci.format =  s.swap_chain_texture_format
+	// 		rtci.width = cast(u32)render_target.wh.x
+	// 		rtci.height = cast(u32)render_target.wh.y
+	// 		render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+	// 		fmt.print("new pass.msaa_texture == nil\n")
+	// 	}
+	// }
 	
 	// sdl.BlitGPUTexture()
 	view_mat :Mat4= 1//lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
@@ -462,6 +477,76 @@ do_render_pass::proc(
 		sdl.EndGPURenderPass(pass.render_pas)
 	}
 }
+check_and_resize_all_frame_buffers::proc(
+	cam:^Camera,
+	render_target:Render_Targets,
+){
+	
+	render_target := get_render_target(render_target)
+	// if render_target == nil{return}
+	// if render_target.data == nil{return}
+
+	rtci:=&render_target.msaa_texture_createinfo
+	cdtci:=&cam.depth_texture_createinfo
+
+	if render_target.wh != {cam.texture_size.x, cam.texture_size.y}{// update depth_texture if screane is resized
+		ok:=sdl.WaitForGPUIdle(s.gpu_device)
+		if ok{
+			fmt.print("new cam.depth_texture size",render_target.wh,[2]i32{cam.texture_size.x, cam.texture_size.y},"\n")
+
+			cam.texture_size.x  = render_target.wh.x
+			cam.texture_size.y = render_target.wh.y
+	
+			cam.texture_size = render_target.wh
+			sdl.ReleaseGPUTexture(s.gpu_device, cam.depth_texture)
+			cdtci.format =  s.depth_texture_format
+			cdtci.width = cast(u32)cam.texture_size.x
+			cdtci.height = cast(u32)cam.texture_size.y
+			cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)		
+		}
+	}
+		
+	if render_target.wh != {cast(i32)rtci.width,cast(i32)rtci.height}{// update depth_texture if screane is resized
+		ok:=sdl.WaitForGPUIdle(s.gpu_device)
+		if ok{
+			fmt.print("new pass.msaa_texture size",render_target.wh,[2]i32{cast(i32)rtci.width,cast(i32)rtci.height},"\n")
+
+			rtci.width  = cast(u32)render_target.wh.x
+			rtci.height = cast(u32)render_target.wh.y
+			
+			sdl.ReleaseGPUTexture(s.gpu_device, render_target.msaa_tex)
+			rtci.format =  s.swap_chain_texture_format
+			rtci.width = cast(u32)render_target.wh.x
+			rtci.height = cast(u32)render_target.wh.y
+			render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+		}
+	}
+	
+	if cam.depth_texture == nil{
+		ok:=sdl.WaitForGPUIdle(s.gpu_device)
+		if ok{
+			fmt.print("new cam.depth_texture == nil",render_target.wh,[2]i32{cast(i32)cam.texture_size.x,cast(i32)cam.texture_size.y},"\n")
+
+			cdtci.format =  s.depth_texture_format
+			cdtci.width = cast(u32)cam.texture_size.x
+			cdtci.height = cast(u32)cam.texture_size.y
+			cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)
+		}
+	}
+	
+	if render_target.msaa_tex == nil{
+		ok:=sdl.WaitForGPUIdle(s.gpu_device)
+		if ok{
+			fmt.print("new pass.msaa_texture == nil",render_target.wh,[2]i32{cast(i32)render_target.wh.x,cast(i32)render_target.wh.y},"\n")
+
+			rtci.format =  s.swap_chain_texture_format
+			rtci.width = cast(u32)render_target.wh.x
+			rtci.height = cast(u32)render_target.wh.y
+			render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+		}
+	}
+	
+}
 start_render::proc(){
 	s.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	update_windows()
@@ -471,13 +556,19 @@ submit_render::proc(){
 }
 update_windows::proc(){
 	my_iter := hm.make_iter(&s.windows)
-    for win, i in hm.iter(&my_iter) {
-    	swap_chan_w:u32
-     	swap_chan_h:u32
-    	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(s.render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
-     	win.Render_Target.wh = {cast(i32)swap_chan_w,cast(i32)swap_chan_h}
-     	if !ok{log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")}
-    }
+	for win, i in hm.iter(&my_iter) {
+		swap_chan_w:u32
+		swap_chan_h:u32
+		ok:=sdl.WaitAndAcquireGPUSwapchainTexture(s.render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
+		if win.Render_Target.wh != {cast(i32)swap_chan_w,cast(i32)swap_chan_h}{
+			ok:=sdl.WaitForGPUIdle(s.gpu_device)
+			if !ok{
+				log.log(.Debug,"sdl.WaitForGPUIdle() failed")
+			}
+		}
+		win.Render_Target.wh = {cast(i32)swap_chan_w,cast(i32)swap_chan_h}
+		if !ok{log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")}
+	}
 }
 remove_closed_windows::proc(){
 	windows_iter := hm.make_iter(&s.windows)
@@ -628,9 +719,11 @@ get_render_target::proc(render_target:Render_Targets)->(texture:^Render_Target){
 		win:=get_window(rt)
 		if win != nil{
 			texture = &win.Render_Target
+			// fmt.print(texture.wh.x," ",texture.wh.y,"    ")
 			// texture.data = win.swap_chain
 			// sdl.GetWindowSize(win.data,&texture.wh.x,&texture.wh.y)
-			sdl.GetWindowSizeInPixels(win.data,&texture.wh.x,&texture.wh.y)
+			// sdl.GetWindowSizeInPixels(win.data,&texture.wh.x,&texture.wh.y)
+			// fmt.print(texture.wh.x," ",texture.wh.y,"\n")
 		}
 	case ^Render_Target:
 		texture = rt
