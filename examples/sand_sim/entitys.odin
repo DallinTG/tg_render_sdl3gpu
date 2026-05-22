@@ -8,7 +8,7 @@ import "core:hash"
 import "core:c"
 import "core:fmt"
 import hm "../../handle_map_static_virtual"
-import an"ansi"
+import an"../../ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
 
@@ -86,6 +86,12 @@ render_entitys::proc(entitys:^Entity_Handle_Map,){
 		// 	case Mob_Entitys:
 			
 		// }
+	}
+	pos:[3]f32
+	for fri in s.steam.friends.player{
+	// fmt.print([2]u32{fri.l_player_icon_gpu_id.idx,fri.l_player_icon_gpu_id.gen})
+		pos+={100,0,0}
+		tg.draw_rect(&mesh.cpu,fri.l_player_icon_gpu_id,tg.Vertex_Data,{1,1,1,1},{pos,{50,50}})
 	}
 	tg.draw_fps(&mesh.cpu,tg.Vertex_Data,{0,0,0})
 	tg.draw_tps(&mesh.cpu,tg.Vertex_Data,{0,-20,0})

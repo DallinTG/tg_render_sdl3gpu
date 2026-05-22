@@ -32,6 +32,7 @@ Steam_Info::struct{
 	hd_pipe:steam.HSteamPipe,
 	hd_user:steam.HSteamUser,
 	user:^steam.IUser,
+	i_utils:^steam.IUtils,
 	i_friends:^steam.IFriends,
 	user_name:string,
 	friends:Steam_Player_Groop,
@@ -42,6 +43,8 @@ Steam_Player::struct{
 	status:steam.EPersonaState,
 	cs_id:steam.CSteamID,
 	game:steam.FriendGameInfo,
+	l_player_icon_id:i32,
+	l_player_icon_gpu_id:[2]u32,
 }
 Steam_Player_Groop::struct{
 	filter:steam.EFriendFlags,
@@ -79,33 +82,79 @@ init_steam::proc(){
 	} else {
 		fmt.println("USER IS LOGGED IN")
 	}
-
+	s.steam.i_utils= steam.SteamUtils_v010()
 	update_steam_friend_info()
 }
 update_steam_friend_info::proc(){
+	if s.steam.is_using_steam != true {return}
 	s.steam.i_friends=steam.SteamFriends_v017()
 	i_frd:=s.steam.i_friends
 	s.steam.user_name=cast(string)steam.Friends_GetPersonaName(i_frd) //→ your Steam display name
-	s.steam.friends.filter = .All
 	update_steame_player_groop(&s.steam.friends,i_frd)
 }
 update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends){
+	if s.steam.is_using_steam != true {return}
+	clear_player_groop(groop)
+	s.steam.friends.filter = .Immediate
 	groop.count = steam.Friends_GetFriendCount(i_frd,cast(i32)groop.filter) //→ number of friends
-	clear(&groop.player)
-	resize_dynamic_array(&groop.player,groop.count+1)
-	for i in 0..=groop.count{
-		fmt.print(i,"\n")
+	resize_dynamic_array(&groop.player,groop.count)
+	for i in 0..<groop.count{
+		// fmt.print(i,"\n")
 		
 		groop.player[i].cs_id = steam.Friends_GetFriendByIndex(i_frd,i,cast(i32)groop.filter) //→ get each friend's SteamID
-		fmt.print(groop.player[i].cs_id,"\n")
-		groop.player[i].name = cast(string)steam.Friends_GetFriendPersonaName(i_frd,groop.player[i].cs_id)
-		fmt.print(groop.player[i].name,"\n")
-		game:=steam.FriendGameInfo{}
+		// fmt.print(groop.player[i].cs_id,"\n")
+		groop.player[i].name = str.clone_from_cstring(steam.Friends_GetFriendPersonaName(i_frd,groop.player[i].cs_id))
+		// fmt.print(groop.player[i].name,"\n")
 		steam.Friends_GetFriendGamePlayed(i_frd,groop.player[i].cs_id,&groop.player[i].game)
-		fmt.print(game,"\n")
+		// fmt.print(groop.player[i].game,"\n")
 		groop.player[i].status = steam.Friends_GetFriendPersonaState(i_frd,groop.player[i].cs_id) //→ online/offline/busy/etc
-		fmt.print(groop.player[i].status,"\n")
+		// fmt.print(groop.player[i].status,"\n")
+		if s.gpu_device != nil{
+			groop.player[i].l_player_icon_id = steam.Friends_GetLargeFriendAvatar(i_frd, groop.player[i].cs_id)
+			w,h:u32
+			steam.Utils_GetImageSize(
+				s.steam.i_utils,
+				groop.player[i].l_player_icon_id,
+				&w,
+				&h,
+			)
+			if w != 0 && h != 0{
+				buffer := make([]u8, w * h * 4)
+				ok:=steam.Utils_GetImageRGBA(
+					s.steam.i_utils,
+					groop.player[i].l_player_icon_id,
+					raw_data(buffer),
+					cast(i32)len(buffer),
+				)
+				// fmt.print("team.Utils_GetImageRGBA ok",ok,"\n")
+				if ok{
+					raw_buff:=mem.slice_data_cast([][4]u8,buffer)
+					// groop.player[i].l_player_icon_gpu_id = load_texture_from_bytes_raw(buffer,cast(int)w,cast(int)h,.R8G8B8A8_UNORM)
+					img,image_ok:=image.pixels_to_image(raw_buff,cast(int)w,cast(int)h)
+					if image_ok{
+						// fmt.print("wewoo\n\n")
+						groop.player[i].l_player_icon_gpu_id = reg_texture_from_bits(&img,[2]string{"steam_player_icon_l",groop.player[i].name})
+					}
+				}
+				delete(buffer)
+			}
+		}
 	}
+}
+
+clear_player_groop::proc(groop:^Steam_Player_Groop){
+	if s.steam.is_using_steam != true {return}
+	for &player in groop.player{
+		delete(player.name)
+	}
+	groop.count = 0
+	groop.filter = {}
+	clear(&groop.player)
+}
+delete_player_groop::proc(groop:^Steam_Player_Groop){
+	if s.steam.is_using_steam != true {return}
+	clear_player_groop(groop)
+	delete(groop.player)
 }
 
 
@@ -121,16 +170,16 @@ steam_debug_text_hook :: proc "c" (severity: c.int, debugText: cstring) {
 }
 	
 run_steam_callbacks :: proc() {
+	if s.steam.is_using_steam != true {return}
     temp_mem := make([dynamic]byte, context.temp_allocator)
 
     steam_pipe := steam.GetHSteamPipe()
     steam.ManualDispatch_RunFrame(steam_pipe)
     callback: steam.CallbackMsg
-
     // enabled := steam.SteamUtils().IsOverlayEnabled()
     for steam.ManualDispatch_GetNextCallback(steam_pipe, &callback) {
         // Check for dispatching API call results
-        fmt.print("Callback: ",callback,callback.iCallback,"\n")
+        // fmt.print("Callback: ",callback,callback.iCallback,"\n")
         if callback.iCallback == .SteamAPICallCompleted {
             // fmt.println("CallResult: ", callback)
 
@@ -141,7 +190,7 @@ run_steam_callbacks :: proc() {
                 if steam.ManualDispatch_GetAPICallResult(steam_pipe, call_completed.hAsyncCall, temp_call_res, callback.cubParam, callback.iCallback, &bFailed) {
                     // Dispatch the call result to the registered handler(s) for the
                     // call identified by call_completed->m_hAsyncCall
-                    fmt.println("call_completed", call_completed)
+                    // fmt.println("call_completed", call_completed)
                     // if call_completed.iCallback == .NumberOfCurrentPlayers {
                     // 	fmt.print("waffles 5\n")
                     //     onGetNumberOfCurrentPlayers(transmute(^steam.NumberOfCurrentPlayers)temp_call_res, bFailed)
@@ -158,7 +207,7 @@ run_steam_callbacks :: proc() {
             // Look at callback.m_iCallback to see what kind of callback it is,
             // and dispatch to appropriate handler(s)
             // fmt.println("Callback: ", callback)
-            fmt.print("waffles\n")
+            // fmt.print("waffles\n")
             #partial switch callback.iCallback{
             case .GameOverlayActivated:
                 fmt.println("GameOverlayActivated")

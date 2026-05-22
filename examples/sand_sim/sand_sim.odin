@@ -11,7 +11,7 @@ import "core:math"
 import "core:math/rand"
 
 import hm "../../handle_map_static_virtual"
-import an"ansi"
+import an"../../ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
 import "base:intrinsics"
@@ -69,9 +69,9 @@ Cell_Neighbors:[4][2]int:{
 
 Cell_Temperature::enum i8{
 	
-	Deth_Cold = 6,
-	Unbelievably_Cold = 5,
-	Extremely_Cold = 4,
+	Deth_Cold = -6,
+	Unbelievably_Cold = -5,
+	Extremely_Cold = -4,
 	Very_Cold = -3,
 	Cold = -2,
 	Cool = -1,

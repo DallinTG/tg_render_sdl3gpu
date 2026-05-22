@@ -8,7 +8,7 @@ import str"core:strings"
 import "core:fmt"
 import lin"core:math/linalg"
 import "core:hash"
-
+import an"ansi"
 import "core:image"
 import "core:image/jpeg"
 import "core:image/bmp"
@@ -30,6 +30,7 @@ Texture_Arr_Groop::enum{
 	tex_32x32,
 	tex_64x64,
 	tex_128x128,
+	// tex_184x184,
 	tex_256x256,
 	tex_512x512,
 	tex_1024x1024,
@@ -43,7 +44,8 @@ TEXTURE_ARR_INFO:[Texture_Arr_Groop]Texture_Setup:{
 	.tex_32x32 =     {w_h = {32, 32},     layer_count = 100 ,format = .R8G8B8A8_UNORM},
 	.tex_64x64 =     {w_h = {64, 64},     layer_count = 100 ,format = .R8G8B8A8_UNORM},
 	.tex_128x128 =   {w_h = {128, 128},   layer_count = 100 ,format = .R8G8B8A8_UNORM},
-	.tex_256x256 =   {w_h = {256, 256},   layer_count = 10  ,format = .R8G8B8A8_UNORM},
+	// .tex_184x184 =   {w_h = {184, 184},   layer_count = 100 ,format = .R8G8B8A8_UNORM},
+	.tex_256x256 =   {w_h = {256, 256},   layer_count = 100  ,format = .R8G8B8A8_UNORM},
 	.tex_512x512 =   {w_h = {512, 512},   layer_count = 10  ,format = .R8G8B8A8_UNORM},
 	.tex_1024x1024 = {w_h = {1024, 1024}, layer_count = 10  ,format = .R8G8B8A8_UNORM},
 	.tex_2048x2048 = {w_h = {2048, 2048}, layer_count = 1   ,format = .R8G8B8A8_UNORM},
@@ -120,7 +122,8 @@ init_texture_arr_groop::proc(){
 	reg_white_defalt_texture()
 }
 
-reg_texture_from_file::proc(filename: string,mod_name: string = ""){
+// This adds the img data to the gpu and then lets you draw it whith a Texture_ID_Types whitch is created by {filename: string,mod_name: string}
+reg_texture_from_file::proc(filename: string,mod_name: string = "")->(raw_id:[2]u32){
 	ARR_INFO:=TEXTURE_ARR_INFO
 	// tex_map:=&s.texture_arr_map
 	// tex_groop:=&s.texture_arr_groop
@@ -128,9 +131,12 @@ reg_texture_from_file::proc(filename: string,mod_name: string = ""){
 	tex_id:=str.trim_suffix(filename,".png")
 	tex_id=str.to_lower(tex_id,s.frame_allocator)
 	id:[2]string={tex_id,mod_name}
-	reg_texture_from_bits(img,id)
+	raw_id=reg_texture_from_bits(img,id)
+	return raw_id
 }
-reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: sdl.GPUTextureFormat = .R8G8B8A8_UNORM){
+
+// This adds the img data to the gpu and then lets you draw it whith {tex_id:Texture_ID_Types}
+reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: sdl.GPUTextureFormat = .R8G8B8A8_UNORM)->(raw_id:[2]u32){
 	id:=get_texture_id(tex_id)
 	ARR_INFO:=TEXTURE_ARR_INFO
 	tex_map:=&s.texture_arr_map
@@ -142,19 +148,40 @@ reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: s
 			if format == .R8_UNORM{
 				chanle_count = 1
 			}
-			uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = tex.layers_used, chanle_count = chanle_count)
-			value:=Texture{
-				hd = tex.tex_hd,
-				layer = tex.layers_used,
-				groop_index = i,
-				w_h = {cast(i32)img.width,cast(i32)img.height},
-				offset = {},
+
+			ok := id in tex_map
+			if ok&& tex_map[id].hd == tex.tex_hd{	//check if somthing is allredy using that id if so replace it insted of making a new one
+				uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = tex_map[id].layer, chanle_count = chanle_count)
+				value:=Texture{
+					hd = tex.tex_hd,
+					layer = tex_map[id].layer,
+					groop_index = i,
+					w_h = {cast(i32)img.width,cast(i32)img.height},
+					offset = {cast(i32)ARR_INFO[i].w_h.x- cast(i32)img.width ,cast(i32)ARR_INFO[i].w_h.x-cast(i32)img.width },
+				}
+				raw_id = id
+				tex_map[id] = value
+			}else{
+				if tex.layers_used + 1 >ARR_INFO[i].layer_count{ // Stops the game frome alocating more than the max textures
+					fmt.print(an.ansy("max Number of textures reached for:",col = .red),cast(Texture_Arr_Groop)i,"count:",tex.layers_used,"Max Count:",ARR_INFO[i].layer_count," \n")
+					return {}
+				}
+				uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = tex.layers_used, chanle_count = chanle_count)
+				value:=Texture{
+					hd = tex.tex_hd,
+					layer = tex.layers_used,
+					groop_index = i,
+					w_h = {cast(i32)img.width,cast(i32)img.height},
+					offset = {cast(i32)ARR_INFO[i].w_h.x- cast(i32)img.width ,cast(i32)ARR_INFO[i].w_h.x-cast(i32)img.width },
+				}
+				raw_id = id
+				tex_map[id] = value
+				tex.layers_used += 1
 			}
-			tex_map[id] = value
-			tex.layers_used += 1
-			return
+			return raw_id
 		}
 	}
+	return {}
 }
 reg_bad_defalt_texture::proc(){
 	per:[4]u8:{255,0,255,255}
@@ -218,6 +245,8 @@ get_texture_id::proc(tex_id:Texture_ID_Types)->(new_tex_id:[2]u32){
 	return
 }
 
+// THIS is a internal helper proc you shiuld problobly us 
+// reg_texture_from_bits() or reg_texture_from_file()
 load_texture_from_file :: proc(filename: string, options: Load_Texture_Options = {}) -> Texture_GPU_Handle {
 		img, img_err :=load_cpu_texture_file(filename, options)
 		if img_err != nil {
@@ -227,6 +256,8 @@ load_texture_from_file :: proc(filename: string, options: Load_Texture_Options =
 		return load_texture_from_bytes_raw(img.pixels.buf[:], img.width, img.height, .R8G8B8A8_UNORM)
 }
 
+// THIS is a internal helper proc you shiuld problobly us 
+// reg_texture_from_bits() or reg_texture_from_file()
 load_cpu_texture_file :: proc(filename: string, options: Load_Texture_Options = {}) -> (img:^image.Image, img_err:image.Error) {
 	when FILESYSTEM_SUPPORTED {
 		load_options := image.Options {
@@ -253,6 +284,8 @@ load_cpu_texture_file :: proc(filename: string, options: Load_Texture_Options = 
 	}
 }
 
+// THIS is a internal helper proc you shiuld problobly us 
+// reg_texture_from_bits() or reg_texture_from_file()
 load_texture_from_bytes :: proc(bytes:union{[][]u8,[]u8}, options: Load_Texture_Options = {}, layer_count:u32 = 1, layer:u32 = 0) -> (texture:Texture_GPU_Handle) {
 	load_options := image.Options {
 		.alpha_add_if_missing,
@@ -289,6 +322,8 @@ load_texture_from_bytes :: proc(bytes:union{[][]u8,[]u8}, options: Load_Texture_
 	return
 }
 
+// THIS is a internal helper proc you shiuld problobly us 
+// reg_texture_from_bits() or reg_texture_from_file()
 load_texture_array_from_file :: proc(filename:string, options: Load_Texture_Options = {}) -> (texture:Texture_GPU_Handle) {
 	
 	when FILESYSTEM_SUPPORTED {
@@ -320,6 +355,8 @@ load_texture_array_from_file :: proc(filename:string, options: Load_Texture_Opti
 	return
 }
 
+// THIS is a internal helper proc you shiuld problobly us 
+// reg_texture_from_bits() or reg_texture_from_file()
 load_texture_from_bytes_raw :: proc(
 	bytes: union{[][]u8,[]u8}, 
 	width: int, 
@@ -350,6 +387,9 @@ load_texture_from_bytes_raw :: proc(
 	}
 	return
 }
+
+// THIS is a internal helper proc you shiuld problobly us 
+// reg_texture_from_bits() or reg_texture_from_file()
 create_gpu_texture::proc(
 	width: u32, 
 	height: u32, 
@@ -383,9 +423,13 @@ create_gpu_texture::proc(
 	
 	return backend_tex
 }
+
+// THIS is a internal helper proc you shiuld problobly us 
+// reg_texture_from_bits() or reg_texture_from_file()
 uplode_data_to_gpu_texture::proc(texture:Texture_GPU_Handle,	bytes: []u8, width: int, height: int, layer:u32 = 0,chanle_count:int = 4){
 	tex_ptr := get_gpu_texture(texture)
 	assert(cast(u32)width<=tex_ptr.w && cast(u32)height<=tex_ptr.h,"texture data must be = or < texture ")
+	assert(s.gpu_device != nil, "s.gpu_device dos not exsist")
 	pixels_byte_size := width * height * chanle_count
 	tex_transfer_buf := sdl.CreateGPUTransferBuffer(s.gpu_device,{
 		usage = .UPLOAD,

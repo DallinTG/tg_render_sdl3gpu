@@ -262,7 +262,6 @@ draw_triangle_mat :: proc(mesh: ^Mesh_CPU, verts:$T/[3]$E , mat:matrix[4, 4]f32 
 	// append_to_mesh(mesh, {0, 1, 2}, new_v[:])
 }
 
-
 draw_quad_vx :: proc(mesh: ^Mesh_CPU, pos:Vec3, verts:$T/[4]$E , origin: Vec3 = {}, rot: f32 = 0,tex:Texture_GPU_Handle = {}) {
 
 	// v0, v1, v2: Vec2
@@ -530,16 +529,30 @@ draw_rect::proc(
 		verts[3].col = col
 	}
 	when intrinsics.type_has_field(vert_t, "uv"){
+
+
 		uvs:=[4][2]f32{
 			{uv.x,uv.y},
 			{uv.x,uv.w},
 			{uv.z,uv.w},
 			{uv.z,uv.y},
 		}
+
 		verts[0].uv =  uvs.x
 		verts[1].uv =  uvs.y
 		verts[2].uv =  uvs.z
 		verts[3].uv =  uvs.w
+
+		ofset:[2]f32={cast(f32)tex.offset.x,cast(f32)tex.offset.y}
+		if ofset != {}{
+			f32_wh:=[2]f32{cast(f32)tex.w_h.x,cast(f32)tex.w_h.y} 
+			new_uv:=f32_wh/(ofset+f32_wh) 
+
+			verts[0].uv *=  new_uv
+			verts[1].uv *=  new_uv
+			verts[2].uv *=  new_uv
+			verts[3].uv *=  new_uv
+		}
 	}
 
 	when intrinsics.type_has_field(vert_t, "img_index"){

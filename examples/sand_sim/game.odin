@@ -10,7 +10,7 @@ import "core:c"
 import "core:fmt"
 import "core:thread"
 import hm "../../handle_map_static_virtual"
-import an"ansi"
+import an"../../ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
 import st"core:strings"
@@ -65,6 +65,7 @@ init::proc(){
 	init_entitys_mesh()
 	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.vert_shader, g.frag_shader, gbl_font_size = .1)
 	init_rendering_thread()
+	tg.update_steam_friend_info()
 	// spawn_entity(&g.entitys)
 }
 
@@ -169,15 +170,17 @@ do_mode_game::proc(){
 		server_set_cell_by_id({350,20}, .steam,g.w_map)
 	}
 	if is_input_event(.ui_shift){
-		enabled := steam.Utils_IsOverlayEnabled(steam.Utils())
-		fmt.println("overlay enabled:", enabled)
-		friends := steam.Friends()
-		fmt.print(friends,friends != nil)
-		steam.Friends_ActivateGameOverlay(friends,"Friends")
+		// enabled := steam.Utils_IsOverlayEnabled(steam.Utils())
+		// fmt.println("overlay enabled:", enabled)
+		// friends := steam.Friends()
+		// fmt.print(friends,friends != nil)
+		// steam.Friends_ActivateGameOverlay(friends,"Friends")
+		tg.update_steam_friend_info()
 	}
 	update_map(g.w_map)
 	mesh_map(g.w_map)
 	do_entitys(&g.entitys)
+
 	if is_input_event(.ui_esc){
 		leave_shutdown_server()
 	}

@@ -646,6 +646,7 @@ cleane_app::proc(){
 	hm.delete(&s.windows)
 	hm.delete(&s.shaders)
 	hm.delete(&s.clay_instances)
+	delete_player_groop(&s.steam.friends)
 	free(s)
 }
 delete_r_pass::proc(pass:^R_Pass){
