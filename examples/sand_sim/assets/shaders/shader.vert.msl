@@ -10,8 +10,7 @@ struct type_UBO
 
 struct Vertex
 {
-    packed_float3 pos;
-    float pad_1;
+    float4 pos;
     float4 color;
     float2 uv;
     uint img_index;
@@ -42,7 +41,7 @@ struct main0_out
 vertex main0_out main0(constant type_UBO& UBO [[buffer(0)]], const device type_StructuredBuffer_Vertex& Vertices [[buffer(1)]], const device type_StructuredBuffer_uint& Indices [[buffer(2)]], uint gl_VertexIndex [[vertex_id]])
 {
     main0_out out = {};
-    out.gl_Position = UBO.mvp * float4(Vertices._m0[Indices._m0[gl_VertexIndex]].pos[0], Vertices._m0[Indices._m0[gl_VertexIndex]].pos[1], Vertices._m0[Indices._m0[gl_VertexIndex]].pos[2], 1.0);
+    out.gl_Position = UBO.mvp * Vertices._m0[Indices._m0[gl_VertexIndex]].pos;
     out.out_var_TEXCOORD0 = Vertices._m0[Indices._m0[gl_VertexIndex]].color;
     out.out_var_TEXCOORD1 = Vertices._m0[Indices._m0[gl_VertexIndex]].uv;
     out.out_var_TEXCOORD2 = Vertices._m0[Indices._m0[gl_VertexIndex]].img_index;

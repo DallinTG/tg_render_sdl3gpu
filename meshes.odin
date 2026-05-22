@@ -360,7 +360,7 @@ transform_verts::proc(verts:$T/[]$E , mat:matrix[4, 4]f32 = Mat4(1)){
 	vec4:Vec4
 	for &v , i in verts{
 		vec4 = {v.pos.x,  v.pos.y,  v.pos.z,  1.0}
-		v.pos =  (mat * vec4 ).xyz
+		v.pos =  mat * vec4 
 	}
 }
 Cube::struct{
@@ -379,40 +379,40 @@ draw_cube::proc(mesh: ^Mesh_CPU,tex_id:Texture_ID_Types, $vert_t:typeid, col:[4]
 	mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
 	when intrinsics.type_has_field(vert_t, "pos"){
 		//front
-		verts[0].pos =  { 0,  0,  0}
-		verts[1].pos =  { 0, -1,  0}
-		verts[2].pos =  { 1, -1,  0}
-		verts[3].pos =  { 1,  0,  0}
+		verts[0].pos =  { 0,  0,  0, 1}
+		verts[1].pos =  { 0, -1,  0, 1}
+		verts[2].pos =  { 1, -1,  0, 1}
+		verts[3].pos =  { 1,  0,  0, 1}
 		
 		//top
-		verts[4].pos =  { 0,  0, -1}
-		verts[5].pos =  { 0,  0,  0}
-		verts[6].pos =  { 1,  0,  0}
-		verts[7].pos =  { 1,  0, -1}
+		verts[4].pos =  { 0,  0, -1, 1}
+		verts[5].pos =  { 0,  0,  0, 1}
+		verts[6].pos =  { 1,  0,  0, 1}
+		verts[7].pos =  { 1,  0, -1, 1}
 		
 		//back
-		verts[8].pos =  { 1,  0, -1}
-		verts[9].pos =  { 1, -1, -1}
-		verts[10].pos = { 0, -1, -1}
-		verts[11].pos = { 0,  0, -1}
+		verts[8].pos =  { 1,  0, -1, 1}
+		verts[9].pos =  { 1, -1, -1, 1}
+		verts[10].pos = { 0, -1, -1, 1}
+		verts[11].pos = { 0,  0, -1, 1}
 		
 		//bot
-		verts[12].pos = { 1, -1, -1}
-		verts[13].pos = { 1, -1,  0}
-		verts[14].pos = { 0, -1,  0}
-		verts[15].pos = { 0, -1, -1}
+		verts[12].pos = { 1, -1, -1, 1}
+		verts[13].pos = { 1, -1,  0, 1}
+		verts[14].pos = { 0, -1,  0, 1}
+		verts[15].pos = { 0, -1, -1, 1}
 		
 		//right
-		verts[16].pos = { 1,  0,  0}
-		verts[17].pos = { 1, -1,  0}
-		verts[18].pos = { 1, -1, -1}
-		verts[19].pos = { 1,  0, -1}
+		verts[16].pos = { 1,  0,  0, 1}
+		verts[17].pos = { 1, -1,  0, 1}
+		verts[18].pos = { 1, -1, -1, 1}
+		verts[19].pos = { 1,  0, -1, 1}
 		
 		//left
-		verts[20].pos = { 0,  0, -1}
-		verts[21].pos = { 0, -1, -1}
-		verts[22].pos = { 0, -1,  0}
-		verts[23].pos = { 0,  0,  0}
+		verts[20].pos = { 0,  0, -1, 1}
+		verts[21].pos = { 0, -1, -1, 1}
+		verts[22].pos = { 0, -1,  0, 1}
+		verts[23].pos = { 0,  0,  0, 1}
 	}
 	when intrinsics.type_has_field(vert_t, "col"){
 		verts[0].col = col
@@ -517,10 +517,10 @@ draw_rect::proc(
 
 	when intrinsics.type_has_field(vert_t, "pos"){
 		//front
-		verts[0].pos =  { 0,  0,  0}
-		verts[1].pos =  { 0, -1,  0}
-		verts[2].pos =  { 1, -1,  0}
-		verts[3].pos =  { 1,  0,  0}
+		verts[0].pos =  { 0,  0,  0, 1}
+		verts[1].pos =  { 0, -1,  0, 1}
+		verts[2].pos =  { 1, -1,  0, 1}
+		verts[3].pos =  { 1,  0,  0, 1}
 	}
 	when intrinsics.type_has_field(vert_t, "col"){
 		verts[0].col = col

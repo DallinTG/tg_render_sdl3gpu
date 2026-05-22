@@ -8,8 +8,8 @@ cbuffer UBO : register(b0, space1){
 // 	float4 color2 : TEXCOORD3;
 // };
 struct Vertex {
-    float3 pos;
-    float pad_1;
+    float4 pos;
+    // float pad_1;
     float4 color;
     float2 uv;
 	uint img_index;
@@ -36,7 +36,7 @@ Output main(uint vid : SV_VertexID) {
     output.img_index = v.img_index;
     output.layer = v.layer;
 	output.color2 = v.color2;
-    output.position = mul(mvp , float4(v.pos, 1));
+    output.position = mul(mvp , v.pos);
     output.color = v.color;
     output.uv = v.uv;
     return output;

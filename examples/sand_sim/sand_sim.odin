@@ -668,10 +668,10 @@ draw_chunck::proc(
 				when intrinsics.type_has_field(vert_t, "pos"){
 					//front
 					// fmt.print( (x+w_h.x*y)*4 ,x,y," {x*y =",x*y,"}","\n")
-					verts[0].pos =  { 0+cast(f32)x,   0 +(cast(f32)y*-1),  0}
-					verts[1].pos =  { 0+cast(f32)x,  -1 +(cast(f32)y*-1),  0}
-					verts[2].pos =  { 1+cast(f32)x,  -1 +(cast(f32)y*-1),  0}
-					verts[3].pos =  { 1+cast(f32)x,   0 +(cast(f32)y*-1),  0}
+					verts[0].pos =  { 0+cast(f32)x,   0 +(cast(f32)y*-1),  0, 1}
+					verts[1].pos =  { 0+cast(f32)x,  -1 +(cast(f32)y*-1),  0, 1}
+					verts[2].pos =  { 1+cast(f32)x,  -1 +(cast(f32)y*-1),  0, 1}
+					verts[3].pos =  { 1+cast(f32)x,   0 +(cast(f32)y*-1),  0, 1}
 				}
 				when intrinsics.type_has_field(vert_t, "col"){
 					verts[0].col = Cell_Info[chunck.cells[x][y].id].color

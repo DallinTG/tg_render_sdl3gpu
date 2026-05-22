@@ -136,9 +136,9 @@ Vec4 :: [4]f32
 Mat3 :: lin.Matrix3f32;
 Mat4 :: lin.Matrix4f32;
 
-Vertex_Data :: struct #align(16){
-	pos:Vec3,
-	_1:f32,
+Vertex_Data :: struct #align(16) {
+	pos:Vec4,
+	// _1:f32,
 	col:Vec4,
 	uv: [2]f32,
 	// _2:[2]f32,
@@ -147,8 +147,8 @@ Vertex_Data :: struct #align(16){
 	col_over:[4]f32,
 }
 Vertex_Data_t :: struct #align(16){
-	pos:Vec3,
-	_1:f32,
+	pos:Vec4,
+	// _1:f32,
 	col:Vec4,
 	uv: [2]f32,
 	// _2:[2]f32,
