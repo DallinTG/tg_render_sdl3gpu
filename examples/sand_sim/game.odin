@@ -79,7 +79,7 @@ main :: proc(){
 	}
 	// tg.init_steam()
 	s=tg.init()
-	
+	fmt.print(size_of(tg.Vertex_Data),"\n")
 	g.window = tg.init_window()
 
 	g.cam = tg.create_camera(type = .orthographic)

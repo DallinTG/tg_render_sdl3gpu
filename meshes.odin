@@ -108,11 +108,13 @@ delete_mesh::proc(mesh_hd:Mesh_Handle){
 }
 update_mesh::proc(mesh:Mesh_Handle){
 	mesh:=get_mesh(mesh)
-	vertices_byte_size:=len(mesh.cpu.vertex_buf)
+	// vertices_byte_size:=len(mesh.cpu.vertex_buf)//_________________________________
+	vertices_byte_size := mesh.cpu.vertex_buf_used
+	fmt.print(vertices_byte_size,len(mesh.cpu.vertex_buf),"---------------------- \n")
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
 	// if vertices_byte_size == 0 || indices_byte_size == 0 {return }
 	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, false)//TODO may be ablle to remove the mem copyes by seting the transfer buff as cpu data
-	mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf), vertices_byte_size)
+	mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf), cast(int)vertices_byte_size)
 	mem.copy(transfer_mem[vertices_byte_size:], raw_data(mesh.cpu.index_buf), indices_byte_size)
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
