@@ -12,9 +12,7 @@ struct Vertex
 {
     float4 pos;
     float4 color;
-    float2 uv;
-    uint img_index;
-    uint layer;
+    float4 uv_img_layer;
     float4 color2;
 };
 
@@ -43,9 +41,9 @@ vertex main0_out main0(constant type_UBO& UBO [[buffer(0)]], const device type_S
     main0_out out = {};
     out.gl_Position = UBO.mvp * Vertices._m0[Indices._m0[gl_VertexIndex]].pos;
     out.out_var_TEXCOORD0 = Vertices._m0[Indices._m0[gl_VertexIndex]].color;
-    out.out_var_TEXCOORD1 = Vertices._m0[Indices._m0[gl_VertexIndex]].uv;
-    out.out_var_TEXCOORD2 = Vertices._m0[Indices._m0[gl_VertexIndex]].img_index;
-    out.out_var_TEXCOORD3 = Vertices._m0[Indices._m0[gl_VertexIndex]].layer;
+    out.out_var_TEXCOORD1 = Vertices._m0[Indices._m0[gl_VertexIndex]].uv_img_layer.xy;
+    out.out_var_TEXCOORD2 = as_type<uint>(Vertices._m0[Indices._m0[gl_VertexIndex]].uv_img_layer.z);
+    out.out_var_TEXCOORD3 = as_type<uint>(Vertices._m0[Indices._m0[gl_VertexIndex]].uv_img_layer.w);
     out.out_var_TEXCOORD4 = Vertices._m0[Indices._m0[gl_VertexIndex]].color2;
     return out;
 }
