@@ -494,7 +494,8 @@ get_window::proc(window_hd:Window_Handle) -> (window:^Window){
 }
 get_window_size::proc(window_hd:Window_Handle)-> (win_size:[2]i32) {
 	win:=get_window(window_hd)
-	ok:=sdl.GetWindowSize(win.data,&win_size.x,&win_size.y)
+	// ok:=sdl.GetWindowSize(win.data,&win_size.x,&win_size.y)
+	ok:=sdl.GetWindowSizeInPixels(win.data,&win_size.x,&win_size.y)
 	return win_size
 }
 // blit_to_window::proc(pass:R_Pass, win_hd:Window_Handle){
@@ -628,7 +629,8 @@ get_render_target::proc(render_target:Render_Targets)->(texture:^Render_Target){
 		if win != nil{
 			texture = &win.Render_Target
 			// texture.data = win.swap_chain
-			sdl.GetWindowSize(win.data,&texture.wh.x,&texture.wh.y)
+			// sdl.GetWindowSize(win.data,&texture.wh.x,&texture.wh.y)
+			sdl.GetWindowSizeInPixels(win.data,&texture.wh.x,&texture.wh.y)
 		}
 	case ^Render_Target:
 		texture = rt
