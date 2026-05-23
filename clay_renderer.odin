@@ -292,7 +292,7 @@ Clay_I_Handle :: distinct Handle
 Clay_Instance::struct{
 	handle:Clay_I_Handle,
 	ctx:^cl.Context,
-	pass:R_Pass,
+	// pass:R_Pass,
 	mesh:Mesh_Handle,
 	arena:cl.Arena,
 	z_offseter:    f32,
@@ -319,7 +319,7 @@ init_clay_instance::proc(
     inst:=get_clay_instance(instance_hd)
     
     inst.gbl_font_size = gbl_font_size
-	inst.pass = create_render_pass(vert_shader, frag_shader, info = DEFALT_TEXT_PASS)
+	// inst.pass = create_render_pass(vert_shader, frag_shader, info = DEFALT_TEXT_PASS)
 	mesh_cpu:Mesh_CPU={attribute_type = DEFALT_UI_VERTEX_DATA}
 	inst.mesh = create_mesh(mesh_cpu,gpu_buf_size)
 	inst.z_offseter = z_offseter
@@ -347,43 +347,41 @@ update_clay_instance::proc(clay_instance:Clay_I_Handle, renderCommands: ^cl.Clay
 }
 render_clay_instance::proc(
 	clay_instance:Clay_I_Handle,
+	pass:^R_Pass,
 	camera:^Camera,
-	render_target:Render_Targets,
-	load_op:	sdl.GPULoadOp=.LOAD,
-	d_load_op:	sdl.GPULoadOp=.LOAD,
-	store_op:   sdl.GPUStoreOp = .STORE,
-	d_store_op: sdl.GPUStoreOp = .STORE,
-	clear_color:[4]f32={.3,.3,.3,1},
+	// render_target:Render_Targets,
+	// load_op:	sdl.GPULoadOp=.LOAD,
+	// d_load_op:	sdl.GPULoadOp=.LOAD,
+	// store_op:   sdl.GPUStoreOp = .STORE,
+	// d_store_op: sdl.GPUStoreOp = .STORE,
+	// clear_color:[4]f32={.3,.3,.3,1},
 ){
 	inst:=get_clay_instance(clay_instance)
 	do_render_pass(
-		&inst.pass, 
+		pass, 
 		camera, 
 		{inst.mesh}, 
-		render_target, 
-		load_op = load_op, 
-		d_load_op = d_load_op, 
-		clear_color = clear_color,
-		store_op = store_op, 
-		d_store_op = d_store_op
+		// render_target, 
+		// load_op = load_op, 
+		// d_load_op = d_load_op, 
+		// clear_color = clear_color,
+		// store_op = store_op, 
+		// d_store_op = d_store_op
 	)	
 }
 update_render_clay_instance::proc(
 	clay_instance:Clay_I_Handle,
+	pass:^R_Pass,
 	renderCommands: ^cl.ClayArray(cl.RenderCommand),
 	camera:^Camera,
-	render_target:Render_Targets,
-	load_op:	sdl.GPULoadOp=.LOAD,
-	d_load_op:	sdl.GPULoadOp=.LOAD,
-	clear_color:[4]f32={.3,.3,.3,1},
-	 wh:[2]i32
+	wh:[2]i32
 ){
 	update_clay_instance(clay_instance, renderCommands, wh)
-	render_clay_instance(clay_instance, camera, render_target, load_op = load_op, d_load_op = d_load_op, clear_color = clear_color)
+	render_clay_instance(clay_instance,pass, camera,)
 }
 delete_clay_instance::proc(clay_instance:Clay_I_Handle){
 	inst:=get_clay_instance(clay_instance)
-	delete_r_pass(&inst.pass)
+	// delete_r_pass(&inst.pass)
 	delete_mesh(inst.mesh)
 	free(inst.arena.memory)
 }

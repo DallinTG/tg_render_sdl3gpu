@@ -328,7 +328,7 @@ render_map::proc(w_map:^Map){
 			index+=1
 		}
 	}
-	tg.do_render_pass(&g.pass, &g.cam, meshes[:], g.window,  load_op = .CLEAR, d_load_op = .CLEAR, store_op = .RESOLVE)
+	tg.do_render_pass(&g.pass, &g.cam, meshes[:],)
 }
 
 rand_1_1:[2]int:{1,-1}

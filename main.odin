@@ -115,6 +115,7 @@ R_Pass ::struct{
 	texture_sampler_binding:[dynamic]sdl.GPUTextureSamplerBinding,//this gets rebuilt per frame
 	// win_size:[2]i32,
 	ubo:UBO,
+	render_target:^Render_Target,
 }
 
 Render_Pass_Info::struct{
@@ -304,125 +305,29 @@ create_render_pass :: proc (vert_shader_hd: Shader_Handle, frag_shader_hd: Shade
 	})
 	return
 }
-// stil undesided whether or not to use this
-// clear_render::proc(col:[4]f32,pass:^R_Pass,cam:^Camera,window_hd:Window_Handle){
-// 	window:=get_window(window_hd)
-// 	if window == nil{return}
-// 	render_target := window.swap_chain
-	
-// 	if render_target != nil{
-// 		color_target := sdl.GPUColorTargetInfo{
-// 			texture = render_target,
-// 			load_op = .CLEAR,
-// 			clear_color = cast(sdl.FColor)col,
-// 			store_op = .STORE,
-// 		}
-// 		depth_target_info:^sdl.GPUDepthStencilTargetInfo
-// 		if cam.depth_texture != nil{
-// 			depth_target_info = &sdl.GPUDepthStencilTargetInfo{
-// 				texture = cam.depth_texture,
-// 				load_op = .CLEAR,
-// 				clear_depth = 1,
-// 				store_op = .STORE,
-// 			}
-// 		}
-// 		pass.render_pas = sdl.BeginGPURenderPass(s.render_cmd_buf, &color_target, 1, depth_target_info )
-// 		sdl.EndGPURenderPass(pass.render_pas);
-// 	}else{
-// 		log.log(.Debug,"Clear_render() failed render_target == nil\n")
-// 	}
-// }
+
 do_render_pass::proc(
 	pass:^R_Pass,
 	cam:^Camera,
 	meshes_hd:[]Mesh_Handle,
-	render_target:Render_Targets,
-	load_op:	sdl.GPULoadOp=.LOAD,
-	d_load_op:	sdl.GPULoadOp=.LOAD,
-	store_op:   sdl.GPUStoreOp = .STORE,
-	d_store_op: sdl.GPUStoreOp = .STORE,
-	clear_color:[4]f32={.3,.3,.3,1})
-{
-	// window:=get_window(window_hd)
-	// window_valid:bool=hm.valid(s.windows, window_hd)
-	check_and_resize_all_frame_buffers(cam,render_target)
-	render_target := get_render_target(render_target)
-	if render_target == nil{return}
-	// if render_target.data == nil{return}
+){
 
-	// rtci:=&render_target.msaa_texture_createinfo
-	// cdtci:=&cam.depth_texture_createinfo
+	if pass.render_target == nil{return}
 
-
-	// if render_target.wh != {cam.texture_size.x, cam.texture_size.y}{// update depth_texture if screane is resized
-	// 	ok:=sdl.WaitForGPUIdle(s.gpu_device)
-	// 	if ok{
-
-	// 		cam.texture_size.x  = render_target.wh.x
-	// 		cam.texture_size.y = render_target.wh.y
-	
-	// 		cam.texture_size = render_target.wh
-	// 		sdl.ReleaseGPUTexture(s.gpu_device, cam.depth_texture)
-	// 		cdtci.format =  s.depth_texture_format
-	// 		cdtci.width = cast(u32)cam.texture_size.x
-	// 		cdtci.height = cast(u32)cam.texture_size.y
-	// 		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)		
-	// 		fmt.print("new cam.depth_texture size\n")
-	// 	}
-	// }
-		
-	// if render_target.wh != {cast(i32)rtci.width,cast(i32)rtci.height}{// update depth_texture if screane is resized
-	// 	ok:=sdl.WaitForGPUIdle(s.gpu_device)
-	// 	if ok{
-	// 		rtci.width  = cast(u32)render_target.wh.x
-	// 		rtci.height = cast(u32)render_target.wh.y
-			
-	// 		sdl.ReleaseGPUTexture(s.gpu_device, render_target.msaa_tex)
-	// 		rtci.format =  s.swap_chain_texture_format
-	// 		rtci.width = cast(u32)render_target.wh.x
-	// 		rtci.height = cast(u32)render_target.wh.y
-	// 		render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
-	// 		fmt.print("new pass.msaa_texture size\n")
-	// 	}
-	// }
-	
-	// if cam.depth_texture == nil{
-	// 	ok:=sdl.WaitForGPUIdle(s.gpu_device)
-	// 	if ok{
-	// 		cdtci.format =  s.depth_texture_format
-	// 		cdtci.width = cast(u32)cam.texture_size.x
-	// 		cdtci.height = cast(u32)cam.texture_size.y
-	// 		cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)
-	// 		fmt.print("new cam.depth_texture == nil\n")
-	// 	}
-	// }
-	
-	// if render_target.msaa_tex == nil{
-	// 	ok:=sdl.WaitForGPUIdle(s.gpu_device)
-	// 	if ok{
-	// 		rtci.format =  s.swap_chain_texture_format
-	// 		rtci.width = cast(u32)render_target.wh.x
-	// 		rtci.height = cast(u32)render_target.wh.y
-	// 		render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
-	// 		fmt.print("new pass.msaa_texture == nil\n")
-	// 	}
-	// }
-	
-	// sdl.BlitGPUTexture()
 	view_mat :Mat4= 1//lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
 	proj_mat :Mat4= 1//lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
 	
 	switch cam.type {
 	case .perspective:
 		view_mat = lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
-		proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90 * cam.zoom), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y,-100, 100)
+		proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90 * cam.zoom), cast(f32)pass.render_target.wh.x / cast(f32)pass.render_target.wh.y,-100, 100)
 	case .orthographic:
 		pos:=cam.pos
 		view_mat = lin.matrix4_translate_f32({-pos.x,-pos.y,-pos.z})
 		proj_mat = lin.matrix_ortho3d_f32(
 			left= 0, 
-			right= cast(f32)render_target.wh.x * cam.zoom, 
-			bottom= -cast(f32)render_target.wh.y * cam.zoom, 
+			right= cast(f32)pass.render_target.wh.x * cam.zoom, 
+			bottom= -cast(f32)pass.render_target.wh.y * cam.zoom, 
 			top= 0, 
 			near= -1.001, 
 			far= 1000,
@@ -430,51 +335,25 @@ do_render_pass::proc(
 	}
 	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
 	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}
-	
-	
-	if render_target.data != nil{
-		texture:=render_target.msaa_tex
-		resolve_texture:^sdl.GPUTexture=nil
-		if store_op == .RESOLVE ||store_op == .RESOLVE_AND_STORE {
-			texture=render_target.msaa_tex
-			resolve_texture=render_target.data
-		}
 
-		color_target := sdl.GPUColorTargetInfo{
-			texture = texture,
-			resolve_texture = resolve_texture,
-			load_op = load_op,
-			clear_color = cast(sdl.FColor)clear_color,
-			store_op = store_op,
+	sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline)
+	sdl.PushGPUVertexUniformData(s.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
+	
+	clear_dynamic_array(&pass.texture_sampler_binding)
+	for &texture in  s.texture_arr_groop{
+		if texture != {}{
+			texture:=get_gpu_texture(texture.tex_hd)
+			append_elem(&pass.texture_sampler_binding ,sdl.GPUTextureSamplerBinding{ texture = texture.data, sampler = pass.sampler})
 		}
-		depth_target_info:= sdl.GPUDepthStencilTargetInfo{
-			texture = cam.depth_texture,
-			load_op = d_load_op,
-			clear_depth = 1,
-			store_op = .STORE,
-		}
-		pass.render_pas = sdl.BeginGPURenderPass(s.render_cmd_buf, &color_target, 1, &depth_target_info )
-		sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline)
-		sdl.PushGPUVertexUniformData(s.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
-		
-		clear_dynamic_array(&pass.texture_sampler_binding)
-		for &texture in  s.texture_arr_groop{
-			if texture != {}{
-				texture:=get_gpu_texture(texture.tex_hd)
-				append_elem(&pass.texture_sampler_binding ,sdl.GPUTextureSamplerBinding{ texture = texture.data, sampler = pass.sampler})
-			}
-		}
+	}
 
-		sdl.BindGPUFragmentSamplers(pass.render_pas, 0, raw_data(pass.texture_sampler_binding), cast(u32)len(pass.texture_sampler_binding))
-		
-		for mesh_hd in meshes_hd{
-			mesh:=get_mesh(mesh_hd)
-			sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
-			sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)		
-			sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0)
-		
-		}
-		sdl.EndGPURenderPass(pass.render_pas)
+	sdl.BindGPUFragmentSamplers(pass.render_pas, 0, raw_data(pass.texture_sampler_binding), cast(u32)len(pass.texture_sampler_binding))
+
+	for mesh_hd in meshes_hd{
+		mesh:=get_mesh(mesh_hd)
+		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
+		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)	
+		sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0)
 	}
 }
 check_and_resize_all_frame_buffers::proc(
@@ -547,28 +426,70 @@ check_and_resize_all_frame_buffers::proc(
 	}
 	
 }
-start_render::proc(){
+start_render::proc(
+	pass:^R_Pass,
+	cam:^Camera,
+	// meshes_hd:[]Mesh_Handle,
+	render_target:Render_Targets,
+	load_op:	sdl.GPULoadOp= .CLEAR,
+	d_load_op:	sdl.GPULoadOp=.CLEAR,
+	store_op:   sdl.GPUStoreOp = .STORE,
+	d_store_op: sdl.GPUStoreOp = .STORE,
+	clear_color:[4]f32={.3,.3,.3,1},
+){
 	s.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
-	update_windows()
+	pass.render_target = get_render_target(render_target)
+	switch rt in render_target {
+		case Window_Handle:
+			win:=get_window(rt)
+			update_window(win)
+		case ^Render_Target:
+	}
+	check_and_resize_all_frame_buffers(cam,render_target)
+	if pass.render_target.data != nil{
+		texture:=pass.render_target.msaa_tex
+		resolve_texture:^sdl.GPUTexture=nil
+		if store_op == .RESOLVE ||store_op == .RESOLVE_AND_STORE {
+			texture=pass.render_target.msaa_tex
+			resolve_texture=pass.render_target.data
+		}
+		color_target := sdl.GPUColorTargetInfo{
+			texture = texture,
+			resolve_texture = resolve_texture,
+			load_op = load_op,
+			clear_color = cast(sdl.FColor)clear_color,
+			store_op = store_op,
+		}
+		depth_target_info:= sdl.GPUDepthStencilTargetInfo{
+			texture = cam.depth_texture,
+			load_op = d_load_op,
+			clear_depth = 1,
+			store_op = .STORE,
+		}
+		pass.render_pas = sdl.BeginGPURenderPass(s.render_cmd_buf, &color_target, 1, &depth_target_info )
+	}
 }
-submit_render::proc(){
+submit_render::proc(pass:^R_Pass,){
+	sdl.EndGPURenderPass(pass.render_pas)
 	ok := sdl.SubmitGPUCommandBuffer(s.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
 }
 update_windows::proc(){
 	my_iter := hm.make_iter(&s.windows)
 	for win, i in hm.iter(&my_iter) {
-		swap_chan_w:u32
-		swap_chan_h:u32
-		ok:=sdl.WaitAndAcquireGPUSwapchainTexture(s.render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
-		if win.Render_Target.wh != {cast(i32)swap_chan_w,cast(i32)swap_chan_h}{
-			ok:=sdl.WaitForGPUIdle(s.gpu_device)
-			if !ok{
-				log.log(.Debug,"sdl.WaitForGPUIdle() failed")
-			}
-		}
-		win.Render_Target.wh = {cast(i32)swap_chan_w,cast(i32)swap_chan_h}
-		if !ok{log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")}
+		update_window(win)
 	}
+}
+update_window::proc(win:^Window){			swap_chan_w:u32
+	swap_chan_h:u32
+	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(s.render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
+	if win.Render_Target.wh != {cast(i32)swap_chan_w,cast(i32)swap_chan_h}{
+		ok:=sdl.WaitForGPUIdle(s.gpu_device)
+		if !ok{
+			log.log(.Debug,"sdl.WaitForGPUIdle() failed")
+		}
+	}
+	win.Render_Target.wh = {cast(i32)swap_chan_w,cast(i32)swap_chan_h}
+	if !ok{log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")}
 }
 remove_closed_windows::proc(){
 	windows_iter := hm.make_iter(&s.windows)

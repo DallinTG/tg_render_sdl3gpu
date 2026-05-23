@@ -79,7 +79,7 @@ main :: proc(){
 	}
 	// tg.init_steam()
 	s=tg.init()
-	fmt.print(size_of(tg.Vertex_Data),"\n")
+	fmt.print("size_of(tg.Vertex_Data) ",size_of(tg.Vertex_Data),"\n")
 	g.window = tg.init_window()
 
 	g.cam = tg.create_camera(type = .orthographic)
@@ -222,22 +222,15 @@ init_rendering_thread::proc(){
 
 do_rendering::proc(){
 	rendering_loop:for !g.game_should_close {
-		tg.start_render()//----------------------------------------------------------->
-	
-		// mesh_map(g.w_map)
+
+		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE)
 		render_map(g.w_map)
 		render_entitys(&g.entitys)
-		// wh:=tg.get_window_size(g.window)
-		// mouse_pos:[2]f32 
-		// flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
-		
-		// render_comands:=create_layout()
-		// render_comands:=g.clay_render_comands
-		// tg.update_clay_instance(g.ui_clay_inst,&render_comands,wh,mouse_pos,.LEFT in flag)
-		tg.render_clay_instance(g.ui_clay_inst,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .CLEAR,  store_op = .RESOLVE)
-	
-		tg.submit_render()//----------------------------------------------------------->
+		tg.render_clay_instance(g.ui_clay_inst,&g.pass,&g.cam_ui)
+		tg.submit_render(&g.pass)
+
 		tg.update_time_fps_info()
+
 	}
 }
 

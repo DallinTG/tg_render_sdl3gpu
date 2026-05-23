@@ -86,14 +86,17 @@ create_mesh::proc(cpu_mesh:Mesh_CPU, rezerved_buf_size:int = 1000) ->(mesh_hd:Me
 		usage={.GRAPHICS_STORAGE_READ},
 		size = cast(u32)vertices_byte_size,
 	})
+
 	mesh.gpu.index_buf = sdl.CreateGPUBuffer(s.gpu_device,{
 		usage={.GRAPHICS_STORAGE_READ},
 		size = cast(u32)indices_byte_size,
 	})
+
 	mesh.gpu.transfer_buf = sdl.CreateGPUTransferBuffer(s.gpu_device,{
 		usage = .UPLOAD,
 		size = cast(u32)(vertices_byte_size + indices_byte_size),
 	})
+
 	mesh_hd=hm.add(&s.meshes, mesh)
 	return
 }
@@ -110,7 +113,6 @@ update_mesh::proc(mesh:Mesh_Handle){
 	mesh:=get_mesh(mesh)
 	// vertices_byte_size:=len(mesh.cpu.vertex_buf)//_________________________________
 	vertices_byte_size := mesh.cpu.vertex_buf_used
-	fmt.print(vertices_byte_size,len(mesh.cpu.vertex_buf),"---------------------- \n")
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
 	// if vertices_byte_size == 0 || indices_byte_size == 0 {return }
 	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, false)//TODO may be ablle to remove the mem copyes by seting the transfer buff as cpu data

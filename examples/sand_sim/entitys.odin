@@ -96,7 +96,7 @@ render_entitys::proc(entitys:^Entity_Handle_Map,){
 	tg.draw_fps(&mesh.cpu,tg.Vertex_Data,{0,0,0})
 	tg.draw_tps(&mesh.cpu,tg.Vertex_Data,{0,-20,0})
 	tg.update_mesh(g.entitys_mesh)
-	tg.do_render_pass(&g.pass, &g.cam, {g.entitys_mesh}, g.window,  load_op = .LOAD, d_load_op = .LOAD, store_op = .RESOLVE)
+	tg.do_render_pass(&g.pass, &g.cam, {g.entitys_mesh})
 }
 get_entity::proc(hd:Entity_Handle)->(ent:^Entity){
 	ent = hm.get(g.entitys,hd)
