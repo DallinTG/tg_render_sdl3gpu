@@ -153,6 +153,7 @@ is_input_event::proc(
     ref:[4]^input_data
     // for &event in &g.input_events.q {
         for i in 0..<max_key_combo{
+        fmt.println(i, i_e_data[i].data.id)
             if i_e_data[i].data.id == nil &&i!=0{
                 // ref[i]= &event
                 is_good[i]=true
@@ -204,7 +205,7 @@ gather_input_info::proc(){//triger this as fast as the game will run
 				case .KEY_DOWN:
 					g.input_events.key_p[e.key.scancode] = true
 					g.input_events.key_d[e.key.scancode] = true
-					fmt.println("KEY:", e.key.scancode, e.key.key)
+					// fmt.println("KEY:", e.key.scancode, e.key.key)
 				case .KEY_UP:
 					g.input_events.key_r[e.key.scancode] = true
 				case .MOUSE_BUTTON_DOWN:
