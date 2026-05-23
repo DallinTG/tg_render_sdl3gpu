@@ -204,13 +204,14 @@ gather_input_info::proc(){//triger this as fast as the game will run
 				case .KEY_DOWN:
 					g.input_events.key_p[e.key.scancode] = true
 					g.input_events.key_d[e.key.scancode] = true
-					
+					fmt.println("KEY:", e.key.scancode, e.key.key)
 				case .KEY_UP:
 					g.input_events.key_r[e.key.scancode] = true
 				case .MOUSE_BUTTON_DOWN:
 		
 					g.input_events.mouse_p[cast(sdl.MouseButtonFlag)(e.button.button - 1)] = true
 					g.input_events.mouse_d[cast(sdl.MouseButtonFlag)(e.button.button - 1)] = true
+					
 				case .MOUSE_BUTTON_UP:
 
 					g.input_events.mouse_r[cast(sdl.MouseButtonFlag)(e.button.button - 1)] = true

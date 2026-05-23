@@ -115,7 +115,7 @@ main :: proc(){
 		}
 		g.clay_render_comands=create_layout()
 		
-		fmt.println(sdl.GetWindowFlags(tg.get_window(g.window).data))
+		// fmt.println(sdl.GetWindowFlags(tg.get_window(g.window).data))
 		wh:=tg.get_window_size(g.window)
 		mouse_pos:[2]f32 
 		flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
