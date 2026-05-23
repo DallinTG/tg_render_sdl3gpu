@@ -153,7 +153,6 @@ is_input_event::proc(
     ref:[4]^input_data
     // for &event in &g.input_events.q {
         for i in 0..<max_key_combo{
-        fmt.println(i, i_e_data[i].data.id)
             if i_e_data[i].data.id == nil &&i!=0{
                 // ref[i]= &event
                 is_good[i]=true
@@ -227,9 +226,9 @@ gather_input_info::proc(){//triger this as fast as the game will run
 			if t_input_data.id != nil{
 				// append(&g.input_events.q,t_input_data) 
 			}
-		}  
+		}
 	}
-
+	fmt.print(g.input_events.key[.A],"\n")
 	update_input_q::proc(){
 		for &key ,e in &g.input_events.key{
 			key.pressed = g.input_events.key_p[e]
