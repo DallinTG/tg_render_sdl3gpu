@@ -87,7 +87,7 @@ Server_Status::enum{
 
 
 
-start_server::proc(ip:string="10.0.0.155", port:int=35823){
+start_server::proc(ip:string="0.0.0.0", port:int=35823){
 	if !g.server.net_state.is_up{
 		fmt.print("starting server\n")
 		g.server.net_state = tg.init_udp_echo_server(ip, port)
@@ -95,7 +95,7 @@ start_server::proc(ip:string="10.0.0.155", port:int=35823){
 		add_player_by_id(g.server.id)
 	}
 }
-join_server::proc(ip:string="10.0.0.155", port:int=35823){
+join_server::proc(ip:string="0.0.0.0", port:int=35823){
 	if !g.server.net_state.is_up{
 		fmt.print("conecting to server\n")
 		g.server.net_state = tg.init_udp_echo_client(ip, port)
