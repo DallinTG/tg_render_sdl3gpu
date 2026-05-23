@@ -158,6 +158,7 @@ do_mode_start::proc(){
 }
 do_mode_loby::proc(){
 	update_map(g.w_map)
+	draw_update_entitys_mesh(&g.entitys)
 }
 do_mode_game::proc(){
 	do_player_inputs()
@@ -177,6 +178,7 @@ do_mode_game::proc(){
 		// steam.Friends_ActivateGameOverlay(friends,"Friends")
 		tg.update_steam_friend_info()
 	}
+	draw_update_entitys_mesh(&g.entitys)
 	update_map(g.w_map)
 	mesh_map(g.w_map)
 	do_entitys(&g.entitys)
@@ -225,6 +227,7 @@ do_rendering::proc(){
 
 		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE)
 		render_map(g.w_map)
+		// draw_update_entitys_mesh(&g.entitys)
 		render_entitys(&g.entitys)
 		tg.render_clay_instance(g.ui_clay_inst,&g.pass,&g.cam_ui)
 		tg.submit_render(&g.pass)

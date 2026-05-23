@@ -72,8 +72,7 @@ sink_all_entity_data::proc(){
 	items:=mem.slice_data_cast([]u8,g.entitys.items[:])
 	send_net_command_to_all_clients(cmd={type = .sink_all_entity_data},buf = items)
 }
-render_entitys::proc(entitys:^Entity_Handle_Map,){
-	
+draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	ent_iter := hm.make_iter(entitys)
 	mesh:=tg.get_mesh(g.entitys_mesh)
 	tg.clear_mesh_cpu(&mesh.cpu)
@@ -96,6 +95,31 @@ render_entitys::proc(entitys:^Entity_Handle_Map,){
 	tg.draw_fps(&mesh.cpu,tg.Vertex_Data,{0,0,0})
 	tg.draw_tps(&mesh.cpu,tg.Vertex_Data,{0,-20,0})
 	tg.update_mesh(g.entitys_mesh)
+}
+render_entitys::proc(entitys:^Entity_Handle_Map,){
+	
+	// ent_iter := hm.make_iter(entitys)
+	// mesh:=tg.get_mesh(g.entitys_mesh)
+	// tg.clear_mesh_cpu(&mesh.cpu)
+	// for ent in hm.iter(&ent_iter) {
+	// 	tg.draw_rect(&mesh.cpu,"",tg.Vertex_Data,{1,1,1,1},{ent.pos,{10,10}})
+		
+	// 	// switch &e in &ent.type_data{
+	// 	// 	case Player_Entitys:
+	// 	// 	do_players(ent,&e)
+	// 	// 	case Mob_Entitys:
+			
+	// 	// }
+	// }
+	// pos:[3]f32
+	// for fri in s.steam.friends.player{
+	// // fmt.print([2]u32{fri.l_player_icon_gpu_id.idx,fri.l_player_icon_gpu_id.gen})
+	// 	pos+={100,0,0}
+	// 	tg.draw_rect(&mesh.cpu,fri.l_player_icon_gpu_id,tg.Vertex_Data,{1,1,1,1},{pos,{50,50}})
+	// }
+	// tg.draw_fps(&mesh.cpu,tg.Vertex_Data,{0,0,0})
+	// tg.draw_tps(&mesh.cpu,tg.Vertex_Data,{0,-20,0})
+	// tg.update_mesh(g.entitys_mesh)
 	tg.do_render_pass(&g.pass, &g.cam, {g.entitys_mesh})
 }
 get_entity::proc(hd:Entity_Handle)->(ent:^Entity){

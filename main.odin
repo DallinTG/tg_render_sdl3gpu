@@ -52,7 +52,7 @@ State :: struct{
 
 	gpu_device: ^sdl.GPUDevice,
 	copy_cmd_buf   :^sdl.GPUCommandBuffer,
-	render_cmd_buf :^sdl.GPUCommandBuffer,
+	// render_cmd_buf :^sdl.GPUCommandBuffer,
 
 
 	time:Time_Info,
@@ -105,6 +105,7 @@ Input_Data::struct{
 
 R_Pass ::struct{
 	window_hd: Window_Handle,
+	render_cmd_buf :^sdl.GPUCommandBuffer,
 	info:Render_Pass_Info,
 	render_pas: ^sdl.GPURenderPass,
 	pipeline: ^sdl.GPUGraphicsPipeline,
@@ -337,7 +338,7 @@ do_render_pass::proc(
 	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}
 
 	sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline)
-	sdl.PushGPUVertexUniformData(s.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
+	sdl.PushGPUVertexUniformData(pass.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
 	
 	clear_dynamic_array(&pass.texture_sampler_binding)
 	for &texture in  s.texture_arr_groop{
@@ -431,18 +432,18 @@ start_render::proc(
 	cam:^Camera,
 	// meshes_hd:[]Mesh_Handle,
 	render_target:Render_Targets,
-	load_op:	sdl.GPULoadOp= .CLEAR,
-	d_load_op:	sdl.GPULoadOp=.CLEAR,
+	load_op:	sdl.GPULoadOp  = .CLEAR,
+	d_load_op:	sdl.GPULoadOp  = .CLEAR,
 	store_op:   sdl.GPUStoreOp = .STORE,
 	d_store_op: sdl.GPUStoreOp = .STORE,
 	clear_color:[4]f32={.3,.3,.3,1},
 ){
-	s.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
+	pass.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	pass.render_target = get_render_target(render_target)
 	switch rt in render_target {
 		case Window_Handle:
 			win:=get_window(rt)
-			update_window(win)
+			update_window(win,pass.render_cmd_buf)
 		case ^Render_Target:
 	}
 	check_and_resize_all_frame_buffers(cam,render_target)
@@ -466,22 +467,22 @@ start_render::proc(
 			clear_depth = 1,
 			store_op = .STORE,
 		}
-		pass.render_pas = sdl.BeginGPURenderPass(s.render_cmd_buf, &color_target, 1, &depth_target_info )
+		pass.render_pas = sdl.BeginGPURenderPass(pass.render_cmd_buf, &color_target, 1, &depth_target_info )
 	}
 }
 submit_render::proc(pass:^R_Pass,){
 	sdl.EndGPURenderPass(pass.render_pas)
-	ok := sdl.SubmitGPUCommandBuffer(s.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
+	ok := sdl.SubmitGPUCommandBuffer(pass.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
 }
-update_windows::proc(){
+update_windows::proc(render_cmd_buf :^sdl.GPUCommandBuffer,){
 	my_iter := hm.make_iter(&s.windows)
 	for win, i in hm.iter(&my_iter) {
-		update_window(win)
+		update_window(win,render_cmd_buf)
 	}
 }
-update_window::proc(win:^Window){			swap_chan_w:u32
+update_window::proc(win:^Window,render_cmd_buf :^sdl.GPUCommandBuffer,){			swap_chan_w:u32
 	swap_chan_h:u32
-	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(s.render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
+	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
 	if win.Render_Target.wh != {cast(i32)swap_chan_w,cast(i32)swap_chan_h}{
 		ok:=sdl.WaitForGPUIdle(s.gpu_device)
 		if !ok{
