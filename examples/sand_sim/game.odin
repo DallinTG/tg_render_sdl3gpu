@@ -20,7 +20,7 @@ USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
 
 Handle :: hm.Handle
 s:^tg.State
-g:Game
+g:^Game
 Game::struct{
 	cam:tg.Camera,
 	cam_ui:tg.Camera,
@@ -37,7 +37,7 @@ Game::struct{
 	vert_shader:tg.Shader_Handle,
 	frag_shader:tg.Shader_Handle,
 	render_thread:^thread.Thread,
-	server:Net_Server_Info,
+	server:tg.Networking_Instance,
 	input_events:event_data,
 	game_should_close:bool,
 
@@ -60,7 +60,8 @@ init::proc(){
 	init_map(&g.w_map)
 	wh:=tg.get_window_size(g.window)
 	fmt.print(wh)
-	init_net_thread()
+	// init_net_thread()
+	tg.init_networking_instance(&g.server,pros_server_cmd,start_server)
 	reg_input_events()
 	init_entitys_mesh()
 	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.vert_shader, g.frag_shader, gbl_font_size = .1)
@@ -70,6 +71,7 @@ init::proc(){
 }
 
 main :: proc(){
+	g = new(Game)
 	context.logger = log.create_console_logger()
 	when USE_TRACKING_ALLOCATOR {
 		tracking_allocator: mem.Tracking_Allocator
@@ -96,12 +98,16 @@ main :: proc(){
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_frame(){
 		tg.run_steam_callbacks()
+
 		for ev in &tg.s.events {
 		}
+
 		gather_input_info()
+
 		tg.update_time_info()
+
 		if s.time.is_60_hz{
-			pros_server_cmd_q()
+			tg.pros_server_cmd_q(&g.server)
 			manage_gmae_mode_state()
 			switch g.curent_game_mode{
 				case .start:
@@ -119,11 +125,13 @@ main :: proc(){
 		wh:=tg.get_window_size(g.window)
 		mouse_pos:[2]f32 
 		flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
+
 		tg.update_clay_instance(g.ui_clay_inst,&g.clay_render_comands,wh,mouse_pos,.LEFT in flag)
+
 
 		// do_rendering()
 	}
-	leave_shutdown_server()
+	tg.leave_shutdown_server(&g.server)
 	cleane_up_game()
 
 	when USE_TRACKING_ALLOCATOR {
@@ -185,9 +193,8 @@ do_mode_game::proc(){
 	do_entitys(&g.entitys)
 
 	if is_input_event(.ui_esc){
-		leave_shutdown_server()
+		tg.leave_shutdown_server(&g.server)
 	}
-	
 
 	update_camera_2d_pan(&g.cam,  )
 	// tg.update_camera_2d_wasd(&g.cam, cast(f32)s.time.tick_time, )
@@ -260,4 +267,36 @@ update_camera_zoom::proc(cam:^tg.Camera, speed:f32=1, min_zoom:f32= .1,max_zoom:
 	if cam.zoom > max_zoom{
 		cam.zoom = max_zoom
 	}
+}
+
+@(export)
+game_memory :: proc() -> rawptr {
+	return 	cast(rawptr)g
+}
+
+@(export)
+game_memory_size :: proc() -> int {
+	return size_of(Game)
+}
+
+
+@(export)
+game_hot_reloaded :: proc(mem: rawptr) {
+	g = cast(^Game)(mem)
+	// mem = cast(rawptr)g
+
+	// Here you can also set your own global variables. A good idea is to make
+	// your global variables into pointers that point to something inside `g`.
+}
+
+@(export)
+game_force_reload :: proc() -> bool {
+	// return rl.IsKeyPressed(.F5)
+	return false
+}
+
+@(export)
+game_force_restart :: proc() -> bool {
+	// return rl.IsKeyPressed(.F6)
+	return false
 }

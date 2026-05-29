@@ -345,9 +345,9 @@ update_map::proc(w_map:^Map){
 
 
 
-	proses_set_cell_cmd(w_map)
-	sink_next_chunck(w_map)
-	sink_w_map_info(g.w_map)
+	proses_set_cell_cmd(&g.server, w_map)
+	sink_next_chunck(&g.server, w_map)
+	sink_w_map_info(&g.server, g.w_map)
 
 
 	for &chuncks,x in &w_map.chuncks{
@@ -609,11 +609,11 @@ server_set_cell_by_id::proc(cell:[2]int, id:Cell_ids, w_map:^Map){
 
 
 
-proses_set_cell_cmd::proc(w_map:^Map){
+proses_set_cell_cmd::proc(net_inst:^tg.Networking_Instance, w_map:^Map){
 	if g.server.status == .hosting{
 		cell_cmd := w_map.list_of_add_cell_CMD[:w_map.cell_CMD_count]
 		buf:=mem.slice_data_cast([]u8,cell_cmd)
-		send_net_command_to_all_clients({type = .sink_cell_cmds},buf)
+		tg.send_net_command_to_all_clients(net_inst,{type = cast(u32)Game_Net_Commands_Type.sink_cell_cmds},buf)
 	}
 	for i := 0; i < w_map.cell_CMD_count; i += 1 {
 		cell:=w_map.list_of_add_cell_CMD[i]
@@ -623,7 +623,7 @@ proses_set_cell_cmd::proc(w_map:^Map){
 	w_map.list_of_add_cell_CMD = {}
 }
 
-resv_set_cell_cmds::proc(server_cmd:^Server_CMD,w_map:^Map){
+resv_set_cell_cmds::proc(server_cmd:^tg.Server_CMD,w_map:^Map){
 	cell_cmd:=mem.slice_data_cast([]Add_Cell_CMD,server_cmd.buf)
 	for &cell in &cell_cmd{
 		if w_map.cell_CMD_count < MAX_CELL_CMDS-1{
@@ -709,16 +709,16 @@ draw_chunck::proc(
 	}
 }
 
-sink_all_chuncks::proc(w_map:^Map){
+sink_all_chuncks::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
 	if g.server.status == .hosting{
 		for &row,x in &w_map.chuncks{
 			for &chunck,y in &row{
-				send_sink_chunck({x,y},w_map)
+				send_sink_chunck(net_inst,{x,y},w_map)
 			}
 		}
 	}
 }
-send_sink_chunck::proc(pos:[2]int,w_map:^Map){
+send_sink_chunck::proc(net_inst:^tg.Networking_Instance,pos:[2]int,w_map:^Map){
 	chunck:=get_chunck_by_pos(pos, w_map)
 	if chunck == nil{
 		fmt.print("faild to send chunk spesifid cunck is out of bounds\n")
@@ -730,10 +730,10 @@ send_sink_chunck::proc(pos:[2]int,w_map:^Map){
 		cells = chunck.cells,
 	}
 	temp_buf:=transmute([size_of(Sink_Chunck_Data)]u8)sink_chunck
-	send_net_command_to_all_clients(cmd = {type=.sink_chunck},buf = temp_buf[:])
+	tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_chunck},buf = temp_buf[:])
 }
 
-sink_next_chunck::proc(w_map:^Map){
+sink_next_chunck::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
 	if g.server.status != .hosting{return}
 	w_map.next_chunck_to_sink.x+=1
 	if w_map.next_chunck_to_sink.x > MAP_SIZE.x-1{
@@ -744,11 +744,11 @@ sink_next_chunck::proc(w_map:^Map){
 		w_map.next_chunck_to_sink.y = 0
 		w_map.next_chunck_to_sink.x = 0
 	}
-	send_sink_chunck(w_map.next_chunck_to_sink,w_map,)
+	send_sink_chunck(net_inst,w_map.next_chunck_to_sink,w_map,)
 	
 }
 
-resv_sink_chunck::proc(server_cmd:^Server_CMD){
+resv_sink_chunck::proc(server_cmd:^tg.Server_CMD){
 	sink_chunck_s:=mem.slice_data_cast([]Sink_Chunck_Data,server_cmd.buf)[0:1]
 	chunck:=get_chunck_by_pos(sink_chunck_s[0].pos, g.w_map)
 	chunck.has_changed = true
@@ -760,15 +760,15 @@ resv_sink_chunck::proc(server_cmd:^Server_CMD){
 Sink_W_Map_Info::struct{
 	tick_count:u32,
 }
-sink_w_map_info::proc(w_map:^Map){
+sink_w_map_info::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
 	sink_w_map_info:Sink_W_Map_Info={
 		tick_count = w_map.tick_count,
 	}
 	temp_buf:=transmute([size_of(Sink_W_Map_Info)]u8)sink_w_map_info
-	send_net_command_to_all_clients(cmd = {type=.sink_w_map_info},buf = temp_buf[:])
+	tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_w_map_info},buf = temp_buf[:])
 }
 
-resv_w_map_info::proc(server_cmd:^Server_CMD,w_map:^Map){
+resv_w_map_info::proc(server_cmd:^tg.Server_CMD,w_map:^Map){
 	w_map_info:=mem.slice_data_cast([]Sink_W_Map_Info,server_cmd.buf)[0:1]
 	w_map.tick_count = w_map_info[0].tick_count
 }

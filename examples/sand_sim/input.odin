@@ -228,7 +228,7 @@ gather_input_info::proc(){//triger this as fast as the game will run
 			}
 		}
 	}
-	fmt.print(g.input_events.key[.A],"\n")
+	// fmt.print(g.input_events.key[.A],"\n")
 	update_input_q::proc(){
 		for &key ,e in &g.input_events.key{
 			key.pressed = g.input_events.key_p[e]

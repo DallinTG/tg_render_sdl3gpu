@@ -49,7 +49,7 @@ start_menu::proc(){
 				if cl.Hovered() && is_input_event(.ui_l_c){
 					g.next_game_mode = .loby
 					fmt.print("Button--Host\n")
-					start_server()
+					tg.start_server(net_inst=&g.server)
 				}
 			}
 			if cl.UI(cl.ID("Button--Join"))(tg.button_dec()) {
@@ -58,7 +58,7 @@ start_menu::proc(){
 				if cl.Hovered() && is_input_event(.ui_l_c){
 					g.next_game_mode = .loby
 					fmt.print("Button--Join\n")
-					join_server()
+					tg.join_server(net_inst=&g.server)
 				}
 			}
 		}

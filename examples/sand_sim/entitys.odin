@@ -66,11 +66,11 @@ do_entitys::proc(entitys:^Entity_Handle_Map,){
 			
 		}
 	}
-	sink_all_entity_data()
+	sink_all_entity_data(&g.server)
 }
-sink_all_entity_data::proc(){
+sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
 	items:=mem.slice_data_cast([]u8,g.entitys.items[:])
-	send_net_command_to_all_clients(cmd={type = .sink_all_entity_data},buf = items)
+	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items)
 }
 draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	ent_iter := hm.make_iter(entitys)
@@ -138,9 +138,9 @@ Player_CMD::struct{
 	r_click_d:bool,
 	r_click_p:bool,
 }
-send_player_cmd::proc(cmd:Player_CMD){
+send_player_cmd::proc(net_inst:^tg.Networking_Instance, cmd:Player_CMD){
 	temp_data:=transmute([size_of(Player_CMD)]u8)cmd
-	send_net_command_to_server({type = .player_cmd}, temp_data[:])
+	tg.send_net_command_to_server(net_inst,{type = cast(u32)Game_Net_Commands_Type.player_cmd}, temp_data[:])
 }
 add_player_by_id::proc(id:u16){
 	player:Entity={
@@ -209,12 +209,17 @@ do_player_inputs::proc(){
 	if is_input_event(.alt_fire_p){
 		cmd.r_click_p = true
 	}
-	send_player_cmd(cmd)
+	send_player_cmd(&g.server, cmd)
 }
 
-do_player_cmd::proc(cmd:^Server_CMD){
+do_player_cmd::proc(cmd:^tg.Server_CMD){
+
 	player_e_hd:=g.all_player_data.players[cmd.net_command.id]
 	player:=get_entity(player_e_hd)
+	if player == nil {
+		fmt.print("invalid player sent:",player_e_hd,"\n")
+		return
+	}
 	temp:[size_of(Player_CMD)]u8
 	copy(temp[:],cmd.buf[:size_of(Player_CMD)])
 	player_cmd:=transmute(Player_CMD)temp
