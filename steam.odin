@@ -25,6 +25,10 @@ import "core:image/png"
 import "core:image/tga"
 
 
+// import "core:sys/posix"
+// import "core:fmt"
+
+
 Steam_Info::struct{
 	is_using_steam:bool,
 	number_of_current_players: int,
@@ -33,6 +37,7 @@ Steam_Info::struct{
 	hd_user:steam.HSteamUser,
 	user:^steam.IUser,
 	i_utils:^steam.IUtils,
+	i_matchmaking:^steam.IMatchmaking,
 	i_friends:^steam.IFriends,
 	user_name:string,
 	friends:Steam_Player_Groop,
@@ -53,20 +58,22 @@ Steam_Player_Groop::struct{
 }
 
 init_steam::proc(){
-	if steam.RestartAppIfNecessary(steam.uAppIdInvalid) {
-		fmt.println("Launching app through steam...")
-		return
-	}
-	s.steam.is_using_steam = true
+
+	
 
 
 	err_msg: steam.SteamErrMsg
 	// if err := steam.InitEx(&err_msg); err != .OK {
 
-	if err := steam.InitFlat(&err_msg); err != .OK {
-		fmt.printfln("steam.InitFlat failed with code '{}' and message \"{}\"", err, transmute(cstring)&err_msg[0])
-		panic("Steam Init failed. Make sure Steam is running.")
+	if steam.RestartAppIfNecessary(steam.uAppIdInvalid) {
+		fmt.println("Launching app through steam...","\n")
+		return
 	}
+	if err := steam.InitFlat(&err_msg); err != .OK {
+		fmt.printfln("steam.InitFlat failed with code '{}' and message \"{}\"", err, transmute(cstring)&err_msg[0],"\n")
+		return
+	}
+
 	// s.steam.client = steam.Client()
 
 	s.steam.client =  steam.SteamClient()
@@ -84,6 +91,11 @@ init_steam::proc(){
 	}
 	s.steam.i_utils= steam.SteamUtils_v010()
 	update_steam_friend_info()
+
+	s.steam.i_matchmaking = steam.SteamMatchmaking_v009()
+
+
+	s.steam.is_using_steam = true
 }
 update_steam_friend_info::proc(){
 	if s.steam.is_using_steam != true {return}
@@ -160,6 +172,7 @@ delete_player_groop::proc(groop:^Steam_Player_Groop){
 
 
 steam_debug_text_hook :: proc "c" (severity: c.int, debugText: cstring) {
+	if s.steam.is_using_steam != true {return}
 	// if you're running in the debugger, only warnings (nSeverity >= 1) will be sent
 	// if you add -debug_steamworksapi to the command-line, a lot of extra informational messages will also be sent
 	runtime.print_string(string(debugText))
@@ -197,8 +210,28 @@ run_steam_callbacks :: proc() {
                     // }
                     #partial switch call_completed.iCallback{
                     case .NumberOfCurrentPlayers:
-                    	fmt.print("waffles 5\n")
+                    	fmt.print("NumberOfCurrentPlayers\n")
                         onGetNumberOfCurrentPlayers(transmute(^steam.NumberOfCurrentPlayers)temp_call_res, bFailed)
+                    case .GameLobbyJoinRequested:
+                    fmt.print("GameLobbyJoinRequested\n")
+                    case .LobbyInvite:
+                    fmt.print("LobbyInvite\n")
+                    case .LobbyEnter:
+                    fmt.print("LobbyEnter\n")
+                    case .LobbyDataUpdate:
+                    fmt.print("LobbyDataUpdate\n")
+                    case .LobbyChatUpdate:
+                    fmt.print("LobbyChatUpdatee\n")
+                    case .LobbyChatMsg:
+                    fmt.print("LobbyChatMsg\n")
+                    case .LobbyGameCreated:
+                    fmt.print("LobbyGameCreated\n")
+                    case .LobbyMatchList:
+                    fmt.print("LobbyMatchList\n")
+                    case .LobbyKicked:
+                    fmt.print("LobbyKicked\n")
+                    case .LobbyCreated:
+                    fmt.print("LobbyCreated\n")
                     }
                 }
             }
@@ -212,18 +245,92 @@ run_steam_callbacks :: proc() {
             case .GameOverlayActivated:
                 fmt.println("GameOverlayActivated")
                 onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
-            }
-            
 
-            // if callback.iCallback == .GameOverlayActivated {
-            //     fmt.println("GameOverlayActivated")
-            //     onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
-            // }
-        }
-        // enabled :=steam.Utils_IsOverlayEnabled(steam.Utils() )
-    	// fmt.print("steam overlay is enabbled",enabled,"\n")
-        steam.ManualDispatch_FreeLastCallback(steam_pipe)
-    }
+			case .LobbyCreated:
+			fmt.print("LobbyCreated_fin\n")
+			temp:=transmute(^steam.LobbyCreated)callback.pubParam
+			fmt.print(temp,"\n")
+			if temp.eResult == .OK{
+				s.lobby.st_lobby = temp.ulSteamIDLobby
+			}else{
+				fmt.print("Lobby Creat failed",temp.eResult,"\n"  )
+			}
+			case .GameLobbyJoinRequested:
+			fmt.print("GameLobbyJoinRequested_fin\n")
+			case .LobbyInvite:
+			fmt.print("LobbyInvite_fin\n")
+			case .LobbyEnter:
+			temp:=transmute(^steam.LobbyEnter)callback.pubParam
+			fmt.print("LobbyEnter_fin\n")
+			err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
+			if err == .Success {
+				fmt.print(temp,"\n")
+			}else{
+				fmt.print("Lobby Enter failed",err,"\n"  )
+			}
+			case .LobbyDataUpdate:
+			temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
+			// steam.Matchmaking_GetLobbyMemberData(s.steam.i_matchmaking,temp.ulSteamIDLobby,temp.ulSteamIDMember,)
+			// steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,temp.ulSteamIDLobby)
+			fmt.print("LobbyDataUpdate_fin\n")
+			// fmt.print(temp,"\n")
+			// steam.Matchmaking_GetLobbyData()
+			case .LobbyChatUpdate:
+			fmt.print("LobbyChatUpdatee_fin\n")
+			case .LobbyChatMsg:
+			fmt.print("LobbyChatMsg_fin\n")
+			case .LobbyGameCreated:
+			fmt.print("LobbyGameCreated_fin\n")
+			case .LobbyMatchList:
+			fmt.print("LobbyMatchList_fin\n")
+			temp:=transmute(^steam.LobbyMatchList)callback.pubParam
+			for index in  0..<temp.nLobbiesMatching{
+				loby_id:=steam.Matchmaking_GetLobbyByIndex(s.steam.i_matchmaking,cast(i32)index)
+				fmt.print(loby_id,"\n")
+				max_members := steam.Matchmaking_GetLobbyMemberLimit(s.steam.i_matchmaking,loby_id,)
+				// fmt.print("max_members",max_members,"\n")
+				owner := steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,loby_id,)
+				// fmt.print("owner",owner ,"\n")
+				loby_name := steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,loby_id,"name")
+				// fmt.print("loby_name ",loby_name  ,"\n")
+
+				num_lobby_members:=steam.Matchmaking_GetNumLobbyMembers(s.steam.i_matchmaking,loby_id)
+				// fmt.print("num_lobby_members",num_lobby_members ,"\n")
+				for member_index in  0..<num_lobby_members{
+					// steam_user_id:=steam.Matchmaking_GetLobbyMemberByIndex(s.steam.i_matchmaking,loby_id,member_index)
+					// fmt.print("steam_user_id",steam_user_id,"\n")
+				}
+				lobby_data_count:=steam.Matchmaking_GetLobbyDataCount(s.steam.i_matchmaking,loby_id)
+				// fmt.print("lobby_data_count",lobby_data_count ,"\n")
+				
+				for data_index in  0..<lobby_data_count{
+					pchKey:[255]u8
+					cchKeyBufferSize: i32=255
+					pchValue:[8192]u8
+					cchValueBufferSize: i32=8192
+					steam.Matchmaking_GetLobbyDataByIndex(s.steam.i_matchmaking,loby_id,data_index,raw_data(&pchKey),cchKeyBufferSize,raw_data(&pchValue),cchValueBufferSize)
+					// fmt.print("pchKey",cast(string)pchKey[:],"\n")
+					// fmt.print("pchValue",pchValue,"\n")
+				}
+				fmt.print("\n\n")
+			}
+			fmt.print(temp.nLobbiesMatching,"\n")
+			case .LobbyKicked:
+			fmt.print("LobbyKicked_fin\n")
+			case:
+			fmt.print(callback.iCallback,"\n")
+			}
+			
+
+			// if callback.iCallback == .GameOverlayActivated {
+			//     fmt.println("GameOverlayActivated")
+			//     onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
+			// }
+		}
+		// enabled :=steam.Utils_IsOverlayEnabled(steam.Utils() )
+		// fmt.print("steam overlay is enabbled",enabled,"\n")
+		steam.ManualDispatch_FreeLastCallback(steam_pipe)
+	}
 }
 onGameOverlayActivated :: proc(data: ^steam.GameOverlayActivated) {
     fmt.println("Is overlay active =", data.bActive)
@@ -241,6 +348,75 @@ onGetNumberOfCurrentPlayers :: proc(data: ^steam.NumberOfCurrentPlayers, ioFailu
 }
 
 get_number_of_current_players :: proc() {
-    fmt.println("[get_number_of_current_players] Getting number of current players.")
-    hSteamApiCall := steam.UserStats_GetNumberOfCurrentPlayers(steam.UserStats())
+	if s.steam.is_using_steam != true {return}
+	fmt.println("[get_number_of_current_players] Getting number of current players.")
+	hSteamApiCall := steam.UserStats_GetNumberOfCurrentPlayers(steam.UserStats())
 }
+
+test_loby::proc(){
+	steam.Matchmaking_CreateLobby(s.steam.i_matchmaking,.FriendsOnly,10)
+	steam.Matchmaking_RequestLobbyList(s.steam.i_matchmaking,)
+}
+
+
+// Terminal :: struct {
+//     master: posix.FD,
+//     pid:    posix.pid_t,
+// }
+
+// terminal_create :: proc(shell: cstring) -> (Terminal, bool) {
+//     master := posix.posix_openpt({.RDWR , .NOCTTY})
+//     if master < 0 {
+//         return {}, false
+//     }
+
+//     if posix.grantpt(master) == .FAIL {
+//         return {}, false
+//     }
+
+//     if posix.unlockpt(master) == .FAIL {
+//         return {}, false
+//     }
+
+//     slave_name := posix.ptsname(master)
+//     if slave_name == nil {
+//         return {}, false
+//     }
+
+//     pid := posix.fork()
+
+//     if pid == 0 {
+//         posix.setsid()
+
+//         slave := posix.open(slave_name, {.NOCTTY}, {.IRUSR , .IWUSR})
+
+//         posix.dup2(slave, 0)
+//         posix.dup2(slave, 1)
+//         posix.dup2(slave, 2)
+
+//         posix.close(slave)
+//         posix.close(master)
+
+//         argv := [?]cstring{shell, nil}
+
+//         posix.execv(shell, &argv[0])
+
+//         posix._exit(1)
+//     }
+
+//     return Terminal{
+//         master = master,
+//         pid = pid,
+//     }, true
+// }
+
+// terminal_write :: proc(t: ^Terminal, s: string) {
+//     _ = posix.write(t.master, raw_data(s), len(s))
+// }
+// terminal_read :: proc(t: ^Terminal, buf: []u8) -> int {
+//     return posix.read(t.master, raw_data(buf), len(buf))
+// }
+
+// terminal_destroy :: proc(t: ^Terminal) {
+//     posix.close(t.master)
+// }

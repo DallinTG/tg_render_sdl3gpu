@@ -42,8 +42,8 @@ Game::struct{
 	game_should_close:bool,
 
 	clay_render_comands:cl.ClayArray(cl.RenderCommand),
-
-
+	
+	notifications:tg.Notification_Buffer,
 
 }
 
@@ -67,6 +67,15 @@ init::proc(){
 	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.vert_shader, g.frag_shader, gbl_font_size = .1)
 	init_rendering_thread()
 	tg.update_steam_friend_info()
+	fmt.print("inport theems\n")
+	// tg.load_ui_theme_by_file("themes/tokyo-night.json",&s.ui_style)
+	// tg.load_ui_theme_by_file("themes/catppuccin-mauve.json",&s.ui_style,0)
+	// tg.load_ui_theme_by_file("themes/dracula.json",&s.ui_style,1)
+	// tg.load_ui_theme_by_file("themes/snazzy.json",&s.ui_style,0)
+	// tg.load_ui_theme_by_file("themes/nvim-nightfox.json",&s.ui_style,13)
+	// tg.load_ui_theme_by_file("themes/zed_material_theme.json",&s.ui_style,0)
+	tg.load_ui_theme_by_file("themes/everforest-regular.json",&s.ui_style,2)
+	
 	// spawn_entity(&g.entitys)
 }
 
@@ -97,14 +106,14 @@ main :: proc(){
 	init()
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_frame(){
+		tg.update_time_info()
+		gather_input_info()
 		tg.run_steam_callbacks()
-
+		tg.update_notification_buffer(&g.notifications,s.time.tick_time)
 		for ev in &tg.s.events {
 		}
 
-		gather_input_info()
 
-		tg.update_time_info()
 
 		if s.time.is_60_hz{
 			tg.pros_server_cmd_q(&g.server)
@@ -127,7 +136,7 @@ main :: proc(){
 		flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
 
 		tg.update_clay_instance(g.ui_clay_inst,&g.clay_render_comands,wh,mouse_pos,.LEFT in flag)
-
+		
 
 		// do_rendering()
 	}
@@ -185,6 +194,7 @@ do_mode_game::proc(){
 		// friends := steam.Friends()
 		// fmt.print(friends,friends != nil)
 		// steam.Friends_ActivateGameOverlay(friends,"Friends")
+		tg.send_notification(&g.notifications,"waffles shift")
 		tg.update_steam_friend_info()
 	}
 	draw_update_entitys_mesh(&g.entitys)

@@ -367,7 +367,6 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		case .accept_join:
 			// net_inst.status = .joined
 			// net_inst.server.endpoint = server_cmd.endpoint
-			fmt.print()
 		case .regect_join:
 			// net_inst.status = .regected
 		case .server_shutdown:

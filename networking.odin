@@ -300,6 +300,7 @@ start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Ins
 		fmt.print("starting server\n")
 		net_inst.net_state = init_udp_echo_server(ip, port)
 		net_inst.status = .hosting
+		test_loby()//todo remove this
 		if net_inst.cb_start_server != nil{
 			net_inst.cb_start_server(net_inst)
 		}
@@ -531,4 +532,9 @@ pros_server_cmd_q::proc(net_inst:^Networking_Instance){
 	// fmt.print("total_reserved",g.server.cmd_q_extra_data.total_reserved,"   total_used",g.server.cmd_q_extra_data.total_used,"\n")
 	vmem.arena_free_all(&net_inst.cmd_q_extra_data)
 	hm.clear(&net_inst.cmd_q)
+}
+
+
+Lobby::struct{
+	st_lobby:u64
 }
