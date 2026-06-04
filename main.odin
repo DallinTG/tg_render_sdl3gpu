@@ -57,17 +57,22 @@ State :: struct{
 
 	time:Time_Info,
 	events:[dynamic]sdl.Event,
-
-	input:Input_Data,
+	
+	// input:Input_Data,
 
 	ui_style:UI_Style,
-	ui_settings:UI_Settings,
+	// ui_settings:UI_Settings,
 	
 	lobby:Lobby,
 	// key_down: #sparse[sdl.Scancode]bool,
 	// mouse_button_down: #sparse[sdl.MouseButtonFlag]bool,
 	// mouse_move: Vec2,
 	// mouse_wheel:sdl.MouseWheelEvent,
+
+	notifications:Notification_Buffer, 
+	is_ui_l_click:proc()->(bool),
+	is_ui_r_click:proc()->(bool),
+
 }
 Window_Handle :: distinct Handle
 Window::struct{
@@ -95,13 +100,6 @@ INIT_DEC:Init_Dec:{
 	msaa_txture_createinfo=DEFALT_MSAA_TEXTURE_CREATEINFO
 }
 
-Input_Data::struct{
-	key_down: #sparse[sdl.Scancode]bool,
-	mouse_button_down: #sparse[sdl.MouseButtonFlag]bool,
-	mouse_pos:Vec2,
-	mouse_move: Vec2,
-	mouse_wheel:sdl.MouseWheelEvent,
-}
 
 
 R_Pass ::struct{
@@ -238,8 +236,8 @@ start_frame::proc()->(app_should_close:bool){//returns true if app_should_close
 	free_all(s.frame_allocator)
 	clear(&s.events)
 	event:sdl.Event
-	s.input.mouse_move = {}//reset mouse_move
-	s.input.mouse_wheel = {}//reset mouse_wheel
+	// s.input.mouse_move = {}//reset mouse_move
+	// s.input.mouse_wheel = {}//reset mouse_wheel
 
 	s.app_should_close = false
 	for sdl.PollEvent(&event) {
@@ -255,18 +253,18 @@ start_frame::proc()->(app_should_close:bool){//returns true if app_should_close
 			if hm.len(s.windows) <= 0 {
 				s.app_should_close = true
 			}
-			case .KEY_DOWN:
-				s.input.key_down[event.key.scancode] = true
-			case .KEY_UP:
-				s.input.key_down[event.key.scancode] = false
-			case .MOUSE_MOTION:
-				s.input.mouse_move += Vec2{event.motion.xrel, event.motion.yrel}
-			case .MOUSE_BUTTON_DOWN:
-				s.input.mouse_button_down[cast(sdl.MouseButtonFlag)(event.button.button - 1)] = true
-			case .MOUSE_BUTTON_UP:
-				s.input.mouse_button_down[cast(sdl.MouseButtonFlag)(event.button.button - 1)] = false
-			case .MOUSE_WHEEL:
-				s.input.mouse_wheel = event.wheel
+			// case .KEY_DOWN:
+			// 	s.input.key_down[event.key.scancode] = true
+			// case .KEY_UP:
+			// 	s.input.key_down[event.key.scancode] = false
+			// case .MOUSE_MOTION:
+			// 	s.input.mouse_move += Vec2{event.motion.xrel, event.motion.yrel}
+			// case .MOUSE_BUTTON_DOWN:
+			// 	s.input.mouse_button_down[cast(sdl.MouseButtonFlag)(event.button.button - 1)] = true
+			// case .MOUSE_BUTTON_UP:
+			// 	s.input.mouse_button_down[cast(sdl.MouseButtonFlag)(event.button.button - 1)] = false
+			// case .MOUSE_WHEEL:
+			// 	s.input.mouse_wheel = event.wheel
 		}
 	}
 	return s.app_should_close 
@@ -565,62 +563,62 @@ screane_space_to_world_2d::proc(cam:^Camera,pos:[2]f32)->(world:[2]f32){
 }
 // this is a very rudimenty controler and should only be used for testing
 update_camera_3d::proc(cam:^Camera, dt:f32, sensitivity:f32=3, speed:f32=1.5,){
-	move_input:Vec2
-	if s.input.key_down[.W] do move_input.y = 1
-	else if s.input.key_down[.S] do move_input.y = -1
-	if s.input.key_down[.A] do move_input.x = -1
-	else if s.input.key_down[.D] do move_input.x = 1
+	// move_input:Vec2
+	// if s.input.key_down[.W] do move_input.y = 1
+	// else if s.input.key_down[.S] do move_input.y = -1
+	// if s.input.key_down[.A] do move_input.x = -1
+	// else if s.input.key_down[.D] do move_input.x = 1
 	
-	look_input := s.input.mouse_move * sensitivity * dt
+	// look_input := s.input.mouse_move * sensitivity * dt
 	
-	cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)
-	cam.look.pitch = math.clamp(cam.look.pitch - look_input.y, -89, 89)
+	// cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)
+	// cam.look.pitch = math.clamp(cam.look.pitch - look_input.y, -89, 89)
 
-	look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
+	// look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
 
-	forward := look_mat * Vec3 {0,0,-1}
-	right := look_mat * Vec3 {1,0,0}
-	move_dir := forward * move_input.y + right * move_input.x
-	// move_dir.y = 0
+	// forward := look_mat * Vec3 {0,0,-1}
+	// right := look_mat * Vec3 {1,0,0}
+	// move_dir := forward * move_input.y + right * move_input.x
+	// // move_dir.y = 0
 
-	motion := lin.normalize0(move_dir) * speed * dt
+	// motion := lin.normalize0(move_dir) * speed * dt
 
-	cam.pos += motion
-	cam.target = cam.pos + forward
+	// cam.pos += motion
+	// cam.target = cam.pos + forward
 }
 
 
 // this is a very rudimenty controler and should only be used for testing
 update_camera_2d_wasd::proc(cam:^Camera, dt:f32, speed:f32=1.5,){
-	move_input:Vec3
-	if s.input.key_down[.W] do move_input.y = -1
-	else if s.input.key_down[.S] do move_input.y = 1
-	if s.input.key_down[.A] do move_input.x = 1
-	else if s.input.key_down[.D] do move_input.x = -1
-	look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
-	motion := move_input * speed * dt
-	cam.pos += motion
+	// move_input:Vec3
+	// if s.input.key_down[.W] do move_input.y = -1
+	// else if s.input.key_down[.S] do move_input.y = 1
+	// if s.input.key_down[.A] do move_input.x = 1
+	// else if s.input.key_down[.D] do move_input.x = -1
+	// look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
+	// motion := move_input * speed * dt
+	// cam.pos += motion
 }
 
 update_camera_zoom::proc(cam:^Camera, speed:f32=1, min_zoom:f32= .1,max_zoom:f32=5){
-	cam.zoom += cast(f32)(s.input.mouse_wheel.integer_y)*.100 * speed
-	if cam.zoom < min_zoom {
-		cam.zoom = min_zoom
-	}
-	if cam.zoom > max_zoom{
-		cam.zoom = max_zoom
-	}
+	// cam.zoom += cast(f32)(s.input.mouse_wheel.integer_y)*.100 * speed
+	// if cam.zoom < min_zoom {
+	// 	cam.zoom = min_zoom
+	// }
+	// if cam.zoom > max_zoom{
+	// 	cam.zoom = max_zoom
+	// }
 }
 
 update_camera_2d_pan::proc(cam:^Camera, dt:f32=1, speed:f32=1,){
-	move_input:Vec3
-	if s.input.mouse_button_down[.RIGHT]{
-		move_input.x = s.input.mouse_move.x
-		move_input.y = s.input.mouse_move.y * -1
-		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
-		motion := move_input * (speed*cam.zoom) * dt
-		cam.pos += motion
-	}
+	// move_input:Vec3
+	// if s.input.mouse_button_down[.RIGHT]{
+	// 	move_input.x = s.input.mouse_move.x
+	// 	move_input.y = s.input.mouse_move.y * -1
+	// 	look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
+	// 	motion := move_input * (speed*cam.zoom) * dt
+	// 	cam.pos += motion
+	// }
 }
 
 

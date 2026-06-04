@@ -253,7 +253,8 @@ run_steam_callbacks :: proc() {
 			if temp.eResult == .OK{
 				s.lobby.st_lobby = temp.ulSteamIDLobby
 			}else{
-				fmt.print("Lobby Creat failed",temp.eResult,"\n"  )
+				fmt.print("Lobby Creation failed",temp.eResult,"\n"  )
+				send_simp_error_notification(&s.notifications, "Lobby Creation failed")
 			}
 			case .GameLobbyJoinRequested:
 			fmt.print("GameLobbyJoinRequested_fin\n")
@@ -267,6 +268,7 @@ run_steam_callbacks :: proc() {
 				fmt.print(temp,"\n")
 			}else{
 				fmt.print("Lobby Enter failed",err,"\n"  )
+				send_simp_error_notification(&s.notifications, "Lobby Enter failed")
 			}
 			case .LobbyDataUpdate:
 			temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam

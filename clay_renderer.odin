@@ -338,12 +338,8 @@ update_clay_instance::proc(clay_instance:Clay_I_Handle, renderCommands: ^cl.Clay
 	mesh:=get_mesh(inst.mesh)
 	cl.SetLayoutDimensions({ cast(f32)wh.x, cast(f32)wh.y })
 	cl.SetPointerState( mouse_pos, mouse_down)
-	
-
 	clay_render(clay_instance,renderCommands,&mesh.cpu)
 	update_mesh(inst.mesh)
-
-
 }
 render_clay_instance::proc(
 	clay_instance:Clay_I_Handle,

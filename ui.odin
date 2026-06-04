@@ -156,12 +156,50 @@ UI_Style::struct{
 		txt_h3:f32,
 		txt_h4:f32,
 		
+		// border:f32,
+		text_multiplyer:f32,
+		text_tiny:f32,
+		text_small:f32,
+		text:f32,
+		text_big:f32,
+		text_large:f32,
+		text_huge:f32,
+
+		border_multiplyer:f32,
+		border_tiny:f32,
+		border_small:f32,
 		border:f32,
+		border_big:f32,
+		border_large:f32,
+		border_huge:f32,
+
+		pading_multiplyer:f32,
+		pading_tiny:f32,
+		pading_small:f32,
+		pading:f32,
+		pading_big:f32,
+		pading_large:f32,
+		pading_huge:f32,
+	
+		child_gap_multiplyer:f32,
+		child_gap_tiny:f32,
+		child_gap_small:f32,
+		child_gap:f32,
+		child_gap_big:f32,
+		child_gap_large:f32,
+		child_gap_huge:f32,
+		
+		roundnes_multiplyer:f32,
+		sharp:f32,
+		smooth:f32,
+		round:f32,
+		bubble:f32,
 	},
 	pading:struct{
 		button:[4]f32,
 	},
 }
+
 DEFALT_UI_STYLE:UI_Style:{
 	// col = {
 	// 	fg			= {0.086, 0.122, 0.153, 1},
@@ -177,152 +215,574 @@ DEFALT_UI_STYLE:UI_Style:{
 	// 	button_hov	= {0.016, 0.039, 0.059, 1},
 	// },
 	siz = {
-		txt 	= 25,
-		txt_h1	= 100,
-		txt_h2	= 75,
-		txt_h3	= 50,
-		txt_h4	= 30,
+		// txt 	= 25,
+		// txt_h1	= 100,
+		// txt_h2	= 75,
+		// txt_h3	= 50,
+		// txt_h4	= 30,
 		
-		border	= 4,
+		// border	= 4,
+		
+		text_multiplyer = 1,
+		text_tiny = 5,
+		text_small = 10,
+		text = 25,
+		text_big = 30,
+		text_large = 50,
+		text_huge = 75,
+
+		border_multiplyer = 1,
+		border_tiny = 1,
+		border_small = 2,
+		border = 4,
+		border_big = 6,
+		border_large = 8,
+		border_huge = 12,
+
+		pading_multiplyer = 1,
+		pading_tiny = 2,
+		pading_small = 4,
+		pading = 8,
+		pading_big = 12,
+		pading_large = 24,
+		pading_huge = 48,
+	
+		child_gap_multiplyer = 1,
+		child_gap_tiny = 2,
+		child_gap_small = 4,
+		child_gap = 8,
+		child_gap_big = 12,
+		child_gap_large  = 24,
+		child_gap_huge = 48,
+		
+		roundnes_multiplyer = 1,
+		sharp = 0,
+		smooth = 2,
+		round = 4,
+		bubble = 8,
 	}
 }
 
-UI_Settings::struct{
-
+UI_Size::enum{
+	normal,
+	tiny,
+	small,
+	big,
+	large,
+	huge,
 }
-set_ui_style::proc(sty:=DEFALT_UI_STYLE){
-	s.ui_style = sty
-}
-
-
-button_dec::proc()->(button:cl.ElementDeclaration){
-	button_hov:=cl.Hovered()
-	button = cl.ElementDeclaration{
-		layout = {
-				layoutDirection = .TopToBottom,
-				sizing = { cl.SizingGrow(), cl.SizingFit() },
-				childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
-			},
-		backgroundColor = s.ui_style.col.element_active if button_hov else s.ui_style.col.element_background,
-		border = cl.BorderElementConfig{color = s.ui_style.col.border, width = cl.BorderWidth{3,3,3,3,6}},
+get_ui_text_size::proc(size:union{UI_Size,f32}) -> (new_size:u16){
+	switch siz in size{
+	case UI_Size:
+		switch siz{
+		case.normal:
+		new_size = cast(u16)(s.ui_style.siz.text * s.ui_style.siz.text_multiplyer )
+		case.tiny:
+		new_size = cast(u16)(s.ui_style.siz.text_tiny * s.ui_style.siz.text_multiplyer )
+		case.small:
+		new_size = cast(u16)(s.ui_style.siz.text_small * s.ui_style.siz.text_multiplyer) 
+		case.big:
+		new_size = cast(u16)(s.ui_style.siz.text_big * s.ui_style.siz.text_multiplyer )
+		case.large:
+		new_size = cast(u16)(s.ui_style.siz.text_large * s.ui_style.siz.text_multiplyer )
+		case.huge:
+		new_size = cast(u16)(s.ui_style.siz.text_huge * s.ui_style.siz.text_multiplyer )
+		}
+	case f32:
+		new_size = cast(u16)siz
 	}
-	return button
-}
-
-button_txt::proc($text:string, ){
-	cl.Text(
-		text,
-		cl.TextConfig(cl.TextElementConfig{
-			textColor = s.ui_style.col.text,
-			fontSize = cast(u16)s.ui_style.siz.txt_h2
-		}),
-	)
-}
-button_txt_dynamic::proc(text:string, ){
-	cl.TextDynamic(
-		text,
-		cl.TextConfig(cl.TextElementConfig{
-			textColor = s.ui_style.col.text,
-			fontSize = cast(u16)s.ui_style.siz.txt_h2
-		}),
-	)
-}
-
-notification_dec::proc()->(button:cl.ElementDeclaration){
-	button_hov:=cl.Hovered()
-	button = cl.ElementDeclaration{
-		layout = {
-				layoutDirection = .TopToBottom,
-				sizing = { cl.SizingPercent(.20), cl.SizingFit() },
-				childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
-				padding = {},
-				// childGap = 30,
-			},
-		backgroundColor = s.ui_style.col.element_background if !button_hov else s.ui_style.col.element_hover,
-		border = cl.BorderElementConfig{color = s.ui_style.col.border, width = cl.BorderWidth{3,3,3,3,0}},
-	}
-	return button
-}
-notification_progress_bar::proc(persent:f32){
-
-	if cl.UI(cl.ID("notification_progress_bar"))({
-		layout = { layoutDirection = .TopToBottom, 
-		sizing = { cl.SizingPercent(persent), cl.SizingFixed(5) } },
-		border={width = {0,0,0,0,0}},
-		backgroundColor = s.ui_style.col.ansi_bright_cyan,
-	}) {
-
-	}
-}
-
-notification_txt::proc($text:string, ){
-	cl.Text(
-		text,
-		cl.TextConfig(cl.TextElementConfig{
-			textColor = s.ui_style.col.txt_main,
-			fontSize = cast(u16)s.ui_style.siz.txt
-		}),
-	)
-}
-notification_txt_dynamic::proc(text:string, ){
-	cl.TextDynamic(
-		text,
-		cl.TextConfig(cl.TextElementConfig{
-			textColor = s.ui_style.col.text,
-			fontSize = cast(u16)s.ui_style.siz.txt
-		}),
-	)
-}
-
-ui_l_click::proc()->(click:bool){
-	click = s.input.mouse_button_down[.LEFT]
 	return
 }
 
-MAX_NUMBER_OF_NOTIFICATION::100
-Notification_Buffer::struct{
-	notifications:[dynamic;MAX_NUMBER_OF_NOTIFICATION]Notification
-}
-Notification::struct{
-	max_time:f64,
-	time_left:f64,
-	mesg_1:string,
-}
-init_notification_buffer::proc(buff:^Notification_Buffer){
-
-}
-update_notification_buffer::proc(buff:^Notification_Buffer,time_pased:f64){
-	for &notif,i in &buff.notifications{
-		notif.time_left -= time_pased
-		if notif.time_left<=0{
-			unordered_remove(&buff.notifications,i)
+get_ui_border::proc(size:union{UI_Size,f32}) -> (new_size:u16){
+	switch siz in size{
+	case UI_Size:
+		switch siz{
+		case.normal:
+		new_size = cast(u16)(s.ui_style.siz.border * s.ui_style.siz.border_multiplyer )
+		case.tiny:
+		new_size = cast(u16)(s.ui_style.siz.border_tiny * s.ui_style.siz.border_multiplyer )
+		case.small:
+		new_size = cast(u16)(s.ui_style.siz.border_small * s.ui_style.siz.border_multiplyer) 
+		case.big:
+		new_size = cast(u16)(s.ui_style.siz.border_big * s.ui_style.siz.border_multiplyer )
+		case.large:
+		new_size = cast(u16)(s.ui_style.siz.border_large * s.ui_style.siz.border_multiplyer )
+		case.huge:
+		new_size = cast(u16)(s.ui_style.siz.border_huge * s.ui_style.siz.border_multiplyer )
 		}
+	case f32:
+		new_size = cast(u16)siz
 	}
-}
-draw_notification_buffer::proc(buff:^Notification_Buffer){
-	if cl.UI(cl.ID("Notification_List"))({
-		layout = { 
-			layoutDirection = .TopToBottom,
-			sizing = { cl.SizingGrow(), cl.SizingGrow() },
-			childGap = 50,
-		},
-		backgroundColor = {0,0,0,0},
-		
-	}) {
-		for &notif,i in &buff.notifications{
-			if cl.UI(cl.ID("Notification_Box"))(notification_dec()) {
-				notification_txt_dynamic(notif.mesg_1)
-				notification_progress_bar(cast(f32)(notif.time_left/notif.max_time))
-			}
-		}
-	}
-}
-send_notification::proc(buff:^Notification_Buffer,mesg:string,time:f64=5){
-	if len(buff.notifications) <MAX_NUMBER_OF_NOTIFICATION{
-		append(&buff.notifications,Notification{max_time=time,time_left = time,mesg_1=mesg})
-	}
+	return
 }
 
+get_ui_pading::proc(size:union{UI_Size,f32}) -> (new_size:u16){
+	switch siz in size{
+	case UI_Size:
+		switch siz{
+		case.normal:
+		new_size = cast(u16)(s.ui_style.siz.pading * s.ui_style.siz.pading_multiplyer )
+		case.tiny:
+		new_size = cast(u16)(s.ui_style.siz.pading_tiny * s.ui_style.siz.pading_multiplyer )
+		case.small:
+		new_size = cast(u16)(s.ui_style.siz.pading_small * s.ui_style.siz.pading_multiplyer )
+		case.big:
+		new_size = cast(u16)(s.ui_style.siz.pading_big * s.ui_style.siz.pading_multiplyer )
+		case.large:
+		new_size = cast(u16)(s.ui_style.siz.pading_large * s.ui_style.siz.pading_multiplyer )
+		case.huge:
+		new_size = cast(u16)(s.ui_style.siz.pading_huge * s.ui_style.siz.pading_multiplyer )
+		}
+	case f32:
+		new_size = cast(u16)siz
+	}
+	return
+}
+
+
+
+get_ui_child_gap::proc(size:union{UI_Size,f32}) -> (new_size:u16){
+	switch siz in size{
+	case UI_Size:
+		switch siz{
+		case.normal:
+		new_size = cast(u16)(s.ui_style.siz.child_gap * s.ui_style.siz.child_gap_multiplyer )
+		case.tiny:
+		new_size = cast(u16)(s.ui_style.siz.child_gap_tiny * s.ui_style.siz.child_gap_multiplyer )
+		case.small:
+		new_size = cast(u16)(s.ui_style.siz.child_gap_small * s.ui_style.siz.child_gap_multiplyer )
+		case.big:
+		new_size = cast(u16)(s.ui_style.siz.child_gap_big * s.ui_style.siz.child_gap_multiplyer )
+		case.large:
+		new_size = cast(u16)(s.ui_style.siz.child_gap_large * s.ui_style.siz.child_gap_multiplyer )
+		case.huge:
+		new_size = cast(u16)(s.ui_style.siz.child_gap_huge * s.ui_style.siz.child_gap_multiplyer )
+		}
+	case f32:
+		new_size = cast(u16)siz
+	}
+	return
+}
+
+UI_Roundnes::enum{
+	sharp,
+	smooth,
+	round,
+	bubble,
+}
+
+get_ui_roundnes::proc(size:union{UI_Roundnes,f32}) -> (new_size:f32){
+	switch siz in size{
+	case UI_Roundnes:
+		switch siz{
+		case.sharp:
+		new_size = s.ui_style.siz.sharp * s.ui_style.siz.roundnes_multiplyer
+		case.smooth:
+		new_size = s.ui_style.siz.smooth * s.ui_style.siz.roundnes_multiplyer
+		case.round:
+		new_size = s.ui_style.siz.round * s.ui_style.siz.roundnes_multiplyer
+		case.bubble:
+		new_size = s.ui_style.siz.bubble * s.ui_style.siz.roundnes_multiplyer
+		}
+	case f32:
+		new_size = siz
+	}
+	return
+}
+
+Ansi_Color::enum{
+    ansi_black,
+    ansi_bright_black,
+    ansi_dim_black,
+    ansi_red,
+    ansi_bright_red,
+    ansi_dim_red,
+    ansi_green,
+    ansi_bright_green,
+    ansi_dim_green,
+    ansi_yellow,
+    ansi_bright_yellow,
+    ansi_dim_yellow,
+    ansi_blue,
+    ansi_bright_blue,
+    ansi_dim_blue,
+    ansi_magenta,
+    ansi_bright_magenta,
+    ansi_dim_magenta,
+    ansi_cyan,
+    ansi_bright_cyan,
+    ansi_dim_cyan,
+    ansi_white,
+    ansi_bright_white,
+    ansi_dim_white,
+}
+UI_Border_Color::enum{
+	border,
+    border_variant,
+    border_focused,
+    border_selected,
+    border_transparent,
+    border_disabled,
+}
+UI_Color::enum{
+	icon,
+    icon_muted,
+    icon_disabled,
+    icon_placeholder,
+    icon_accent,
+
+    elevated_surface_background,
+    surface_background,
+    background,
+    element_background,
+    element_hover,
+    element_active,
+    element_selected,
+    element_disabled,
+    drop_target_background,
+    status_bar_background,
+
+    title_bar_background,
+    title_bar_inactive_background,
+    toolbar_background,
+    tab_bar_background,
+    tab_inactive_background,
+    tab_active_background,
+    search_match_background,
+
+    panel_background,
+    panel_focused_border,
+    panel_indent_guide,
+    panel_indent_guide_active,
+    panel_indent_guide_hover,
+    panel_overlay_background,
+    pane_focused_border,
+    pane_group_border,
+
+    scrollbar_thumb_background,
+    scrollbar_thumb_hover_background,
+    scrollbar_thumb_border,
+    scrollbar_track_background,
+    scrollbar_track_border,
+
+    editor_foreground,
+    editor_background,
+    editor_gutter_background,
+    editor_subheader_background,
+    editor_active_line_background,
+    editor_highlighted_line_background,
+    editor_line_number,
+    editor_active_line_number,
+    editor_invisible,
+    editor_wrap_guide,
+    editor_active_wrap_guide,
+    editor_document_highlight_read_background,
+    editor_document_highlight_write_background,
+    editor_document_highlight_bracket_background,
+    editor_indent_guide,
+    editor_indent_guide_active,
+    terminal_background,
+    terminal_foreground,
+    terminal_ansi_background,
+    terminal_bright_foreground,
+    terminal_dim_foreground,
+
+    success,
+	success_background,
+	success_border,
+	
+	error,
+	error_background,
+	error_border,
+	
+	info,
+	info_background,
+	info_border,
+	
+	hint,
+	hint_background,
+	hint_border,
+	
+	warning,
+	warning_background,
+	warning_border,
+}
+UI_Text_Color::enum{
+    text,
+    text_muted,
+    text_placeholder,
+    text_disabled,
+    text_accent,
+    link_text_hover,
+}
+UI_Accents_Color::enum{
+	ac1,
+	ac2,
+	ac3,
+	ac4,
+	ac5,
+	ac6,
+	ac7,
+}
+Color_Types::union{
+	Ansi_Color,
+	Vec4,
+	UI_Border_Color,
+	UI_Text_Color,
+	UI_Accents_Color,
+	UI_Color,
+}
+get_color::proc(col:Color_Types)->(new_col:Vec4){
+	switch c in col{
+	case Ansi_Color:
+		switch c{
+			case.ansi_black:
+			new_col = s.ui_style.col.ansi_black
+			case.ansi_bright_black:
+			new_col = s.ui_style.col.ansi_bright_black
+			case.ansi_dim_black:
+			new_col = s.ui_style.col.ansi_dim_black
+			case.ansi_red:
+			new_col = s.ui_style.col.ansi_red
+			case.ansi_bright_red:
+			new_col = s.ui_style.col.ansi_bright_red
+			case.ansi_dim_red:
+			new_col = s.ui_style.col.ansi_dim_red
+			case.ansi_green:
+			new_col = s.ui_style.col.ansi_green
+			case.ansi_bright_green:
+			new_col = s.ui_style.col.ansi_bright_green
+			case.ansi_dim_green:
+			new_col = s.ui_style.col.ansi_dim_green
+			case.ansi_yellow:
+			new_col = s.ui_style.col.ansi_yellow
+			case.ansi_bright_yellow:
+			new_col = s.ui_style.col.ansi_bright_yellow
+			case.ansi_dim_yellow:
+			new_col = s.ui_style.col.ansi_dim_yellow
+			case.ansi_blue:
+			new_col = s.ui_style.col.ansi_blue
+			case.ansi_bright_blue:
+			new_col = s.ui_style.col.ansi_bright_blue
+			case.ansi_dim_blue:
+			new_col = s.ui_style.col.ansi_dim_blue
+			case.ansi_magenta:
+			new_col = s.ui_style.col.ansi_magenta
+			case.ansi_bright_magenta:
+			new_col = s.ui_style.col.ansi_bright_magenta
+			case.ansi_dim_magenta:
+			new_col = s.ui_style.col.ansi_dim_magenta
+			case.ansi_cyan:
+			new_col = s.ui_style.col.ansi_cyan
+			case.ansi_bright_cyan:
+			new_col = s.ui_style.col.ansi_bright_cyan
+			case.ansi_dim_cyan:
+			new_col = s.ui_style.col.ansi_dim_cyan
+			case.ansi_white:
+			new_col = s.ui_style.col.ansi_white
+			case.ansi_bright_white:
+			new_col = s.ui_style.col.ansi_bright_white
+			case.ansi_dim_white:
+			new_col = s.ui_style.col.ansi_dim_white
+		}
+	case UI_Border_Color:
+		switch c{
+			case.border:
+			new_col = s.ui_style.col.border
+			case.border_variant:
+			new_col = s.ui_style.col.border_variant
+			case.border_focused:
+			new_col = s.ui_style.col.border_focused
+			case.border_selected:
+			new_col = s.ui_style.col.border_selected
+			case.border_transparent:
+			new_col = s.ui_style.col.border_transparent
+			case.border_disabled:
+			new_col = s.ui_style.col.border_disabled
+		}
+	case UI_Text_Color:
+		switch c{
+			case.text:
+			new_col = s.ui_style.col.text
+			case.text_muted:
+			new_col = s.ui_style.col.text_muted
+			case.text_placeholder:
+			new_col = s.ui_style.col.text_placeholder
+			case.text_disabled:
+			new_col = s.ui_style.col.text_disabled
+			case.text_accent:
+			new_col = s.ui_style.col.text_accent
+			case.link_text_hover:
+			new_col = s.ui_style.col.link_text_hover
+		}
+	case UI_Color:
+		switch c{
+			case.icon:
+			new_col = s.ui_style.col.icon
+			case.icon_muted:
+			new_col = s.ui_style.col.icon_muted
+			case.icon_disabled:
+			new_col = s.ui_style.col.icon_disabled
+			case.icon_placeholder:
+			new_col = s.ui_style.col.icon_placeholder
+			case.icon_accent:
+			new_col = s.ui_style.col.icon_accent
+			case.elevated_surface_background:
+			new_col = s.ui_style.col.elevated_surface_background
+			case.surface_background:
+			new_col = s.ui_style.col.surface_background
+			case.background:
+			new_col = s.ui_style.col.background
+			case.element_background:
+			new_col = s.ui_style.col.element_background
+			case.element_hover:
+			new_col = s.ui_style.col.element_hover
+			case.element_active:
+			new_col = s.ui_style.col.element_active
+			case.element_selected:
+			new_col = s.ui_style.col.element_selected
+			case.element_disabled:
+			new_col = s.ui_style.col.element_disabled
+			case.drop_target_background:
+			new_col = s.ui_style.col.drop_target_background
+			case.status_bar_background:
+			new_col = s.ui_style.col.status_bar_background
+			case.title_bar_background:
+			new_col = s.ui_style.col.title_bar_background
+			case.title_bar_inactive_background:
+			new_col = s.ui_style.col.title_bar_inactive_background
+			case.toolbar_background:
+			new_col = s.ui_style.col.toolbar_background
+			case.tab_bar_background:
+			new_col = s.ui_style.col.tab_bar_background
+			case.tab_inactive_background:
+			new_col = s.ui_style.col.tab_inactive_background
+			case.tab_active_background:
+			new_col = s.ui_style.col.tab_active_background
+			case.search_match_background:
+			new_col = s.ui_style.col.search_match_background
+			case.panel_background:
+			new_col = s.ui_style.col.panel_background
+			case.panel_focused_border:
+			new_col = s.ui_style.col.panel_focused_border
+			case.panel_indent_guide:
+			new_col = s.ui_style.col.panel_indent_guide
+			case.panel_indent_guide_active:
+			new_col = s.ui_style.col.panel_indent_guide_active
+			case.panel_indent_guide_hover:
+			new_col = s.ui_style.col.panel_indent_guide_hover
+			case.panel_overlay_background:
+			new_col = s.ui_style.col.panel_overlay_background
+			case.pane_focused_border:
+			new_col = s.ui_style.col.pane_focused_border
+			case.pane_group_border:
+			new_col = s.ui_style.col.pane_group_border
+			case.scrollbar_thumb_background:
+			new_col = s.ui_style.col.scrollbar_thumb_background
+			case.scrollbar_thumb_hover_background:
+			new_col = s.ui_style.col.scrollbar_thumb_hover_background
+			case.scrollbar_thumb_border:
+			new_col = s.ui_style.col.scrollbar_thumb_border
+			case.scrollbar_track_background:
+			new_col = s.ui_style.col.scrollbar_track_background
+			case.scrollbar_track_border:
+			new_col = s.ui_style.col.scrollbar_track_border
+			case.editor_foreground:
+			new_col = s.ui_style.col.editor_foreground
+			case.editor_background:
+			new_col = s.ui_style.col.editor_background
+			case.editor_gutter_background:
+			new_col = s.ui_style.col.editor_gutter_background
+			case.editor_subheader_background:
+			new_col = s.ui_style.col.editor_subheader_background
+			case.editor_active_line_background:
+			new_col = s.ui_style.col.editor_active_line_background
+			case.editor_highlighted_line_background:
+			new_col = s.ui_style.col.editor_highlighted_line_background
+			case.editor_line_number:
+			new_col = s.ui_style.col.editor_line_number
+			case.editor_active_line_number:
+			new_col = s.ui_style.col.editor_active_line_number
+			case.editor_invisible:
+			new_col = s.ui_style.col.editor_invisible
+			case.editor_wrap_guide:
+			new_col = s.ui_style.col.editor_wrap_guide
+			case.editor_active_wrap_guide:
+			new_col = s.ui_style.col.editor_active_wrap_guide
+			case.editor_document_highlight_read_background:
+			new_col = s.ui_style.col.editor_document_highlight_read_background
+			case.editor_document_highlight_write_background:
+			new_col = s.ui_style.col.editor_document_highlight_write_background
+			case.editor_document_highlight_bracket_background:
+			new_col = s.ui_style.col.editor_document_highlight_bracket_background
+			case.editor_indent_guide:
+			new_col = s.ui_style.col.editor_indent_guide
+			case.editor_indent_guide_active:
+			new_col = s.ui_style.col.editor_indent_guide
+			case.terminal_background:
+			new_col = s.ui_style.col.terminal_background
+			case.terminal_foreground:
+			new_col = s.ui_style.col.terminal_foreground
+			case.terminal_ansi_background:
+			new_col = s.ui_style.col.terminal_ansi_background
+			case.terminal_bright_foreground:
+			new_col = s.ui_style.col.terminal_bright_foreground
+			case.terminal_dim_foreground:
+			new_col = s.ui_style.col.terminal_dim_foreground
+			case.success:
+			new_col = s.ui_style.col.success
+			case.success_background:
+			new_col = s.ui_style.col.success_background
+			case.success_border:
+			new_col = s.ui_style.col.success_border
+			case.error:
+			new_col = s.ui_style.col.error
+			case.error_background:
+			new_col = s.ui_style.col.error_background
+			case.error_border:
+			new_col = s.ui_style.col.error_border
+			case.info:
+			new_col = s.ui_style.col.info
+			case.info_background:
+			new_col = s.ui_style.col.info_background
+			case.info_border:
+			new_col = s.ui_style.col.info_border
+			case.hint:
+			new_col = s.ui_style.col.hint
+			case.hint_background:
+			new_col = s.ui_style.col.hint_background
+			case.hint_border:
+			new_col = s.ui_style.col.hint_border
+			case.warning:
+			new_col = s.ui_style.col.warning
+			case.warning_background:
+			new_col = s.ui_style.col.warning_background
+			case.warning_border:
+			new_col = s.ui_style.col.warning_border
+		}
+		case UI_Accents_Color:
+		switch c{
+			case.ac1:
+			new_col = s.ui_style.col.accents[0]
+			case.ac2:
+			new_col = s.ui_style.col.accents[1]
+			case.ac3:
+			new_col = s.ui_style.col.accents[2]
+			case.ac4:
+			new_col = s.ui_style.col.accents[3]
+			case.ac5:
+			new_col = s.ui_style.col.accents[4]
+			case.ac6:
+			new_col = s.ui_style.col.accents[5]
+			case.ac7:
+			new_col = s.ui_style.col.accents[6]
+		}
+	case Vec4:
+		new_col = c
+	}
+	return
+}
 
 
 load_ui_theme_by_file::proc(file:string,s:^UI_Style,id:int=0){
@@ -525,4 +985,307 @@ u32_to_rgba :: proc(v: u32) -> Vec4 {
 		new_c.a=1
 	}
 	return new_c
+}
+
+
+set_ui_style::proc(sty:=DEFALT_UI_STYLE){
+	s.ui_style = sty
+}
+
+
+button_dec::proc(
+	border_col_id:Color_Types = .border,
+	background_col_id:Color_Types = .element_background,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	roundnes_id:UI_Roundnes = .sharp,
+
+)->(button:cl.ElementDeclaration){
+
+	border_col:=get_color(border_col_id)
+	background_col:=get_color(background_col_id)
+	background_huv_col:=get_color(background_huv_col_id)
+
+	border_size:= get_ui_border(border_size_id)
+	padding_size:= get_ui_pading(padding_size_id)
+	roundnes_id:= get_ui_roundnes(roundnes_id)
+
+	
+	button_hov:=cl.Hovered()
+	button = cl.ElementDeclaration{
+		layout = {
+				layoutDirection = .TopToBottom,
+				sizing = { cl.SizingGrow(), cl.SizingFit() },
+				childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
+				padding = {padding_size,padding_size,padding_size,padding_size},
+				childGap = {},
+			},
+		backgroundColor = background_col if !button_hov else background_huv_col,
+		border = cl.BorderElementConfig{
+			color = border_col,
+			width = cl.BorderWidth{border_size,border_size,border_size,border_size,0}
+		},
+	}
+	return button
+}
+
+button_txt::proc(
+	$text:string,
+	text_col_id:Color_Types = .text,
+	text_size_id:UI_Size = .normal,
+ ){
+	text_col:=get_color(text_col_id)
+	text_size:=get_ui_text_size(text_size_id)
+	cl.Text(
+		text,
+		cl.TextConfig(cl.TextElementConfig{
+			textColor = text_col,
+			fontSize = text_size
+		}),
+	)
+}
+button_txt_dynamic::proc(
+	text:string,
+	text_col_id:Color_Types = .text,
+	text_size_id:UI_Size = .normal,
+){
+	text_col:=get_color(text_col_id)
+	text_size:=get_ui_text_size(text_size_id)
+	cl.TextDynamic(
+		text,
+		cl.TextConfig(cl.TextElementConfig{
+			textColor = text_col,
+			fontSize = text_size
+		}),
+	)
+}
+
+notification_dec::proc(
+	notification:^Notification,
+	border_col_id:Color_Types = .border,
+	background_col_id:Color_Types = .element_background,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+)->(button:cl.ElementDeclaration){
+	
+	
+	border_col:=get_color(border_col_id)
+	background_col:=get_color(background_col_id)
+	background_huv_col:=get_color(background_huv_col_id)
+
+	border_size:= get_ui_border(border_size_id)
+	padding_size:= get_ui_pading(padding_size_id)
+	child_gap_id:= get_ui_child_gap(child_gap_id)
+	roundnes_id:= get_ui_roundnes(roundnes_id)
+
+	button_hov:=cl.Hovered()
+	button = cl.ElementDeclaration{
+		layout = {
+				layoutDirection = .TopToBottom,
+				sizing = { cl.SizingPercent(.20), cl.SizingFit() },
+				childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
+				padding = {padding_size,padding_size,padding_size,padding_size},
+				childGap = child_gap_id,
+			},
+		floating ={
+			// attachment = {.Root},
+			expand = {1000,1000},
+			// offset = {100,10},
+			// attachTo = .Parent,
+			// pointerCaptureMode = .Capture,
+			// attachment= cl.FloatingAttachPoints{
+			// 	element = cl.FloatingAttachPointType.RightTop,
+			// 	parent =   cl.FloatingAttachPointType.RightTop,
+			// }
+		},
+		backgroundColor = background_col if !button_hov else background_huv_col,
+		border = cl.BorderElementConfig{
+			color = border_col,
+			width = cl.BorderWidth{border_size,border_size,border_size,border_size,0}
+		},
+	}
+	return button
+}
+notification_progress_bar::proc(
+	persent:f32,
+	col_id:Color_Types = .ac1,
+){
+	col:=get_color(col_id)
+	if cl.UI()({
+		layout = { layoutDirection = .TopToBottom, 
+		sizing = { cl.SizingPercent(persent), cl.SizingFixed(5) } },
+		border={width = {0,0,0,0,0}},
+		backgroundColor = col,
+	}) {
+
+	}
+}
+
+notification_x_button::proc(
+	notification:^Notification,
+	border_col_id:Color_Types = .border,
+	// background_col_id:Color_Types = .element_background,
+	// background_huv_col_id:Color_Types = .ansy_red,
+
+	x_color_id:Color_Types = .text,
+	x_color_huv_id:Color_Types = .ansi_bright_red,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+){
+	padding_size:= get_ui_pading(padding_size_id)
+	x_border_size:=get_ui_border(border_size_id)
+	x_border_col:=get_color(border_col_id)
+	x_color:=get_color(x_color_id)
+	x_color_huv:=get_color(x_color_huv_id)
+	if cl.UI()({
+		layout = cl.LayoutConfig{ 
+			padding = {padding_size,padding_size,padding_size,padding_size},
+			layoutDirection = .TopToBottom, 
+			sizing = { cl.SizingFit(), cl.SizingFit()},
+			childAlignment = {.Left,.Top},
+		},
+		// border={width = {x_border_size,x_border_size,x_border_size,x_border_size,0},color = x_border_col },
+		
+		
+		// backgroundColor = col,
+		floating ={
+			// attachment = {.Root},
+			attachTo = .Parent,
+			pointerCaptureMode = .Capture,
+			attachment= cl.FloatingAttachPoints{
+				element = cl.FloatingAttachPointType.RightTop,
+				parent =   cl.FloatingAttachPointType.RightTop,
+			}
+		},
+	}) {
+		button_hov:=cl.Hovered()
+		notification_txt("X", text_col_id =	x_color_id if !button_hov else x_color_huv_id ,text_size_id= .tiny,)
+		if 	button_hov{
+			if s.is_ui_l_click(){
+				notification.time_left = 0
+			}
+		}
+	}
+}
+notification_txt::proc(
+	$text:string,
+	text_col_id:Color_Types = .text_accent,
+	text_size_id:UI_Size = .small,
+ ){
+	text_col:=get_color(text_col_id)
+	text_size:=get_ui_text_size(text_size_id)
+	cl.Text(
+		text,
+		cl.TextConfig(cl.TextElementConfig{
+			textColor = text_col,
+			fontSize = text_size
+		}),
+	)
+}
+notification_txt_dynamic::proc(
+	text:string,
+	text_col_id:Color_Types = .text_accent,
+	text_size_id:UI_Size = .small,
+){
+	text_col:=get_color(text_col_id)
+	text_size:=get_ui_text_size(text_size_id)
+	cl.TextDynamic(
+		text,
+		cl.TextConfig(cl.TextElementConfig{
+			textColor = text_col,
+			fontSize = text_size
+		}),
+	)
+}
+
+
+MAX_NUMBER_OF_NOTIFICATION::100
+Notification_Buffer::struct{
+	notifications:[dynamic;MAX_NUMBER_OF_NOTIFICATION]Notification
+}
+Notification::struct{
+	max_time:f64,
+	time_left:f64,
+	mesg_1:string,
+	mesg_1_col:Color_Types,
+}
+init_notification_buffer::proc(buff:^Notification_Buffer){
+
+}
+update_notification_buffer::proc(buff:^Notification_Buffer,time_pased:f64){
+	for &notif,i in &buff.notifications{
+		notif.time_left -= time_pased
+		if notif.time_left<=0{
+			unordered_remove(&buff.notifications,i)
+		}
+	}
+}
+draw_notification_buffer::proc(buff:^Notification_Buffer, location:cl.LayoutAlignmentX = .Center){
+	child_gap:=get_ui_child_gap(.normal)
+	if cl.UI(cl.ID("Notification_List"))({
+		layout = { 
+			layoutDirection = .TopToBottom,
+			sizing = { cl.SizingGrow(), cl.SizingGrow() },
+			childGap = child_gap,
+			childAlignment= {x = location,y= .Top}
+		},
+		floating ={
+			// attachment = {.Root},
+			attachTo = .Root,
+			pointerCaptureMode = .Passthrough,
+			attachment= cl.FloatingAttachPoints{
+				element = cl.FloatingAttachPointType.LeftTop,
+				parent =   cl.FloatingAttachPointType.LeftTop,
+			}
+		},
+		backgroundColor = {0,0,0,0},
+		
+	}) {
+		for &notif,i in &buff.notifications{
+			if cl.UI()(notification_dec(&notif)) {
+				notification_x_button(&notif)
+				notification_txt_dynamic(notif.mesg_1,text_col_id = notif.mesg_1_col,)
+				notification_progress_bar(cast(f32)(notif.time_left/notif.max_time))
+			}
+		}
+	}
+}
+DEFALT_NOTIFICATION_TIME::7
+send_notification::proc(
+	buff:^Notification_Buffer,
+	mesg:Notification={	
+		mesg_1="defalt text",
+	},
+){
+	if len(buff.notifications) <MAX_NUMBER_OF_NOTIFICATION{
+		temp_mesg:=mesg
+		if temp_mesg.mesg_1_col == nil{temp_mesg.mesg_1_col = .text_accent}
+		if temp_mesg.max_time == 0{temp_mesg.max_time = DEFALT_NOTIFICATION_TIME}
+		if temp_mesg.time_left == 0{temp_mesg.time_left = DEFALT_NOTIFICATION_TIME}
+		append(&buff.notifications,temp_mesg)
+	}
+}
+send_simp_notification::proc(
+	buff:^Notification_Buffer,
+	mesg:string,
+	time:f64=5,
+){
+	send_notification(buff,{max_time= time,time_left = time,mesg_1=mesg})
+}
+
+send_simp_error_notification::proc(
+	buff:^Notification_Buffer,
+	mesg:string,
+	time:f64=5,
+){
+	send_notification(buff,{max_time= DEFALT_NOTIFICATION_TIME,time_left = DEFALT_NOTIFICATION_TIME,mesg_1=mesg,mesg_1_col = Ansi_Color.ansi_bright_red})
 }

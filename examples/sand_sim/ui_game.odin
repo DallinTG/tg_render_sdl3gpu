@@ -20,7 +20,7 @@ create_layout :: proc() -> cl.ClayArray(cl.RenderCommand) {
 	if g.curent_game_mode == .loby &&  g.server.status == .joining	{loby_joining()}
 	if g.curent_game_mode == .loby && (g.server.status == .joined || g.server.status == .hosting)	{loby_menu()}
 	if g.curent_game_mode == .loby &&  g.server.status == .regected	{loby_joining_regected()}
-	tg.draw_notification_buffer(&g.notifications)
+	tg.draw_notification_buffer(&s.notifications)
 	return cl.EndLayout()
 }
 

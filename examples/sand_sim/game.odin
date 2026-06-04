@@ -43,7 +43,7 @@ Game::struct{
 
 	clay_render_comands:cl.ClayArray(cl.RenderCommand),
 	
-	notifications:tg.Notification_Buffer,
+
 
 }
 
@@ -61,6 +61,7 @@ init::proc(){
 	wh:=tg.get_window_size(g.window)
 	fmt.print(wh)
 	// init_net_thread()
+	init_tg_inputs()
 	tg.init_networking_instance(&g.server,pros_server_cmd,start_server)
 	reg_input_events()
 	init_entitys_mesh()
@@ -109,13 +110,21 @@ main :: proc(){
 		tg.update_time_info()
 		gather_input_info()
 		tg.run_steam_callbacks()
-		tg.update_notification_buffer(&g.notifications,s.time.tick_time)
+		tg.update_notification_buffer(&s.notifications,s.time.tick_time)
 		for ev in &tg.s.events {
 		}
 
 
 
+
 		if s.time.is_60_hz{
+
+			g.clay_render_comands=create_layout()
+			wh:=tg.get_window_size(g.window)
+			mouse_pos:[2]f32 
+			flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
+			tg.update_clay_instance(g.ui_clay_inst,&g.clay_render_comands,wh,mouse_pos,.LEFT in flag)
+			
 			tg.pros_server_cmd_q(&g.server)
 			manage_gmae_mode_state()
 			switch g.curent_game_mode{
@@ -128,14 +137,7 @@ main :: proc(){
 			}
 			maintain_input_info()
 		}
-		g.clay_render_comands=create_layout()
-		
-		// fmt.println(sdl.GetWindowFlags(tg.get_window(g.window).data))
-		wh:=tg.get_window_size(g.window)
-		mouse_pos:[2]f32 
-		flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
 
-		tg.update_clay_instance(g.ui_clay_inst,&g.clay_render_comands,wh,mouse_pos,.LEFT in flag)
 		
 
 		// do_rendering()
@@ -194,7 +196,7 @@ do_mode_game::proc(){
 		// friends := steam.Friends()
 		// fmt.print(friends,friends != nil)
 		// steam.Friends_ActivateGameOverlay(friends,"Friends")
-		tg.send_notification(&g.notifications,"waffles shift")
+		tg.send_simp_notification(&s.notifications,"waffles shift")
 		tg.update_steam_friend_info()
 	}
 	draw_update_entitys_mesh(&g.entitys)
@@ -255,10 +257,19 @@ do_rendering::proc(){
 	}
 }
 
-
+init_tg_inputs::proc(){
+	s.is_ui_l_click = is_ui_l_click
+	s.is_ui_r_click = is_ui_r_click
+}
+is_ui_l_click::proc()->(bool){
+	return is_input_event(.ui_l_c)
+}
+is_ui_r_click::proc()->(bool){
+	return is_input_event(.ui_r_c)
+}
 update_camera_2d_pan::proc(cam:^tg.Camera, dt:f32=1, speed:f32=1,){
 	move_input:tg.Vec3
-	if s.input.mouse_button_down[.RIGHT]{
+	if is_input_event(.ui_r_c){
 		move_input.x = g.input_events.mouse_move.x * -1
 		move_input.y = g.input_events.mouse_move.y
 		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
