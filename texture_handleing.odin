@@ -1,9 +1,11 @@
 package tg_render
 
+import "base:runtime"
 import "core:bytes"
 import sdl "vendor:sdl3"
 import "core:log"
 import "core:mem"
+import "core:os"
 import str"core:strings"
 import "core:fmt"
 import lin"core:math/linalg"
@@ -40,7 +42,7 @@ Texture_Arr_Groop::enum{
 }
 TEXTURE_ARR_INFO:[Texture_Arr_Groop]Texture_Setup:{
 	.tex_8x8 =       {w_h = {8, 8},       layer_count = 100 ,format = .R8G8B8A8_UNORM},
-	.tex_16x16 =     {w_h = {16, 16},     layer_count = 100 ,format = .R8G8B8A8_UNORM},
+	.tex_16x16 =     {w_h = {16, 16},     layer_count = 2000 ,format = .R8G8B8A8_UNORM},
 	.tex_32x32 =     {w_h = {32, 32},     layer_count = 100 ,format = .R8G8B8A8_UNORM},
 	.tex_64x64 =     {w_h = {64, 64},     layer_count = 100 ,format = .R8G8B8A8_UNORM},
 	.tex_128x128 =   {w_h = {128, 128},   layer_count = 100 ,format = .R8G8B8A8_UNORM},
@@ -75,10 +77,12 @@ Texture_ID_Types::union{
 	[2]string,
 	u32,
 	[2]u32,
+	Textures_E,
+	Icons_E,
 }
 
 Texture :: struct {
-
+	id:		[2]u32,
 	hd:     Texture_GPU_Handle,
 	layer:  u32,
 	groop_index:Texture_Arr_Groop,
@@ -118,8 +122,7 @@ init_texture_arr_groop::proc(){
 		// fmt.print("creating",format ,"\n")
 		s.texture_arr_groop[i].format = format
 	}
-	reg_bad_defalt_texture()
-	reg_white_defalt_texture()
+
 }
 
 // This adds the img data to the gpu and then lets you draw it whith a Texture_ID_Types whitch is created by {filename: string,mod_name: string}
@@ -133,6 +136,63 @@ reg_texture_from_file::proc(filename: string,mod_name: string = "")->(raw_id:[2]
 	id:[2]string={tex_id,mod_name}
 	raw_id=reg_texture_from_bits(img,id)
 	return raw_id
+}
+
+reg_all_texture_from_dir_path::proc(dir: string,mod_name: string = ""){
+	all_fil_info,err:=os.read_all_directory_by_path(dir, context.temp_allocator)
+	// fmt.print("\n\n",	all_fil_info,"\n\n")
+	if err != nil{
+		fmt.print("reg_all_texture_from_dir failed",err,"\n\n\n\n\n")
+		return
+	}
+	for &fil in all_fil_info{
+		// fmt.print("fil",fil,"\n\n\n")
+		if fil.type ==.Regular{
+			temp_path:=[2]string{dir, fil.name}
+			path,err:=os.join_path(temp_path[:],context.temp_allocator)
+			if err == nil{
+				reg_texture_from_file(path,mod_name)
+				// raw_id:=reg_texture_from_file(path,mod_name)
+				// fmt.print("added ",raw_id,"\n")
+			}
+		}else{
+
+		}
+	}
+	return
+}
+
+// reg_all_texture_from_dir::proc(all_fil_info: []os.File_Info,mod_name: string = ""){
+// 	// all_fil_info,err:=os.read_all_directory_by_path(dir, context.temp_allocator)
+// 	// fmt.print("\n\n",	all_fil_info,"\n\n")
+// 	// if err != nil{
+// 	// 	fmt.print("reg_all_texture_from_dir failed",err,"\n\n\n\n\n")
+// 	// 	return
+// 	// }
+// 	for &fil in all_fil_info{
+// 		// fmt.print("fil",fil,"\n\n\n")
+// 		if fil.type ==.Regular{
+// 			temp_path:=[2]string{dir, fil.name}
+// 			path,err:=os.join_path(temp_path[:],context.temp_allocator)
+// 			if err == nil{
+// 				reg_texture_from_file(path,mod_name)
+// 				// raw_id:=reg_texture_from_file(path,mod_name)
+// 				// fmt.print("added ",raw_id,"\n")
+// 			}
+// 		}else{
+
+// 		}
+// 	}
+// 	return
+// }
+
+reg_all_texture_from_loaded_directory::proc(all_fil_info: []runtime.Load_Directory_File,mod_name: string = ""){
+	for &fil in all_fil_info{
+		img,err:=image.load_from_bytes(fil.data,{},context.temp_allocator)
+		reg_texture_from_bits(img,[2]string{mod_name,fil.name})
+		// fmt.print("reg fil.name",fil.name,get_texture_id([2]string{mod_name,fil.name}),"\n")
+	}
+	return
 }
 
 // This adds the img data to the gpu and then lets you draw it whith {tex_id:Texture_ID_Types}
@@ -153,6 +213,7 @@ reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: s
 			if ok&& tex_map[id].hd == tex.tex_hd{	//check if somthing is allredy using that id if so replace it insted of making a new one
 				uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = tex_map[id].layer, chanle_count = chanle_count)
 				value:=Texture{
+					id = id,
 					hd = tex.tex_hd,
 					layer = tex_map[id].layer,
 					groop_index = i,
@@ -168,6 +229,7 @@ reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: s
 				}
 				uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = tex.layers_used, chanle_count = chanle_count)
 				value:=Texture{
+					id = id,
 					hd = tex.tex_hd,
 					layer = tex.layers_used,
 					groop_index = i,
@@ -211,7 +273,7 @@ reg_white_defalt_texture::proc(){
 		per, per, per, per, per, per, per, per,
 	}
 	img,ok:=image.pixels_to_image(pixles[:],8,8)
-	reg_texture_from_bits(&img,[2]u32{1,0})
+	reg_texture_from_bits(&img,[2]u32{0,1})
 }
 
 get_texture::proc(tex_id:Texture_ID_Types)->(tex:^Texture){
@@ -229,19 +291,25 @@ get_texture_id::proc(tex_id:Texture_ID_Types)->(new_tex_id:[2]u32){
 	case string:
 		tex_id_u32 = hash.murmur32(transmute([]u8)id)
 	case [2]string:
-		tex_id_u32 = hash.murmur32(transmute([]u8)id.x)
-		if id.y == ""{
+		tex_id_u32 = hash.murmur32(transmute([]u8)id.y)
+		if id.x == ""{
 			mod_id_u32 = 0
 		}else{
-			mod_id_u32 = hash.murmur32(transmute([]u8)id.y)
+			mod_id_u32 = hash.murmur32(transmute([]u8)id.x)
 		}
 	case u32:
 		tex_id_u32 = id
 	case [2]u32:
-		tex_id_u32 = id.x
-		mod_id_u32 = id.y
+		tex_id_u32 = id.y
+		mod_id_u32 = id.x
+	case Icons_E:
+		mod_id_u32 =Icons_Data[id].id.x
+		tex_id_u32 =Icons_Data[id].id.y
+	case Textures_E:
+		mod_id_u32 =Textures_Data[id].id.x
+		tex_id_u32 =Textures_Data[id].id.y 
 	}
-	new_tex_id = {tex_id_u32,mod_id_u32}
+	new_tex_id = {mod_id_u32,tex_id_u32}
 	return
 }
 

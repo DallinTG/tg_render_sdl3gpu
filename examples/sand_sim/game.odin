@@ -22,6 +22,7 @@ Handle :: hm.Handle
 s:^tg.State
 g:^Game
 Game::struct{
+	
 	cam:tg.Camera,
 	cam_ui:tg.Camera,
 	ui_clay_inst:tg.Clay_I_Handle,
@@ -30,12 +31,19 @@ Game::struct{
 	entitys_mesh:tg.Mesh_Handle,
 	all_player_data:All_Player_data,
 	// world_mesh:tg.Mesh_Handle,
+	frame_data:tg.Frame_Data,
 	pass:tg.R_Pass,
+	ui_pass:tg.R_Pass,
 	window:tg.Window_Handle, 
 	curent_game_mode:Game_Mode,
 	next_game_mode:Game_Mode,
+
 	vert_shader:tg.Shader_Handle,
 	frag_shader:tg.Shader_Handle,
+	ui_vert_shader:tg.Shader_Handle,
+	ui_frag_shader:tg.Shader_Handle,
+
+
 	render_thread:^thread.Thread,
 	server:tg.Networking_Instance,
 	input_events:event_data,
@@ -65,7 +73,7 @@ init::proc(){
 	tg.init_networking_instance(&g.server,pros_server_cmd,start_server)
 	reg_input_events()
 	init_entitys_mesh()
-	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.vert_shader, g.frag_shader, gbl_font_size = .1)
+	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.ui_vert_shader, g.ui_frag_shader, gbl_font_size = .1)
 	init_rendering_thread()
 	tg.update_steam_friend_info()
 	fmt.print("inport theems\n")
@@ -92,6 +100,7 @@ main :: proc(){
 	// tg.init_steam()
 	s=tg.init()
 	fmt.print("size_of(tg.Vertex_Data) ",size_of(tg.Vertex_Data),"\n")
+	fmt.print("size_of(tg.UI_Vertex_Data) ",size_of(tg.UI_Vertex_Data),"\n")
 	g.window = tg.init_window()
 
 	g.cam = tg.create_camera(type = .orthographic)
@@ -99,14 +108,23 @@ main :: proc(){
 
 	g.vert_shader = tg.load_shader_file(file_path = "shader.vert")
 	g.frag_shader = tg.load_shader_file(file_path = "shader.frag")
-	tg.reg_texture_from_file("BAD.png")
-	tg.reg_texture_from_file("white.png")
 
-	g.pass = tg.create_render_pass(g.vert_shader, g.frag_shader)
+	g.ui_vert_shader = tg.load_shader_file(file_path = "ui_shader.vert")
+	g.ui_frag_shader = tg.load_shader_file(file_path = "ui_shader.frag")
+
+	// tg.reg_texture_from_file("BAD.png")
+	// tg.reg_texture_from_file("white.png")
+	// tg.reg_all_texture_from_dir_path("assets/textures/icons","icon")
+	// tg.reg_all_texture_from_loaded_directory(#load_directory("assets/textures/icons"),"icon")
+
+	// tg.reg_all_texture_from_dir_path("assets/textures/icons","icon")
+
+	g.pass = tg.create_render_pass(&g.frame_data, g.vert_shader, g.frag_shader)
+	g.ui_pass = tg.create_render_pass(&g.frame_data,g.ui_vert_shader, g.ui_frag_shader)
 
 	init()
 	tg.get_number_of_current_players()
-	main_loop:for !tg.start_frame(){
+	main_loop:for !tg.start_tick(){
 		tg.update_time_info()
 		gather_input_info()
 		tg.run_steam_callbacks()
@@ -123,7 +141,16 @@ main :: proc(){
 			wh:=tg.get_window_size(g.window)
 			mouse_pos:[2]f32 
 			flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
-			tg.update_clay_instance(g.ui_clay_inst,&g.clay_render_comands,wh,mouse_pos,.LEFT in flag)
+			tg.update_clay_instance(
+				clay_instance=g.ui_clay_inst, 
+				renderCommands=&g.clay_render_comands, 
+				wh=wh, 
+				mouse_pos=mouse_pos, 
+				mouse_down=.LEFT in flag,
+				scroll_dt={cast(f32)g.input_events.mouse_wheel.x,cast(f32)g.input_events.mouse_wheel.y,},
+				dt_time=cast(f32)s.time.dt_60_hz,
+				// enable_drag_scrolling=.
+			)
 			
 			tg.pros_server_cmd_q(&g.server)
 			manage_gmae_mode_state()
@@ -164,6 +191,7 @@ cleane_up_game::proc(){
 	thread.destroy(g.render_thread)
 	thread.destroy(g.server.net_thread)
 	tg.delete_r_pass(&g.pass)
+	tg.delete_r_pass(&g.ui_pass)
 	delete_w_map(g.w_map)
 	tg.delete_camera(&g.cam)
 	hm.delete(&g.entitys)
@@ -199,10 +227,10 @@ do_mode_game::proc(){
 		tg.send_simp_notification(&s.notifications,"waffles shift")
 		tg.update_steam_friend_info()
 	}
+	do_entitys(&g.entitys)
 	draw_update_entitys_mesh(&g.entitys)
 	update_map(g.w_map)
 	mesh_map(g.w_map)
-	do_entitys(&g.entitys)
 
 	if is_input_event(.ui_esc){
 		tg.leave_shutdown_server(&g.server)
@@ -244,15 +272,27 @@ init_rendering_thread::proc(){
 
 do_rendering::proc(){
 	rendering_loop:for !g.game_should_close {
+		
+		tg.start_frame(&g.frame_data)
 
-		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE)
+		// do gameplay pass
+		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
 		render_map(g.w_map)
 		// draw_update_entitys_mesh(&g.entitys)
 		render_entitys(&g.entitys)
-		tg.render_clay_instance(g.ui_clay_inst,&g.pass,&g.cam_ui)
+		// tg.render_clay_instance(g.ui_clay_inst,&g.pass,&g.cam_ui)
 		tg.submit_render(&g.pass)
 
+
+		//do render pass
+		tg.start_render(&g.ui_pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
+		tg.render_clay_instance(g.ui_clay_inst,&g.ui_pass,&g.cam_ui)
+		tg.submit_render(&g.ui_pass)
+
+
 		tg.update_time_fps_info()
+		
+		tg.submit_frame(&g.frame_data)
 
 	}
 }

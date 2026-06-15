@@ -40,6 +40,7 @@ Mesh_CPU::struct{
 	vertex_buf:[dynamic]u8,
 	vertex_buf_used:u32,
 	vertex_count:u32,
+
 	index_buf:[dynamic]u32,
 	index_buf_used:u32,
 	attribute_type:typeid,
@@ -507,7 +508,8 @@ draw_rect::proc(
 	origin: Vec3 = {}, 
 	rot:[3]f32 = {},
 	uv:[4]f32=DEFALT_QUAD_UV, 
-	mat:matrix[4, 4]f32 = Mat4(1)
+	scissor_rect:Vec4 = {},
+	mat:matrix[4, 4]f32 = Mat4(1),
 ){
 	tex:=get_texture(tex_id)
 	verts:[4]vert_t
@@ -571,9 +573,138 @@ draw_rect::proc(
 		}
 	}
 
+	when intrinsics.type_has_field(vert_t, "scissor_rect"){
+		for &vert in &verts {
+			vert.scissor_rect = scissor_rect
+		}
+	}
+
 	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
 
 }
+
+draw_ring::proc(
+	mesh: ^Mesh_CPU,
+	tex_id:Texture_ID_Types, 
+	$vert_t:typeid, 
+	center:Vec3,
+	$segments:i32,
+	innerRadius:f32,
+	outerRadius:f32,
+	startAngle:f32 = 0, 
+	endAngle:f32 = 360,
+	uv:[4]f32=DEFALT_QUAD_UV, 
+	scissor_rect:Vec4 = {},
+	col:[4]f32 = {1,1,1,1},
+){
+    if (startAngle == endAngle) {return}
+    outerRadius:=outerRadius
+    innerRadius:=innerRadius
+    startAngle:= startAngle
+    endAngle:= endAngle
+    tex:=get_texture(tex_id)
+
+    // Function expects (outerRadius > innerRadius)
+    if (outerRadius < innerRadius){
+        tmp:f32 = outerRadius
+        outerRadius = innerRadius
+        innerRadius = tmp
+
+        if (outerRadius <= 0) {outerRadius = 0.1}
+    }
+
+    // Function expects (endAngle > startAngle)
+    if (endAngle < startAngle){
+        // Swap values
+        tmp:f32 = startAngle
+        startAngle = endAngle
+        endAngle = tmp
+    }
+
+    minSegments:i32 = cast(i32)math.ceil((endAngle - startAngle)/90)
+
+    // if (segments < minSegments){
+        // Calculate the maximum angle between segments based on the error rate (usually 0.5f)
+        // th:f32 = acosf(2*powf(1 - SMOOTH_CIRCLE_ERROR_RATE/outerRadius, 2) - 1)
+        // segments = cast(i32)math.ceil((endAngle - startAngle)*(2*math.PI/th)/360.0)
+
+        // if (segments <= 0) {segments = minSegments}
+    // }
+
+    // Not a ring
+    // if (innerRadius <= 0.0){
+    	// TODO need to impliment DrawCircleSector
+        // DrawCircleSector(center, outerRadius, startAngle, endAngle, segments, color);
+        // return
+    // }
+    stepLength:f32 = (endAngle - startAngle)/cast(f32)segments
+    angle:f32 = startAngle
+
+	verts:[4*segments]vert_t
+	i:i32 = 0
+    for  ( i < segments){	
+		when intrinsics.type_has_field(vert_t, "pos"){
+			//front
+			verts[3+(i*4)].pos =  {center.x + math.cos(math.to_radians(angle))*outerRadius, (center.y + math.sin(math.to_radians(angle))*outerRadius),  center.z, 1}
+			verts[2+(i*4)].pos =  {center.x + math.cos(math.to_radians(angle))*innerRadius, (center.y + math.sin(math.to_radians(angle))*innerRadius), center.z , 1}
+			verts[1+(i*4)].pos =  {center.x + math.cos(math.to_radians(angle + stepLength))*innerRadius, (center.y + math.sin(math.to_radians(angle + stepLength))*innerRadius),  center.z, 1}
+			verts[0+(i*4)].pos =  {center.x + math.cos(math.to_radians(angle + stepLength))*outerRadius, (center.y + math.sin(math.to_radians(angle + stepLength))*outerRadius),  center.z, 1}
+		}
+		when intrinsics.type_has_field(vert_t, "uv"){
+			uvs:=[4][2]f32{
+				{uv.x,uv.y},
+				{uv.x,uv.w},
+				{uv.z,uv.w},
+				{uv.z,uv.y},
+			}
+			verts[0+(i*4)].uv =  uvs.x
+			verts[1+(i*4)].uv =  uvs.y
+			verts[2+(i*4)].uv =  uvs.z
+			verts[3+(i*4)].uv =  uvs.w
+			ofset:[2]f32={cast(f32)tex.offset.x,cast(f32)tex.offset.y}
+			if ofset != {}{
+				f32_wh:=[2]f32{cast(f32)tex.w_h.x,cast(f32)tex.w_h.y} 
+				new_uv:=f32_wh/(ofset+f32_wh) 
+
+				verts[0+(i*4)].uv *=  new_uv
+				verts[1+(i*4)].uv *=  new_uv
+				verts[2+(i*4)].uv *=  new_uv
+				verts[3+(i*4)].uv *=  new_uv
+			}
+		}
+		angle += stepLength
+	i+=1
+	}
+	when intrinsics.type_has_field(vert_t, "col"){
+		for &vert in &verts{
+			vert.col = col
+		}
+	}
+
+	when intrinsics.type_has_field(vert_t, "img_index"){
+		for &vert in &verts{
+			vert.img_index = cast(u32)tex.groop_index
+		}
+	}
+
+	when intrinsics.type_has_field(vert_t, "layer"){
+		for &vert in &verts{
+			vert.layer = tex.layer
+		}
+	}
+
+	when intrinsics.type_has_field(vert_t, "scissor_rect"){
+		for &vert in &verts {
+			vert.scissor_rect = scissor_rect
+		}
+	}
+	draw_verts_by_quad(mesh,cast(u32)segments,verts[:])
+	// draw_verts_by_quad_mat(mesh, segments, verts[:], mat)
+
+}
+
+
+
 Plane_Cell::struct{
 	col:[4]f32,
 }
@@ -645,6 +776,11 @@ draw_plane::proc(
 					vert.layer = tex.layer
 				}
 			}
+			when intrinsics.type_has_field(vert_t, "scissor_rect"){
+				for &vert in &verts {
+					vert.scissor_rect = scissor_rect
+				}
+			}
 			draw_verts_by_quad_mat(mesh, cast(u32)(1), verts[:], mat)
 		}
 	}
@@ -664,6 +800,7 @@ draw_rect_rounded::proc(
 	rot: [3]f32 = 0,
 	segments: int = 3,
 	uv:[4]f32=DEFALT_QUAD_UV,
+	scissor_rect:Vec4 = {},
 	mat:matrix[4, 4]f32 = Mat4(1),
 ){
 	roundness := roundness
@@ -675,8 +812,9 @@ draw_rect_rounded::proc(
 	scale_m4:     Mat4 = lin.matrix4_scale_f32({rec.w_h.x,rec.w_h.y,1,})
 	rotate_q:          = lin.quaternion_from_pitch_yaw_roll_f32(rot.x,rot.y,rot.z)
 	rotate_m4:    Mat4 = lin.matrix4_from_quaternion_f32(rotate_q)
-	mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
-	// mat :=translate_m4 * rotate_m4 * origin_m4 * mat
+	// mat :=translate_m4 * rotate_m4 * origin_m4 *  mat
+	// mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
+	mat :=translate_m4 * rotate_m4 * origin_m4 * mat
 	// 
 	uvs:=[4][2]f32{
 		{uv.x,uv.y},
@@ -717,7 +855,8 @@ draw_rect_rounded::proc(
 		return
 	}
 	if roundness >= 1 {roundness = 1 }// clamps the roundness value to 1
-	
+
+	radius:f32 = (rec.w_h.x > rec.w_h.y)? (rec.w_h.y*roundness)/2 : (rec.w_h.x*roundness)/2
 	stepLength:f32 = 90 / cast(f32)segments
 
 	// Diagram points and part of the math was adapted from Raylib's "DrawRectangleRounded"
@@ -739,36 +878,38 @@ draw_rect_rounded::proc(
 	// Coordinates of the 12 points that define the rounded rect
 	// These cords are in locale space {0,0}
 	point:[12]Vec3
+
 	point = {
-		{ roundness,				0, 						0},	// P0
-		{(rec.w_h.x) - roundness,	0, 						0},	// P1
-		{ rec.w_h.x,				roundness, 				0},	// P2
-		{ rec.w_h.x,				(rec.w_h.y) - roundness, 	0},	// P3
-		{(rec.w_h.x) - roundness,	rec.w_h.y, 				0},	// P4
-		{ roundness,				rec.w_h.y, 				0},	// P5
-		{ 0,						(rec.w_h.y) - roundness, 	0},	// P6
-		{ 0,						roundness, 				0},	// P7
-		{ roundness,				roundness, 				0},	// P8
-		{(rec.w_h.x) - roundness,	roundness, 				0},	// P9
-		{(rec.w_h.x) - roundness,	(rec.w_h.y) - roundness, 	0},	// P10
-		{ roundness,				(rec.w_h.y) - roundness, 	0},	// P11
+		{ radius,				-rec.w_h.y, 			0},	// P0
+		{(rec.w_h.x) - radius,	-rec.w_h.y, 			0},	// P1
+		{ rec.w_h.x,						-(rec.w_h.y)+radius, 0},	// P2
+		{ rec.w_h.x,						- radius, 			0},	// P3
+		{(rec.w_h.x) - radius,	0, 						0},	// P4
+		{ radius,				0, 						0},	// P5
+		{ 0,								- radius, 			0},	// P6
+		{ 0,								-(rec.w_h.y)+radius, 0},	// P7
+		{ radius,				-(rec.w_h.y)+radius, 0},	// P8
+		{(rec.w_h.x) - radius,	-(rec.w_h.y)+radius, 0},	// P9
+		{(rec.w_h.x) - radius,	- radius, 			0},	// P10
+		{ radius,				- radius, 			0},	// P11
 	}
 	
-	point = {
-		{ roundness,		-1, 						0},	// P0
-		{(1) - roundness,	-1, 						0},	// P1
-		{ 1,				-(1)+roundness, 				0},	// P2
-		{ 1,				- roundness, 	0},	// P3
-		{(1) - roundness,	0, 				0},	// P4
-		{ roundness,		0, 				0},	// P5
-		{ 0,				- roundness, 	0},	// P6
-		{ 0,				-(1)+roundness, 				0},	// P7
-		{ roundness,		-(1)+roundness, 				0},	// P8
-		{(1) - roundness,	-(1)+roundness, 				0},	// P9
-		{(1) - roundness,	- roundness, 	0},	// P10
-		{ roundness,		- roundness, 	0},	// P11
-	}
-	
+	//INFO this code is fore if you are using a matrix to scale :: ps if you want to use this you need to stop using radius and switch to roundness everywhere
+	// point = {
+	// 	{ roundness,		-1, 						0},	// P0
+	// 	{(1) - roundness,	-1, 						0},	// P1
+	// 	{ 1,				-(1)+roundness, 				0},	// P2
+	// 	{ 1,				- roundness, 	0},	// P3
+	// 	{(1) - roundness,	0, 				0},	// P4
+	// 	{ roundness,		0, 				0},	// P5
+	// 	{ 0,				- roundness, 	0},	// P6
+	// 	{ 0,				-(1)+roundness, 				0},	// P7
+	// 	{ roundness,		-(1)+roundness, 				0},	// P8
+	// 	{(1) - roundness,	-(1)+roundness, 				0},	// P9
+	// 	{(1) - roundness,	- roundness, 	0},	// P10
+	// 	{ roundness,		- roundness, 	0},	// P11
+	// }
+
 
 	
 	centers:[4]Vec3= { point[8], point[9], point[10], point[11] }// The center of the 4 rounded corners
@@ -789,29 +930,34 @@ draw_rect_rounded::proc(
 			y := center.y// + rec.pos.y - origin.y
 			tl = { x, y, 0, }
 			tr = { 
-				x + math.cos_f32((math.PI/180)*(angle + stepLength*2))*roundness,
-				y + math.sin_f32((math.PI/180)*(angle + stepLength*2))*roundness,
+				x + math.cos_f32((math.PI/180)*(angle + stepLength*2))*radius,
+				y + math.sin_f32((math.PI/180)*(angle + stepLength*2))*radius,
 				0,
 			}
 			bl = {
-				x + math.cos_f32((math.PI/180)*(angle + stepLength))*roundness,
-				y + math.sin_f32((math.PI/180)*(angle + stepLength))*roundness,
+				x + math.cos_f32((math.PI/180)*(angle + stepLength))*radius,
+				y + math.sin_f32((math.PI/180)*(angle + stepLength))*radius,
 				0,
 			}
 			br = {
-				x + math.cos_f32((math.PI/180)*angle)*roundness,
-				y + math.sin_f32((math.PI/180)*angle)*roundness,
+				x + math.cos_f32((math.PI/180)*angle)*radius,
+				y + math.sin_f32((math.PI/180)*angle)*radius,
 				0,
 			}
-				
-			verts[0].pos = tl
-			verts[1].pos = br
-			verts[2].pos = bl
+			// when intrinsics.type_has_field(vert_t, "col"){
+			// 	verts[0].col = {1,0,0,.5}
+			// 	verts[1].col = {1,0,0,.5}
+			// 	verts[2].col = {1,0,0,.5}
+			// 	verts[3].col = {1,0,0,.5}
+			// }
+			verts[0].pos.xyz = tl
+			verts[1].pos.xyz = br
+			verts[2].pos.xyz = bl
 			draw_verts_by_tri_mat(mesh, 1, verts[:3],mat)
 
-			verts[0].pos = tl
-			verts[1].pos = bl
-			verts[2].pos = tr
+			verts[0].pos.xyz = tl
+			verts[1].pos.xyz = bl
+			verts[2].pos.xyz = tr
 			draw_verts_by_tri_mat(mesh, 1, verts[:3],mat)
 
 			angle += (stepLength*2)
@@ -823,10 +969,17 @@ draw_rect_rounded::proc(
 	bl = point[1]
 	br = point[9]
 
-	verts[0].pos = tl
-	verts[1].pos = bl
-	verts[2].pos = br
-	verts[3].pos = tr
+// 	when intrinsics.type_has_field(vert_t, "col"){
+// 		verts[0].col = {0,0,1,.1}
+// 		verts[1].col = {0,1,1,.1}
+// 		verts[2].col = {1,1,1,.1}
+// 		verts[3].col = {0,0,1,.1}
+// }
+
+	verts[0].pos.xyz = tl
+	verts[1].pos.xyz = bl
+	verts[2].pos.xyz = br
+	verts[3].pos.xyz = tr
 	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
 
 	// [4] Right Rectangle
@@ -836,10 +989,10 @@ draw_rect_rounded::proc(
 	br = point[10]
 	
 
-	verts[0].pos = tl
-	verts[1].pos = bl
-	verts[2].pos = br
-	verts[3].pos = tr
+	verts[0].pos.xyz = tl
+	verts[1].pos.xyz = bl
+	verts[2].pos.xyz = br
+	verts[3].pos.xyz = tr
 	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
 
 	// [6] Bottom Rectangle	
@@ -848,10 +1001,10 @@ draw_rect_rounded::proc(
 	bl = point[5]
 	br = point[11]
 
-	verts[0].pos = tl
-	verts[1].pos = bl
-	verts[2].pos = br
-	verts[3].pos = tr
+	verts[0].pos.xyz = tl
+	verts[1].pos.xyz = bl
+	verts[2].pos.xyz = br
+	verts[3].pos.xyz = tr
 
 	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
 
@@ -862,10 +1015,10 @@ draw_rect_rounded::proc(
 	bl = point[7]
 	br = point[8]
 
-	verts[0].pos = tl
-	verts[1].pos = bl
-	verts[2].pos = br
-	verts[3].pos = tr
+	verts[0].pos.xyz = tl
+	verts[1].pos.xyz = bl
+	verts[2].pos.xyz = br
+	verts[3].pos.xyz = tr
 
 	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
 
@@ -877,10 +1030,10 @@ draw_rect_rounded::proc(
 	bl = point[10]
 	br = point[11]
 
-	verts[0].pos = tl
-	verts[1].pos = bl
-	verts[2].pos = br
-	verts[3].pos = tr
+	verts[0].pos.xyz = tl
+	verts[1].pos.xyz = bl
+	verts[2].pos.xyz = br
+	verts[3].pos.xyz = tr
 
 	draw_verts_by_quad_mat(mesh, 1, verts[:], mat)
 }

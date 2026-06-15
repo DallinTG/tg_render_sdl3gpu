@@ -79,6 +79,17 @@ DEFALT_TRANSPARENT_BLEND_STATE :sdl.GPUColorTargetBlendState:{
 	enable_blend            = true,                                  /**< Whether blending is enabled for the color target. */
 	enable_color_write_mask = true,                                  /**< Whether the color write mask is enabled. */
 }
+DEFALT_UI_BLEND_STATE :sdl.GPUColorTargetBlendState:{
+	src_color_blendfactor   = sdl.GPUBlendFactor.ONE,            /**< The value to be multiplied by the source RGB value. */
+	dst_color_blendfactor   = sdl.GPUBlendFactor.ZERO,  /**< The value to be multiplied by the destination RGB value. */
+	color_blend_op          = sdl.GPUBlendOp.ADD,                      /**< The blend operation for the RGB components. */
+	src_alpha_blendfactor   = sdl.GPUBlendFactor.ONE,  /**< The value to be multiplied by the source alpha. */
+	dst_alpha_blendfactor   = sdl.GPUBlendFactor.ONE_MINUS_SRC_ALPHA,                    /**< The value to be multiplied by the destination alpha. */
+	alpha_blend_op          = sdl.GPUBlendOp.ADD,                      /**< The blend operation for the alpha component. */
+	color_write_mask        = sdl.GPUColorComponentFlags{.R,.G,.B,.A},            /**< A bitmask specifying which of the RGBA components are enabled for writing. Writes to all channels if enable_color_write_mask is false. */
+	enable_blend            = true,                                  /**< Whether blending is enabled for the color target. */
+	enable_color_write_mask = true,                                  /**< Whether the color write mask is enabled. */
+}
 DEFALT_MASKED_BLEND_STATE :sdl.GPUColorTargetBlendState:{
 	src_color_blendfactor   = sdl.GPUBlendFactor.SRC_ALPHA,            /**< The value to be multiplied by the source RGB value. */
 	dst_color_blendfactor   = sdl.GPUBlendFactor.ONE_MINUS_SRC_ALPHA,  /**< The value to be multiplied by the destination RGB value. */
@@ -135,6 +146,20 @@ DEFALT_MASKED_PASS:Render_Pass_Info:{
 	blend_state =                DEFALT_TRANSPARENT_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},
 }
+
+DEFALT_UI_PASS:Render_Pass_Info:{
+	clear_color = {1, .3, 1, 1},
+	has_depth_stencil_target = true,
+	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
+	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
+	depth_stencil_state =        DEFALT_MASKED_DEPTH_STENCIL_STATE,
+	// msaa_texture_createinfo =    DEFALT_MSAA_TEXTURE_CREATEINFO,
+	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
+	blend_state =                DEFALT_UI_BLEND_STATE,
+	vertex_input_state = sdl.GPUVertexInputState{},
+}
+
+
 DEFALT_TRANSPARENT_PASS:Render_Pass_Info:{
 	clear_color = {1, .3, 1, 1},
 	has_depth_stencil_target = true,

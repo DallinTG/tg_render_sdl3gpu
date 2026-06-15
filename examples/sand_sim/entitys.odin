@@ -78,7 +78,9 @@ draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	tg.clear_mesh_cpu(&mesh.cpu)
 	for ent in hm.iter(&ent_iter) {
 		tg.draw_rect(&mesh.cpu,"",tg.Vertex_Data,{1,1,1,1},{ent.pos,{10,10}})
+		tg.draw_rect_rounded(&mesh.cpu,"",tg.Vertex_Data,col={1,1,1,1},rec={ent.pos+{20,20,0},{100,100}},roundness = .2)
 		
+		tg.draw_ring(&mesh.cpu,.Hats_Balloon_Party,tg.Vertex_Data,ent.pos,10,10,20,col={1,1,1,1})
 		// switch &e in &ent.type_data{
 		// 	case Player_Entitys:
 		// 	do_players(ent,&e)

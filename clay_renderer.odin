@@ -101,9 +101,14 @@ UI_Vertex_Data :: struct #align(16){
 	img_index:u32,
 	layer:u32,
 	col_over:[4]f32,
+
+	scissor_rect:Vec4,
 }
 DEFALT_UI_VERTEX_DATA::UI_Vertex_Data 
+MAX_SCISSOR_STACK::1000
 clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(cl.RenderCommand),mesh:^Mesh_CPU, allocator := context.temp_allocator) {
+	overlay_colors := make([dynamic]cl.Color, allocator)
+	scissor_stack :[dynamic;MAX_SCISSOR_STACK]Vec4
 	inst:=get_clay_instance(clay_instance)
 	inst.z_offset = 0
 	clear_mesh_cpu(mesh)
@@ -125,29 +130,51 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
 
             // font := raylib_fonts[config.fontId].font
             
-            draw_text(mesh = mesh,vert_t = DEFALT_UI_VERTEX_DATA, pos = {bounds.x, bounds.y*-1, 0}, text = text,col = config.textColor ,scale = cast(f32)config.fontSize * inst.gbl_font_size)
+
+            draw_text(
+            	mesh = mesh,
+            	vert_t = DEFALT_UI_VERTEX_DATA,
+            	pos = {bounds.x, bounds.y*-1, 0},
+            	text = text,col = config.textColor ,
+             	scale = cast(f32)config.fontSize * inst.gbl_font_size,
+              	scissor_rect = get_true_scissor(scissor_stack[:])
+            )
             // rl.DrawTextEx(font, cstr_text, {bounds.x, bounds.y}, f32(config.fontSize), f32(config.letterSpacing), clay_color_to_rl_color(config.textColor))
         case .Image:
-            // config := render_command.renderData.image
-            // tint := config.backgroundColor
-            // if tint == 0 {
-            //     tint = {255, 255, 255, 255}
-            // }
+			config := render_command.renderData.image
+			tint: cl.Color
+			if len(overlay_colors) > 0 {
+				tint = overlay_colors[len(overlay_colors) - 1]
+			}
+			if tint == {} {
+				tint = {1, 1, 1, 1}
+			}
+			imageTexture := (^[2]u32)(config.imageData)
+			   rect:Rect={
+		    	pos = {bounds.x,bounds.y*-1,0+inst.z_offset},
+		     	w_h = {bounds.width,bounds.height}
+		    }
+			// draw_rect_clay(inst, mesh,bounds.x, bounds.y, bounds.width, bounds.height, config.backgroundColor,imageTexture^)
+			draw_rect(mesh,imageTexture^,DEFALT_UI_VERTEX_DATA,tint,rect, scissor_rect = get_true_scissor(scissor_stack[:]))
+			// rl.DrawTextureEx(imageTexture^, {bounds.x, bounds.y}, 0, bounds.width / f32(imageTexture.width), clay_color_to_rl_color(tint))
 
-            // imageTexture := (^rl.Texture2D)(config.imageData)
-            // rl.DrawTextureEx(imageTexture^, {bounds.x, bounds.y}, 0, bounds.width / f32(imageTexture.width), clay_color_to_rl_color(tint))
-            // draw_rect()
         case .ScissorStart:
+        	append(&scissor_stack ,Vec4{bounds.x, bounds.y, bounds.width+bounds.x, bounds.height+ bounds.y})
             // rl.BeginScissorMode(i32(math.round(bounds.x)), i32(math.round(bounds.y)), i32(math.round(bounds.width)), i32(math.round(bounds.height)))
+            // fmt.print("start_skisers\n",i32(math.round(bounds.x)), i32(math.round(bounds.y)), i32(math.round(bounds.width)), i32(math.round(bounds.height)),"\n")
         case .ScissorEnd:
+        	pop(&scissor_stack)
             // rl.EndScissorMode()
+             // fmt.print("end_skisers\n")
         case .Rectangle:
             config := render_command.renderData.rectangle
             if config.cornerRadius.topLeft > 0 {
                 radius: f32 = (config.cornerRadius.topLeft * 2) / min(bounds.width, bounds.height)
-                draw_rect_rounded_clay(bounds.x, bounds.y, bounds.width, bounds.height, radius, config.backgroundColor)
+                
+                draw_rect_rounded_clay(inst, mesh, bounds.x, bounds.y, bounds.width, bounds.height, radius, config.backgroundColor, scissor_rect = get_true_scissor(scissor_stack[:]))
             } else {
-                draw_rect_clay(inst, mesh,bounds.x, bounds.y, bounds.width, bounds.height, config.backgroundColor)
+            	// fmt.print(scissor_stack[len(scissor_stack)-1],"\n")
+                draw_rect_clay(inst, mesh,bounds.x, bounds.y, bounds.width, bounds.height, config.backgroundColor, scissor_rect = get_true_scissor(scissor_stack[:]))
             }
         case .Border:
             config := render_command.renderData.border
@@ -161,6 +188,7 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
                     f32(config.width.left),
                     bounds.height - config.cornerRadius.topLeft - config.cornerRadius.bottomLeft,
                     config.color,
+                    scissor_rect = get_true_scissor(scissor_stack[:]),
                 )
             }
             // Right border
@@ -173,6 +201,7 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
                     f32(config.width.right),
                     bounds.height - config.cornerRadius.topRight - config.cornerRadius.bottomRight,
                     config.color,
+                    scissor_rect = get_true_scissor(scissor_stack[:]),
                 )
             }
             // Top border
@@ -185,6 +214,7 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
                     bounds.width - config.cornerRadius.topLeft - config.cornerRadius.topRight,
                     f32(config.width.top),
                     config.color,
+                    scissor_rect = get_true_scissor(scissor_stack[:]),
                 )
             }
             // Bottom border
@@ -197,88 +227,150 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
                     bounds.width - config.cornerRadius.bottomLeft - config.cornerRadius.bottomRight,
                     f32(config.width.bottom),
                     config.color,
+                    scissor_rect = get_true_scissor(scissor_stack[:]),
                 )
             }
 
             // Rounded Borders
             if config.cornerRadius.topLeft > 0 {
                 draw_arc(
+                   	inst,
+                	mesh,
                     bounds.x + config.cornerRadius.topLeft, 
                     bounds.y + config.cornerRadius.topLeft,
                     config.cornerRadius.topLeft - f32(config.width.top),
                     config.cornerRadius.topLeft,
-                    180,
-                    270,
+                    180-90,
+                    270-90,
                     config.color,
+                    scissor_rect = get_true_scissor(scissor_stack[:]),
                 )
             }
             if config.cornerRadius.topRight > 0 {
                 draw_arc(
+                	inst,
+                	mesh,
                     bounds.x + bounds.width - config.cornerRadius.topRight,
                     bounds.y + config.cornerRadius.topRight,
                     config.cornerRadius.topRight - f32(config.width.top),
                     config.cornerRadius.topRight,
-                    270,
-                    360,
+                    270+90,
+                    360+90,
                     config.color,
+                    scissor_rect = get_true_scissor(scissor_stack[:]),
                 )
             }
             if config.cornerRadius.bottomLeft > 0 {
                 draw_arc(
+                	inst,
+                	mesh,
                     bounds.x + config.cornerRadius.bottomLeft,
                     bounds.y + bounds.height - config.cornerRadius.bottomLeft,
                     config.cornerRadius.bottomLeft - f32(config.width.top),
                     config.cornerRadius.bottomLeft,
-                    90,
-                    180,
+                    90+90,
+                    180+90,
                     config.color,
+                    scissor_rect = get_true_scissor(scissor_stack[:]),
                 )
             }
             if config.cornerRadius.bottomRight > 0 {
                 draw_arc(
+                	inst,
+                	mesh,
                     bounds.x + bounds.width - config.cornerRadius.bottomRight, 
                     bounds.y + bounds.height - config.cornerRadius.bottomRight,
                     config.cornerRadius.bottomRight - f32(config.width.bottom),
                     config.cornerRadius.bottomRight,
-                    0.1,
-                    90,
+                    -90,
+                    0,
                     config.color,
+                    scissor_rect = get_true_scissor(scissor_stack[:]),
                 )
             }
-        case cl.RenderCommandType.Custom:
+        case.OverlayColorStart:
+        	config := render_command.renderData.overlayColor
+			append(&overlay_colors, config.color)
+        case.OverlayColorEnd:
+        	pop(&overlay_colors)
+        case .Custom:
             // Implement custom element rendering here
         }
+        
     }
 }
+get_true_scissor :: proc(list: [] Vec4) ->  Vec4 {
+    if len(list) == 0 {
+        return  Vec4{0, 0, 0, 0}
+    }
 
+    result := list[0]
+
+    for i := 1; i < len(list); i += 1 {
+        result = scissor_intersect(result, list[i])
+    }
+
+    return result
+}
+
+scissor_intersect :: proc(a, b: Vec4) -> Vec4 {
+    x1 := max(a.x, b.x)
+    y1 := max(a.y, b.y)
+    x2 := min(a.z, b.z)
+    y2 := min(a.w, b.w)
+
+    if x2 <= x1 || y2 <= y1 {
+        return Vec4{0, 0, 0, 0} // empty
+    }
+
+    return Vec4{
+       x1,
+       y1,
+       x2,
+       y2,
+    }
+}
 // Helper procs, mainly for repeated conversions
 
 @(private = "file")
-draw_arc :: proc(x, y: f32, inner_rad, outer_rad: f32,start_angle, end_angle: f32, color: cl.Color){
-    // rl.DrawRing(
-    //     {math.round(x),math.round(y)},
-    //     math.round(inner_rad),
-    //     outer_rad,
-    //     start_angle,
-    //     end_angle,
-    //     10,
-    //     clay_color_to_rl_color(color),
-    // )
+draw_arc :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y: f32, inner_rad, outer_rad: f32,start_angle, end_angle: f32, color: cl.Color = {1,1,1,1},tex_id:[2]u32= {0,1}, scissor_rect:Vec4={}){
+	draw_ring(
+		mesh = mesh,
+		tex_id= tex_id,
+		segments = 20, 
+		center = {x,y*-1,0+clay_instance.z_offset},
+		innerRadius = math.round(inner_rad),
+		outerRadius = outer_rad,
+		startAngle = start_angle,
+		endAngle = end_angle,
+		vert_t = DEFALT_UI_VERTEX_DATA,
+		col = color,
+		scissor_rect = scissor_rect
+	)
 }
 
 
 @(private = "file")
-draw_rect_clay :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y, w, h: f32, color: cl.Color) {
+draw_rect_clay :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y, w, h: f32, color: cl.Color,tex_id:[2]u32= {0,1}, scissor_rect:Vec4={}) {
     rect:Rect={
     	pos = {x,y*-1,0+clay_instance.z_offset},
      	w_h = {w,h}
     }
     clay_instance.z_offset+=clay_instance.z_offseter
-    draw_rect(mesh = mesh,tex_id= [2]u32{1,0},rect = rect, vert_t = DEFALT_UI_VERTEX_DATA,col = color,)
+    draw_rect(mesh = mesh,tex_id= tex_id,rect = rect, vert_t = DEFALT_UI_VERTEX_DATA,col = color,scissor_rect = scissor_rect)
+    // draw_rect(mesh,tex_id,DEFALT_UI_VERTEX_DATA,{1,1,1,1},rect)
 }
 
 @(private = "file")
-draw_rect_rounded_clay :: proc(x,y,w,h: f32, radius: f32, color: cl.Color){
+draw_rect_rounded_clay :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU,x,y,w,h: f32, radius: f32, color: cl.Color, tex_id:[2]u32= {0,1},scissor_rect:Vec4={}){
+	rect:Rect={
+    	pos = {x,y*-1,0+clay_instance.z_offset},
+     	w_h = {w,h}
+    }
+    clay_instance.z_offset+=clay_instance.z_offseter
+    // draw_rect(mesh = mesh,tex_id= tex_id,rect = rect, vert_t = DEFALT_UI_VERTEX_DATA,col = color,scissor_rect = scissor_rect)
+    draw_rect_rounded(mesh = mesh,tex_id= tex_id,rec = rect,roundness = radius,rot = math.to_radians_f32(180), vert_t = DEFALT_UI_VERTEX_DATA,col = color,scissor_rect = scissor_rect)
+    fmt.print(radius,"\n")
     // rl.DrawRectangleRounded({x,y,w,h},radius,8,clay_color_to_rl_color(color))
 }
 errorHandler :: proc "c" (errorData: cl.ErrorData) {
@@ -310,7 +402,7 @@ init_clay_instance::proc(
 	// window_hd:     Window_Handle,
 	vert_shader:   Shader_Handle,
 	frag_shader:   Shader_Handle,
-	gpu_buf_size:  int = 5000,
+	gpu_buf_size:  int = 50000,
 	z_offseter:    f32 = 0, 
 	gbl_font_size: f32 = 1,
 )->(instance_hd:Clay_I_Handle){
@@ -333,11 +425,21 @@ init_clay_instance::proc(
     cl.SetMeasureTextFunction(measure_text_clay, inst)
     return
 }
-update_clay_instance::proc(clay_instance:Clay_I_Handle, renderCommands: ^cl.ClayArray(cl.RenderCommand), wh:[2]i32, mouse_pos:[2]f32 = {-1,-1}, mouse_down :bool=false){
+update_clay_instance::proc(
+	clay_instance:Clay_I_Handle, 
+	renderCommands: ^cl.ClayArray(cl.RenderCommand), 
+	wh:[2]i32, 
+	mouse_pos:[2]f32 = {-1,-1}, 
+	mouse_down :bool=false,
+	scroll_dt:[2]f32={0,0},
+	dt_time:f32=0,
+	enable_drag_scrolling:bool= false
+){
 	inst:=get_clay_instance(clay_instance)
 	mesh:=get_mesh(inst.mesh)
 	cl.SetLayoutDimensions({ cast(f32)wh.x, cast(f32)wh.y })
 	cl.SetPointerState( mouse_pos, mouse_down)
+	cl.UpdateScrollContainers(enableDragScrolling = enable_drag_scrolling, scrollDelta = scroll_dt, deltaTime = dt_time)
 	clay_render(clay_instance,renderCommands,&mesh.cpu)
 	update_mesh(inst.mesh)
 }

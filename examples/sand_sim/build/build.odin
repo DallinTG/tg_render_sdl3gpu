@@ -13,6 +13,7 @@ SHADER_SRC::"../assets/shaders/src"
 SHADER_OUT::"../assets/shaders"
 
 main :: proc() {
+	start_code_gen_main()
 	context.logger = log.create_console_logger()
 	// fmt.println(os.get_working_directory(context.allocator))
 	EXE :: "hello-sdl3"
@@ -46,7 +47,7 @@ run_str :: proc(cmd: string) {
 }
 
 run :: proc(cmd: []string) {
-	log.infof("Running {}", cmd)
+	// log.infof("Running {}", cmd)
 	code, err := exec(cmd)
 	if err != nil {
 		log.errorf("Error executing process: {}", err)

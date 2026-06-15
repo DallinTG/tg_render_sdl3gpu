@@ -21,7 +21,7 @@ import hm "handle_map_static_virtual"
 font_bitmap_w :: 64*8
 font_bitmap_h :: 64*8
 char_count :: 96
-DEFALT_FONT::#load("defalt_assets/fonts/alagard.ttf")
+DEFALT_FONT::#load("assets/fonts/alagard.ttf")
 // DEFALT_FONT::#load("defalt_assets/fonts/roboto.ttf")
 Font_Handle :: distinct Handle
 Font :: struct {
@@ -91,7 +91,8 @@ draw_text :: proc(
 	col:[4]f32={1,1,1,1}, 
 	scale:f32= 1,
 	fixed_spacing:f32 = 0,
-	txt_origin:Txt_Origin=.top
+	txt_origin:Txt_Origin=.top,
+	scissor_rect:Vec4={},
 	
 	
 ){
@@ -134,10 +135,10 @@ draw_text :: proc(
 		
 		if debug_text {
 			// draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{.01,.01}}, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
-			draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{1,1}}, origin = {}, rot = rot,uv = uv, vert_t = vert_t,)
+			draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{1,1}}, origin = {}, rot = rot,uv = uv, vert_t = vert_t,scissor_rect= scissor_rect)
 			// draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = rect, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
 		}
-		draw_rect(mesh = mesh, tex_id = font.sg_image, rect = rect, origin = origin, rot = rot,uv = uv, col = col, vert_t = vert_t,)
+		draw_rect(mesh = mesh, tex_id = font.sg_image, rect = rect, origin = origin, rot = rot,uv = uv, col = col, vert_t = vert_t, scissor_rect= scissor_rect)
 		x += advance_x
 		y += -advance_y	
 	}
@@ -153,12 +154,11 @@ draw_fps :: proc(
 	col:[4]f32={1,1,1,1}, 
 	scale:f32= 1,
 	fixed_spacing:f32 = 0,
-	txt_origin:Txt_Origin=.top
-	
+	txt_origin:Txt_Origin=.top,
+	scissor_rect:Vec4={},
 	
 ){
-
-	draw_text(mesh,vert_t,pos, fmt.tprint("FPS:",math.round(s.time.smooth_fps)),origin,rot,col,scale,fixed_spacing,txt_origin)
+	draw_text(mesh,vert_t,pos, fmt.tprint("FPS:",math.round(s.time.smooth_fps)),origin,rot,col,scale,fixed_spacing,txt_origin, scissor_rect=scissor_rect)
 }
 
 draw_tps :: proc(
@@ -171,12 +171,14 @@ draw_tps :: proc(
 	col:[4]f32={1,1,1,1}, 
 	scale:f32= 1,
 	fixed_spacing:f32 = 0,
-	txt_origin:Txt_Origin=.top
+	txt_origin:Txt_Origin=.top,
+	scissor_rect:Vec4={},
+	
 	
 	
 ){
 	// fmt.print(fmt.tprint("TPS:",s.time.tps),"\n")
-	draw_text(mesh,vert_t,pos, fmt.tprint("TPS:",math.round(s.time.smooth_tps)),origin,rot,col,scale,fixed_spacing,txt_origin)
+	draw_text(mesh,vert_t,pos, fmt.tprint("TPS:",math.round(s.time.smooth_tps)),origin,rot,col,scale,fixed_spacing,txt_origin,scissor_rect=scissor_rect)
 }
 
 measure_text :: proc(

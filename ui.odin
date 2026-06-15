@@ -15,6 +15,7 @@ import cl"clay-odin"
 import "core:encoding/json"
 import "core:os"
 import "core:strconv"
+import steam "steamworks"
 
 UI_Style::struct{
 	col:struct{
@@ -270,6 +271,7 @@ UI_Size::enum{
 	big,
 	large,
 	huge,
+	non,
 }
 get_ui_text_size::proc(size:union{UI_Size,f32}) -> (new_size:u16){
 	switch siz in size{
@@ -287,6 +289,8 @@ get_ui_text_size::proc(size:union{UI_Size,f32}) -> (new_size:u16){
 		new_size = cast(u16)(s.ui_style.siz.text_large * s.ui_style.siz.text_multiplyer )
 		case.huge:
 		new_size = cast(u16)(s.ui_style.siz.text_huge * s.ui_style.siz.text_multiplyer )
+		case.non:
+		new_size = 0 
 		}
 	case f32:
 		new_size = cast(u16)siz
@@ -310,6 +314,8 @@ get_ui_border::proc(size:union{UI_Size,f32}) -> (new_size:u16){
 		new_size = cast(u16)(s.ui_style.siz.border_large * s.ui_style.siz.border_multiplyer )
 		case.huge:
 		new_size = cast(u16)(s.ui_style.siz.border_huge * s.ui_style.siz.border_multiplyer )
+		case.non:
+		new_size = 0 
 		}
 	case f32:
 		new_size = cast(u16)siz
@@ -333,6 +339,8 @@ get_ui_pading::proc(size:union{UI_Size,f32}) -> (new_size:u16){
 		new_size = cast(u16)(s.ui_style.siz.pading_large * s.ui_style.siz.pading_multiplyer )
 		case.huge:
 		new_size = cast(u16)(s.ui_style.siz.pading_huge * s.ui_style.siz.pading_multiplyer )
+		case.non:
+		new_size = 0 
 		}
 	case f32:
 		new_size = cast(u16)siz
@@ -358,6 +366,8 @@ get_ui_child_gap::proc(size:union{UI_Size,f32}) -> (new_size:u16){
 		new_size = cast(u16)(s.ui_style.siz.child_gap_large * s.ui_style.siz.child_gap_multiplyer )
 		case.huge:
 		new_size = cast(u16)(s.ui_style.siz.child_gap_huge * s.ui_style.siz.child_gap_multiplyer )
+		case.non:
+		new_size = 0 
 		}
 	case f32:
 		new_size = cast(u16)siz
@@ -532,6 +542,7 @@ Color_Types::union{
 	UI_Text_Color,
 	UI_Accents_Color,
 	UI_Color,
+	steam.EPersonaState,
 }
 get_color::proc(col:Color_Types)->(new_col:Vec4){
 	switch c in col{
@@ -778,6 +789,27 @@ get_color::proc(col:Color_Types)->(new_col:Vec4){
 			case.ac7:
 			new_col = s.ui_style.col.accents[6]
 		}
+		case steam.EPersonaState:
+		switch c{
+		case.Offline:
+		new_col = s.ui_style.col.ansi_bright_red
+		case.Online:
+		new_col = s.ui_style.col.ansi_bright_green
+		case.Busy:
+		new_col = s.ui_style.col.ansi_bright_red
+		case.Away:
+		new_col = s.ui_style.col.ansi_bright_yellow
+		case.Snooze:
+		new_col = s.ui_style.col.text
+		case.LookingToTrade:
+		new_col = s.ui_style.col.ansi_bright_green
+		case.LookingToPlay:
+		new_col = s.ui_style.col.ansi_bright_green
+		case.Invisible:
+		new_col = s.ui_style.col.text
+		case.Max:
+		new_col = s.ui_style.col.text
+		}
 	case Vec4:
 		new_col = c
 	}
@@ -993,6 +1025,145 @@ set_ui_style::proc(sty:=DEFALT_UI_STYLE){
 }
 
 
+defalt_box_dec::proc(
+	border_col_id:Color_Types = .border,
+	background_col_id:Color_Types = .element_background,
+	// background_huv_col_id:Color_Types = .element_hover,
+	
+	
+	border_size_id: UI_Size  = .normal,
+	
+	padding_size_id:UI_Size = .normal,
+	roundnes_id:UI_Roundnes = .sharp,
+	
+
+	layout_direction :cl.LayoutDirection= .TopToBottom,
+	child_alignment: = cl.ChildAlignment{x=.Center,y=.Center},
+	
+	clip:cl.ClipElementConfig={
+		horizontal=false, // clip overflowing elements on the "X" axis
+		vertical=false, // clip overflowing elements on the "Y" axis
+		childOffset={}, // offsets the [X,Y] positions of all child elements, primarily for scrolling containers
+	}
+
+)->(button:cl.ElementDeclaration){
+
+	border_col:=get_color(border_col_id)
+	background_col:=get_color(background_col_id)
+	
+	// background_huv_col:=get_color(background_huv_col_id)
+
+	border_size:= get_ui_border(border_size_id)
+
+	padding_size:= get_ui_pading(padding_size_id)
+	roundnes_id:= get_ui_roundnes(roundnes_id)
+
+	new_clip:=clip
+	if clip.horizontal{ new_clip.childOffset = cl.GetScrollOffset()}
+	if clip.vertical{new_clip.childOffset = cl.GetScrollOffset()}
+
+	
+	button_hov:=cl.Hovered()
+	button = cl.ElementDeclaration{
+		layout = {
+			layoutDirection = layout_direction,
+			sizing = { cl.SizingGrow(), cl.SizingFit() },
+			childAlignment = child_alignment,
+			padding = {padding_size,padding_size,padding_size,padding_size},
+			childGap = {},
+		},
+		// cornerRadius =cl.CornerRadius{5,5,5,5,},
+		backgroundColor = background_col,
+		border = cl.BorderElementConfig{
+			color = border_col,
+			width = cl.BorderWidth {border_size,border_size,border_size,border_size,0}
+		},
+		clip = new_clip,
+	}
+	return button
+}
+
+defalt_seperator_dec::proc(
+	padding_size_id:UI_Size = .non,
+	child_gap:UI_Size = .non,
+	layout_direction :cl.LayoutDirection= .TopToBottom,
+	child_alignment: = cl.ChildAlignment{x=.Center,y=.Center},
+)->(button:cl.ElementDeclaration){
+
+	// border_col:=get_color(border_col_id)
+	// background_col:=get_color(background_col_id)
+	// background_huv_col:=get_color(background_huv_col_id)
+
+	// border_size:= get_ui_border(border_size_id)
+	padding_size:= get_ui_pading(padding_size_id)
+	child_gap_size:= get_ui_pading(child_gap)
+	// roundnes_id:= get_ui_roundnes(roundnes_id)
+	
+	
+	button_hov:=cl.Hovered()
+	button = cl.ElementDeclaration{
+		layout = {
+				layoutDirection = layout_direction,
+				sizing = { cl.SizingGrow(), cl.SizingFit() },
+				childAlignment = child_alignment,
+				padding = {padding_size,padding_size,padding_size,padding_size},
+				childGap = child_gap_size,
+			},
+		// backgroundColor = background_col,
+		// border = cl.BorderElementConfig{
+		// 	color = border_col,
+		// 	width = cl.BorderWidth{border_size,border_size,border_size,border_size,0}
+		// },
+	}
+	return button
+}
+
+defalt_img_box_dec::proc(
+	img:rawptr,
+	border_col_id:Color_Types = .border_variant,
+	background_col_id:Color_Types = .element_background,
+	// background_huv_col_id:Color_Types = .element_hover,
+	img_color:Color_Types = Vec4{1,1,1,1},
+	border_size_id:UI_Size = .small,
+	padding_size_id:UI_Size = .normal,
+	roundnes_id:UI_Roundnes = .sharp,
+	size:UI_Size = .normal,
+
+)->(button:cl.ElementDeclaration){
+
+	border_col:=get_color(border_col_id)
+	background_col:=get_color(background_col_id)
+	img_col:=get_color(img_color)
+	// background_huv_col:=get_color(background_huv_col_id)
+
+	border_size:= get_ui_border(border_size_id)
+	padding_size:= get_ui_pading(padding_size_id)
+	roundnes_id:= get_ui_roundnes(roundnes_id)
+
+	img_size:=get_ui_text_size(size)
+
+	
+	button_hov:=cl.Hovered()
+	button = cl.ElementDeclaration{
+		layout = {
+			layoutDirection = .TopToBottom,
+			sizing = { cl.SizingFixed(cast(f32)img_size), cl.SizingFixed(cast(f32)img_size) },
+			childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
+			padding = {padding_size,padding_size,padding_size,padding_size},
+			childGap = {},
+		},
+		image={img},
+		// backgroundColor = img_col,
+		overlayColor = img_col,
+		border = cl.BorderElementConfig{
+			color = border_col,
+			width = cl.BorderWidth{border_size,border_size,border_size,border_size,0}
+		},
+	}
+	return button
+}
+
+
 button_dec::proc(
 	border_col_id:Color_Types = .border,
 	background_col_id:Color_Types = .element_background,
@@ -1022,6 +1193,7 @@ button_dec::proc(
 				padding = {padding_size,padding_size,padding_size,padding_size},
 				childGap = {},
 			},
+		// cornerRadius = {20,20,20,20},
 		backgroundColor = background_col if !button_hov else background_huv_col,
 		border = cl.BorderElementConfig{
 			color = border_col,
@@ -1040,10 +1212,10 @@ button_txt::proc(
 	text_size:=get_ui_text_size(text_size_id)
 	cl.Text(
 		text,
-		cl.TextConfig(cl.TextElementConfig{
+		cl.TextElementConfig{
 			textColor = text_col,
 			fontSize = text_size
-		}),
+		},
 	)
 }
 button_txt_dynamic::proc(
@@ -1055,10 +1227,10 @@ button_txt_dynamic::proc(
 	text_size:=get_ui_text_size(text_size_id)
 	cl.TextDynamic(
 		text,
-		cl.TextConfig(cl.TextElementConfig{
+		cl.TextElementConfig{
 			textColor = text_col,
 			fontSize = text_size
-		}),
+		},
 	)
 }
 
@@ -1104,6 +1276,23 @@ notification_dec::proc(
 			// 	parent =   cl.FloatingAttachPointType.RightTop,
 			// }
 		},
+		transition = cl.TransitionElementConfig{
+
+			handler = cl.EaseOut,
+			duration = .2,
+			properties = cl.TransitionPropertyFlags{.X,.Y},
+			interactionHandling = .AllowInteractionsWhileTransitioningPosition,
+			enter = {
+				setInitialState = state_slide_in_right,
+				trigger = cl.TransitionEnterTriggerType.TriggerOnFirstParentFrame,
+			},
+			exit = {
+				setFinalState = state_slide_in_right,
+				// trigger=         .TriggerOnFirstParentFrame,
+				// siblingOrdering: TriggerOnFirstParentFrame,
+			},
+
+		},
 		backgroundColor = background_col if !button_hov else background_huv_col,
 		border = cl.BorderElementConfig{
 			color = border_col,
@@ -1112,6 +1301,25 @@ notification_dec::proc(
 	}
 	return button
 }
+
+state_drop_in:: proc "c" (initialState: cl.TransitionData, properties: cl.TransitionPropertyFlags) -> (new_t:cl.TransitionData){
+	new_t=initialState
+	new_t.boundingBox.y = -100 
+	return
+}
+state_slide_in_left:: proc "c" (initialState: cl.TransitionData, properties: cl.TransitionPropertyFlags) -> (new_t:cl.TransitionData){
+	new_t=initialState
+	new_t.boundingBox.x = -10 -new_t.boundingBox.x
+	return
+}
+state_slide_in_right:: proc "c" (initialState: cl.TransitionData, properties: cl.TransitionPropertyFlags) -> (new_t:cl.TransitionData){
+	new_t=initialState
+
+	new_t.boundingBox.x += new_t.boundingBox.width*1.5
+	return
+}
+
+
 notification_progress_bar::proc(
 	persent:f32,
 	col_id:Color_Types = .ac1,
@@ -1146,7 +1354,7 @@ notification_x_button::proc(
 	x_border_col:=get_color(border_col_id)
 	x_color:=get_color(x_color_id)
 	x_color_huv:=get_color(x_color_huv_id)
-	if cl.UI()({
+	if cl.UI(cl.ID("Notification_x_button", notification.id))({
 		layout = cl.LayoutConfig{ 
 			padding = {padding_size,padding_size,padding_size,padding_size},
 			layoutDirection = .TopToBottom, 
@@ -1154,8 +1362,6 @@ notification_x_button::proc(
 			childAlignment = {.Left,.Top},
 		},
 		// border={width = {x_border_size,x_border_size,x_border_size,x_border_size,0},color = x_border_col },
-		
-		
 		// backgroundColor = col,
 		floating ={
 			// attachment = {.Root},
@@ -1185,10 +1391,10 @@ notification_txt::proc(
 	text_size:=get_ui_text_size(text_size_id)
 	cl.Text(
 		text,
-		cl.TextConfig(cl.TextElementConfig{
+		cl.TextElementConfig{
 			textColor = text_col,
 			fontSize = text_size
-		}),
+		},
 	)
 }
 notification_txt_dynamic::proc(
@@ -1200,19 +1406,52 @@ notification_txt_dynamic::proc(
 	text_size:=get_ui_text_size(text_size_id)
 	cl.TextDynamic(
 		text,
-		cl.TextConfig(cl.TextElementConfig{
+		cl.TextElementConfig{
 			textColor = text_col,
 			fontSize = text_size
-		}),
+		},
+	)
+}
+
+defalt_txt::proc(
+	$text:string,
+	text_col_id:Color_Types = .text,
+	text_size_id:UI_Size = .small,
+ ){
+	text_col:=get_color(text_col_id)
+	text_size:=get_ui_text_size(text_size_id)
+	cl.Text(
+		text,
+		cl.TextElementConfig{
+			textColor = text_col,
+			fontSize = text_size
+		},
+	)
+}
+defalt_txt_dynamic::proc(
+	text:string,
+	text_col_id:Color_Types = .text,
+	text_size_id:UI_Size = .small,
+){
+	text_col:=get_color(text_col_id)
+	text_size:=get_ui_text_size(text_size_id)
+	cl.TextDynamic(
+		text,
+		cl.TextElementConfig{
+			textColor = text_col,
+			fontSize = text_size
+		},
 	)
 }
 
 
 MAX_NUMBER_OF_NOTIFICATION::100
 Notification_Buffer::struct{
-	notifications:[dynamic;MAX_NUMBER_OF_NOTIFICATION]Notification
+	notifications:[dynamic;MAX_NUMBER_OF_NOTIFICATION]Notification,
+	last_id_created:u32,
 }
 Notification::struct{
+	id:u32,
 	max_time:f64,
 	time_left:f64,
 	mesg_1:string,
@@ -1229,14 +1468,14 @@ update_notification_buffer::proc(buff:^Notification_Buffer,time_pased:f64){
 		}
 	}
 }
-draw_notification_buffer::proc(buff:^Notification_Buffer, location:cl.LayoutAlignmentX = .Center){
+draw_notification_buffer::proc(buff:^Notification_Buffer, location:cl.LayoutAlignmentX = .Right){
 	child_gap:=get_ui_child_gap(.normal)
 	if cl.UI(cl.ID("Notification_List"))({
-		layout = { 
+		layout =cl.LayoutConfig { 
 			layoutDirection = .TopToBottom,
 			sizing = { cl.SizingGrow(), cl.SizingGrow() },
 			childGap = child_gap,
-			childAlignment= {x = location,y= .Top}
+			childAlignment= {x = location,y= .Top},
 		},
 		floating ={
 			// attachment = {.Root},
@@ -1251,7 +1490,7 @@ draw_notification_buffer::proc(buff:^Notification_Buffer, location:cl.LayoutAlig
 		
 	}) {
 		for &notif,i in &buff.notifications{
-			if cl.UI()(notification_dec(&notif)) {
+			if cl.UI(cl.ID("Notification", notif.id))(notification_dec(&notif)) {
 				notification_x_button(&notif)
 				notification_txt_dynamic(notif.mesg_1,text_col_id = notif.mesg_1_col,)
 				notification_progress_bar(cast(f32)(notif.time_left/notif.max_time))
@@ -1267,7 +1506,9 @@ send_notification::proc(
 	},
 ){
 	if len(buff.notifications) <MAX_NUMBER_OF_NOTIFICATION{
+		buff.last_id_created+=1
 		temp_mesg:=mesg
+		temp_mesg.id = buff.last_id_created
 		if temp_mesg.mesg_1_col == nil{temp_mesg.mesg_1_col = .text_accent}
 		if temp_mesg.max_time == 0{temp_mesg.max_time = DEFALT_NOTIFICATION_TIME}
 		if temp_mesg.time_left == 0{temp_mesg.time_left = DEFALT_NOTIFICATION_TIME}
@@ -1288,4 +1529,177 @@ send_simp_error_notification::proc(
 	time:f64=5,
 ){
 	send_notification(buff,{max_time= DEFALT_NOTIFICATION_TIME,time_left = DEFALT_NOTIFICATION_TIME,mesg_1=mesg,mesg_1_col = Ansi_Color.ansi_bright_red})
+}
+
+draw_steam_friends::proc(location:cl.LayoutAlignmentX = .Right){
+	if s.steam.is_using_steam != true {return}
+
+	child_gap:=get_ui_child_gap(.normal)
+	
+	List_box_data:=cl.GetElementData(cl.ID("steam_friends_List_iner_box"))
+	custom_offset:[2]f32={List_box_data.boundingBox.width,0}
+	if cl.PointerOver(cl.ID("Player_friends_icon_box"))||cl.PointerOver(cl.ID("steam_friends_List_iner_box")){
+		custom_offset={0,0}
+	}
+	if cl.UI(cl.ID("steam_friends_List_outer_box"))({
+		layout = { 
+			layoutDirection = .LeftToRight,
+			sizing = { cl.SizingFit(), cl.SizingGrow() },
+			// childGap = child_gap,
+			childAlignment= {x = location,y= .Top},
+
+		},
+		floating =cl.FloatingElementConfig{
+			// attachment = {.Root},
+			offset = custom_offset,
+			attachTo = .Root,
+			pointerCaptureMode =cl.PointerCaptureMode.Passthrough,
+			attachment= cl.FloatingAttachPoints{
+				element = cl.FloatingAttachPointType.RightTop,
+				parent =   cl.FloatingAttachPointType.RightTop,
+			}
+		},
+		
+		transition = cl.TransitionElementConfig{
+
+			handler = cl.EaseOut,
+			duration = .2,
+			properties = cl.TransitionPropertyFlags{.X,.Y},
+			interactionHandling = .AllowInteractionsWhileTransitioningPosition,
+			enter = {
+				setInitialState = state_slide_in_right,
+				trigger = cl.TransitionEnterTriggerType.TriggerOnFirstParentFrame,
+			},
+			exit = {
+				setFinalState = state_slide_in_right,
+				// trigger=         .TriggerOnFirstParentFrame,
+				// siblingOrdering: TriggerOnFirstParentFrame,
+			},
+
+		},
+		// clip ={
+		// 	horizontal=false,
+		// 	vertical=true,
+		// 	childOffset=cl.GetScrollOffset(),
+		// },
+		backgroundColor = {0,0,0,0},
+		
+	}) {
+		icon_box_dec:=defalt_box_dec(border_size_id=.normal,layout_direction = .LeftToRight,child_alignment = {.Left,.Top},padding_size_id=.small)
+		icon_box_dec.layout.padding.right = 0
+		icon_box_dec.border.width.right = 0
+	
+		if cl.UI(cl.ID("Player_friends_icon_box"))(icon_box_dec) {
+			img:=get_texture(.Travel_Person_People_Three)
+			if cl.UI(cl.ID("Player_friends_icon",))(defalt_img_box_dec(cast(rawptr)&img.id,border_size_id=.non,padding_size_id=.non,size = .big,img_color = .info)) {
+			}
+		}
+		temp_list_iner_box_proc:=cl.UI(cl.ID("steam_friends_List_iner_box", ))
+		list_box_dec:=defalt_box_dec(clip = {vertical = true},padding_size_id = .non)
+		list_box_dec.border.width.betweenChildren = list_box_dec.border.width.bottom
+		if temp_list_iner_box_proc(list_box_dec,) {
+
+			draw_steam_player_groop(&s.steam.friends)
+		}
+
+	}
+}
+
+draw_steam_player_groop::proc(groop:^Steam_Player_Groop){
+	if s.steam.is_using_steam != true {return}
+	if groop == nil {return}
+	for &player in &groop.player{
+
+		draw_steam_player(&player)
+	}
+}
+
+
+draw_steam_player::proc(
+	player:^Steam_Player,
+	text_size:UI_Size = .small,
+	player_icon_size:UI_Size = .large,
+	border_size:UI_Size = .small,
+){
+	if s.steam.is_using_steam != true {return}
+	if player == nil {return}
+	if cl.UI(cl.ID("Player_Card", cast(u32)player.l_player_icon_id))(defalt_box_dec(border_size_id=border_size,layout_direction = .LeftToRight,child_alignment = {.Left,.Top})) {
+		if cl.UI(cl.ID("Player_larg_icon", cast(u32)player.l_player_icon_id))(defalt_img_box_dec(cast(rawptr)&player.l_player_icon_gpu_id,size = player_icon_size)) {
+		}
+		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.l_player_icon_id))(defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
+			defalt_txt_dynamic(player.name)
+			defalt_txt_dynamic(player.status_string,text_col_id=player.status,text_size_id = text_size)
+			
+		}
+	}
+}
+
+
+all_steame_friends_dec::proc(
+	notification:^Notification,
+	border_col_id:Color_Types = .border,
+	background_col_id:Color_Types = .element_background,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+)->(button:cl.ElementDeclaration){
+	
+	
+	border_col:=get_color(border_col_id)
+	background_col:=get_color(background_col_id)
+	background_huv_col:=get_color(background_huv_col_id)
+
+	border_size:= get_ui_border(border_size_id)
+	padding_size:= get_ui_pading(padding_size_id)
+	child_gap_id:= get_ui_child_gap(child_gap_id)
+	roundnes_id:= get_ui_roundnes(roundnes_id)
+
+	button_hov:=cl.Hovered()
+	button = cl.ElementDeclaration{
+		layout = {
+				layoutDirection = .TopToBottom,
+				sizing = { cl.SizingPercent(.20), cl.SizingFit() },
+				childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
+				padding = {padding_size,padding_size,padding_size,padding_size},
+
+				childGap = child_gap_id,
+			},
+		floating ={
+			// attachment = {.Root},
+			expand = {1000,1000},
+			// offset = {100,10},
+			// attachTo = .Parent,
+			// pointerCaptureMode = .Capture,
+			// attachment= cl.FloatingAttachPoints{
+			// 	element = cl.FloatingAttachPointType.RightTop,
+			// 	parent =   cl.FloatingAttachPointType.RightTop,
+			// }
+		},
+		transition = cl.TransitionElementConfig{
+
+			handler = cl.EaseOut,
+			duration = .2,
+			properties = cl.TransitionPropertyFlags{.X,.Y},
+			interactionHandling = .AllowInteractionsWhileTransitioningPosition,
+			enter = {
+				setInitialState = state_slide_in_right,
+				trigger = cl.TransitionEnterTriggerType.TriggerOnFirstParentFrame,
+			},
+			exit = {
+				setFinalState = state_slide_in_right,
+				// trigger=         .TriggerOnFirstParentFrame,
+				// siblingOrdering: TriggerOnFirstParentFrame,
+			},
+
+		},
+		backgroundColor = background_col if !button_hov else background_huv_col,
+		border = cl.BorderElementConfig{
+			color = border_col,
+			width = cl.BorderWidth{border_size,border_size,border_size,border_size,0}
+		},
+	}
+	return button
 }

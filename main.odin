@@ -82,6 +82,7 @@ Window::struct{
 	// swap_chain:^sdl.GPUTexture,//TODO move this to Render_Target:
 	// msaa_tex:^sdl.GPUTexture,
 	Render_Target:Render_Target,
+	last_frame_updated:u64,
 	// msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
 	
 }
@@ -104,7 +105,8 @@ INIT_DEC:Init_Dec:{
 
 R_Pass ::struct{
 	window_hd: Window_Handle,
-	render_cmd_buf :^sdl.GPUCommandBuffer,
+	// render_cmd_buf :^sdl.GPUCommandBuffer,
+	frame_data:^Frame_Data,//this points to the spisific data that is globl to the curent frame
 	info:Render_Pass_Info,
 	render_pas: ^sdl.GPURenderPass,
 	pipeline: ^sdl.GPUGraphicsPipeline,
@@ -202,7 +204,7 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	init_texture_arr_groop()
 	s.defalt_font = load_font_from_data(font_id = "font_1",height = 16)
 	s.defalt_context = context
-
+	reg_defalt_assets()
 	set_ui_style()
 	
 	return
@@ -232,7 +234,7 @@ init_window::proc(dec:Init_Dec=INIT_DEC)->(window_hd:Window_Handle){
 	return
 }
 
-start_frame::proc()->(app_should_close:bool){//returns true if app_should_close
+start_tick::proc()->(app_should_close:bool){//returns true if app_should_close
 	free_all(s.frame_allocator)
 	clear(&s.events)
 	event:sdl.Event
@@ -270,12 +272,13 @@ start_frame::proc()->(app_should_close:bool){//returns true if app_should_close
 	return s.app_should_close 
 }
 
-create_render_pass :: proc (vert_shader_hd: Shader_Handle, frag_shader_hd: Shader_Handle, info:Render_Pass_Info=DEFALT_MASKED_PASS) ->(pass:R_Pass){
+
+create_render_pass :: proc (frame_data:^Frame_Data,vert_shader_hd: Shader_Handle, frag_shader_hd: Shader_Handle, info:Render_Pass_Info=DEFALT_MASKED_PASS) ->(pass:R_Pass){
 	// window:=get_window(window_hd)
 	vert_shader:=get_shader(vert_shader_hd)
 	frag_shader:=get_shader(frag_shader_hd)
 	pass.info = info
-
+	pass.frame_data = frame_data
 	
 	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{})
 
@@ -337,7 +340,7 @@ do_render_pass::proc(
 	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}
 
 	sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline)
-	sdl.PushGPUVertexUniformData(pass.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
+	sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
 	
 	clear_dynamic_array(&pass.texture_sampler_binding)
 	for &texture in  s.texture_arr_groop{
@@ -437,12 +440,15 @@ start_render::proc(
 	d_store_op: sdl.GPUStoreOp = .STORE,
 	clear_color:[4]f32={.3,.3,.3,1},
 ){
-	pass.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
+	// pass.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	pass.render_target = get_render_target(render_target)
 	switch rt in render_target {
 		case Window_Handle:
 			win:=get_window(rt)
-			update_window(win,pass.render_cmd_buf)
+			if win.last_frame_updated < pass.frame_data.frame_count{
+				win.last_frame_updated = pass.frame_data.frame_count
+				update_window(win,pass.frame_data.render_cmd_buf)
+			}
 		case ^Render_Target:
 	}
 	check_and_resize_all_frame_buffers(cam,render_target)
@@ -466,13 +472,30 @@ start_render::proc(
 			clear_depth = 1,
 			store_op = .STORE,
 		}
-		pass.render_pas = sdl.BeginGPURenderPass(pass.render_cmd_buf, &color_target, 1, &depth_target_info )
+		pass.render_pas = sdl.BeginGPURenderPass(pass.frame_data.render_cmd_buf, &color_target, 1, &depth_target_info )
 	}
 }
+
 submit_render::proc(pass:^R_Pass,){
 	sdl.EndGPURenderPass(pass.render_pas)
-	ok := sdl.SubmitGPUCommandBuffer(pass.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
+	// ok := sdl.SubmitGPUCommandBuffer(pass.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
 }
+
+Frame_Data::struct{
+	render_cmd_buf :^sdl.GPUCommandBuffer,
+	frame_count:u64,
+}
+
+// this starts the frame 
+start_frame::proc(frame:^Frame_Data){
+	frame.frame_count+=1
+	frame.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
+}
+submit_frame::proc(frame:^Frame_Data){
+	ok := sdl.SubmitGPUCommandBuffer(frame.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
+}
+
+
 update_windows::proc(render_cmd_buf :^sdl.GPUCommandBuffer,){
 	my_iter := hm.make_iter(&s.windows)
 	for win, i in hm.iter(&my_iter) {
@@ -482,6 +505,9 @@ update_windows::proc(render_cmd_buf :^sdl.GPUCommandBuffer,){
 update_window::proc(win:^Window,render_cmd_buf :^sdl.GPUCommandBuffer,){			swap_chan_w:u32
 	swap_chan_h:u32
 	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
+	if !ok {
+		log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")
+	}
 	if win.Render_Target.wh != {cast(i32)swap_chan_w,cast(i32)swap_chan_h}{
 		ok:=sdl.WaitForGPUIdle(s.gpu_device)
 		if !ok{
@@ -783,6 +809,7 @@ update_time_info::proc(){
 	s.time.ti_60_hz += s.time.tick_time
 	if 1/s.time.ti_60_hz <=60{
 		s.time.is_60_hz = true
+		s.time.dt_60_hz = s.time.ti_60_hz
 		s.time.ti_60_hz = 0
 	}
 

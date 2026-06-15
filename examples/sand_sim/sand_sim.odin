@@ -309,7 +309,7 @@ mesh_chunck::proc(chunck:^Chunck,pos:[2]int){
 	tg.clear_mesh_cpu(&mesh.cpu)//TODO Clears the mesh every frame this should only do that if somthing has changed
 	draw_chunck(
 		mesh = &mesh.cpu,
-		tex_id = "white",
+		tex_id = 1,
 		vert_t = tg.Vertex_Data,
 		pos = {cast(f32)(pos.x*CELL_SIZE*CHUNCK_SIZE),cast(f32)(pos.y*CELL_SIZE*CHUNCK_SIZE*-1),0},
 		// w_h = {CHUNCK_SIZE,CHUNCK_SIZE},

@@ -7,13 +7,13 @@ import "core:path/filepath"
 import os "core:os"
 
 SHADER_CROSS_PATH::"../shader_cross/sc-linux-x64/bin/shadercross"
-
-SHADER_SRC::"../assets/shaders"
+SHADER_SRC::"../assets/shaders/src"
 SHADER_OUT::"../assets/shaders"
 
 main :: proc() {
+	start_code_gen_main()
 	context.logger = log.create_console_logger()
-
+	// fmt.println(os.get_working_directory(context.allocator))
 	EXE :: "hello-sdl3"
 	OUT :: EXE + ".exe" when ODIN_OS == .Windows else EXE
 	// run_str("odin build src -debug -out:" + OUT + " -error-pos-style:unix")
@@ -37,6 +37,7 @@ shadercross :: proc(file: os.File_Info, format: string) {
 	basename := filepath.stem(file.name)
 	outfile,err := filepath.join({SHADER_OUT, strings.concatenate({basename, ".", format})},context.allocator)
 	// run({SHADER_CROSS_PATH, file.fullpath, "-o", outfile, "-I", "content/shaders/include"})
+	run({SHADER_CROSS_PATH, file.fullpath, "-o", outfile,})
 }
 
 run_str :: proc(cmd: string) {
@@ -44,7 +45,7 @@ run_str :: proc(cmd: string) {
 }
 
 run :: proc(cmd: []string) {
-	log.infof("Running {}", cmd)
+	// log.infof("Running {}", cmd)
 	code, err := exec(cmd)
 	if err != nil {
 		log.errorf("Error executing process: {}", err)
@@ -59,7 +60,6 @@ run :: proc(cmd: []string) {
 exec :: proc(cmd: []string) -> (code: int, error: os.Error) {
 	process := os.process_start({ command = cmd, stdin = os.stdin, stdout = os.stdout, stderr = os.stderr }) or_return
 	state := os.process_wait(process) or_return
-	// os.process_close(process) or_return
-	os.process_kill(process) or_return
+	// os.process_kill(process) or_return
 	return state.exit_code, nil
 }

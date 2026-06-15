@@ -46,6 +46,8 @@ Steam_Info::struct{
 Steam_Player::struct{
 	name:string,
 	status:steam.EPersonaState,
+	status_string:string,
+	steame_lev:int,
 	cs_id:steam.CSteamID,
 	game:steam.FriendGameInfo,
 	l_player_icon_id:i32,
@@ -58,10 +60,6 @@ Steam_Player_Groop::struct{
 }
 
 init_steam::proc(){
-
-	
-
-
 	err_msg: steam.SteamErrMsg
 	// if err := steam.InitEx(&err_msg); err != .OK {
 
@@ -120,6 +118,9 @@ update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends
 		steam.Friends_GetFriendGamePlayed(i_frd,groop.player[i].cs_id,&groop.player[i].game)
 		// fmt.print(groop.player[i].game,"\n")
 		groop.player[i].status = steam.Friends_GetFriendPersonaState(i_frd,groop.player[i].cs_id) //→ online/offline/busy/etc
+		groop.player[i].status_string = status_to_string(groop.player[i].status)
+		
+		groop.player[i].steame_lev = cast(int)steam.Friends_GetFriendSteamLevel(i_frd,groop.player[i].cs_id)
 		// fmt.print(groop.player[i].status,"\n")
 		if s.gpu_device != nil{
 			groop.player[i].l_player_icon_id = steam.Friends_GetLargeFriendAvatar(i_frd, groop.player[i].cs_id)
@@ -247,80 +248,80 @@ run_steam_callbacks :: proc() {
                 onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
 
 			case .LobbyCreated:
-			fmt.print("LobbyCreated_fin\n")
-			temp:=transmute(^steam.LobbyCreated)callback.pubParam
-			fmt.print(temp,"\n")
-			if temp.eResult == .OK{
-				s.lobby.st_lobby = temp.ulSteamIDLobby
-			}else{
-				fmt.print("Lobby Creation failed",temp.eResult,"\n"  )
-				send_simp_error_notification(&s.notifications, "Lobby Creation failed")
-			}
-			case .GameLobbyJoinRequested:
-			fmt.print("GameLobbyJoinRequested_fin\n")
-			case .LobbyInvite:
-			fmt.print("LobbyInvite_fin\n")
-			case .LobbyEnter:
-			temp:=transmute(^steam.LobbyEnter)callback.pubParam
-			fmt.print("LobbyEnter_fin\n")
-			err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
-			if err == .Success {
+				fmt.print("LobbyCreated_fin\n")
+				temp:=transmute(^steam.LobbyCreated)callback.pubParam
 				fmt.print(temp,"\n")
-			}else{
-				fmt.print("Lobby Enter failed",err,"\n"  )
-				send_simp_error_notification(&s.notifications, "Lobby Enter failed")
-			}
+				if temp.eResult == .OK{
+					s.lobby.st_lobby = temp.ulSteamIDLobby
+				}else{
+					fmt.print("Lobby Creation failed",temp.eResult,"\n"  )
+					send_simp_error_notification(&s.notifications, "Lobby Creation failed")
+				}
+			case .GameLobbyJoinRequested:
+				fmt.print("GameLobbyJoinRequested_fin\n")
+			case .LobbyInvite:
+				fmt.print("LobbyInvite_fin\n")
+			case .LobbyEnter:
+				temp:=transmute(^steam.LobbyEnter)callback.pubParam
+				fmt.print("LobbyEnter_fin\n")
+				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
+				if err == .Success {
+					fmt.print(temp,"\n")
+				}else{
+					fmt.print("Lobby Enter failed",err,"\n"  )
+					send_simp_error_notification(&s.notifications, "Lobby Enter failed")
+				}
 			case .LobbyDataUpdate:
-			temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
-			// steam.Matchmaking_GetLobbyMemberData(s.steam.i_matchmaking,temp.ulSteamIDLobby,temp.ulSteamIDMember,)
-			// steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,temp.ulSteamIDLobby)
-			fmt.print("LobbyDataUpdate_fin\n")
-			// fmt.print(temp,"\n")
-			// steam.Matchmaking_GetLobbyData()
+				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
+				// steam.Matchmaking_GetLobbyMemberData(s.steam.i_matchmaking,temp.ulSteamIDLobby,temp.ulSteamIDMember,)
+				// steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,temp.ulSteamIDLobby)
+				fmt.print("LobbyDataUpdate_fin\n")
+				// fmt.print(temp,"\n")
+				// steam.Matchmaking_GetLobbyData()
 			case .LobbyChatUpdate:
-			fmt.print("LobbyChatUpdatee_fin\n")
+				fmt.print("LobbyChatUpdatee_fin\n")
 			case .LobbyChatMsg:
-			fmt.print("LobbyChatMsg_fin\n")
+				fmt.print("LobbyChatMsg_fin\n")
 			case .LobbyGameCreated:
-			fmt.print("LobbyGameCreated_fin\n")
+				fmt.print("LobbyGameCreated_fin\n")
 			case .LobbyMatchList:
-			fmt.print("LobbyMatchList_fin\n")
-			temp:=transmute(^steam.LobbyMatchList)callback.pubParam
-			for index in  0..<temp.nLobbiesMatching{
-				loby_id:=steam.Matchmaking_GetLobbyByIndex(s.steam.i_matchmaking,cast(i32)index)
-				fmt.print(loby_id,"\n")
-				max_members := steam.Matchmaking_GetLobbyMemberLimit(s.steam.i_matchmaking,loby_id,)
-				// fmt.print("max_members",max_members,"\n")
-				owner := steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,loby_id,)
-				// fmt.print("owner",owner ,"\n")
-				loby_name := steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,loby_id,"name")
-				// fmt.print("loby_name ",loby_name  ,"\n")
-
-				num_lobby_members:=steam.Matchmaking_GetNumLobbyMembers(s.steam.i_matchmaking,loby_id)
-				// fmt.print("num_lobby_members",num_lobby_members ,"\n")
-				for member_index in  0..<num_lobby_members{
-					// steam_user_id:=steam.Matchmaking_GetLobbyMemberByIndex(s.steam.i_matchmaking,loby_id,member_index)
-					// fmt.print("steam_user_id",steam_user_id,"\n")
+				fmt.print("LobbyMatchList_fin\n")
+				temp:=transmute(^steam.LobbyMatchList)callback.pubParam
+				for index in  0..<temp.nLobbiesMatching{
+					loby_id:=steam.Matchmaking_GetLobbyByIndex(s.steam.i_matchmaking,cast(i32)index)
+					fmt.print(loby_id,"\n")
+					max_members := steam.Matchmaking_GetLobbyMemberLimit(s.steam.i_matchmaking,loby_id,)
+					// fmt.print("max_members",max_members,"\n")
+					owner := steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,loby_id,)
+					// fmt.print("owner",owner ,"\n")
+					loby_name := steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,loby_id,"name")
+					// fmt.print("loby_name ",loby_name  ,"\n")
+	
+					num_lobby_members:=steam.Matchmaking_GetNumLobbyMembers(s.steam.i_matchmaking,loby_id)
+					// fmt.print("num_lobby_members",num_lobby_members ,"\n")
+					for member_index in  0..<num_lobby_members{
+						// steam_user_id:=steam.Matchmaking_GetLobbyMemberByIndex(s.steam.i_matchmaking,loby_id,member_index)
+						// fmt.print("steam_user_id",steam_user_id,"\n")
+					}
+					lobby_data_count:=steam.Matchmaking_GetLobbyDataCount(s.steam.i_matchmaking,loby_id)
+					// fmt.print("lobby_data_count",lobby_data_count ,"\n")
+					
+					for data_index in  0..<lobby_data_count{
+						pchKey:[255]u8
+						cchKeyBufferSize: i32=255
+						pchValue:[8192]u8
+						cchValueBufferSize: i32=8192
+						steam.Matchmaking_GetLobbyDataByIndex(s.steam.i_matchmaking,loby_id,data_index,raw_data(&pchKey),cchKeyBufferSize,raw_data(&pchValue),cchValueBufferSize)
+						// fmt.print("pchKey",cast(string)pchKey[:],"\n")
+						// fmt.print("pchValue",pchValue,"\n")
+					}
+					fmt.print("\n\n")
 				}
-				lobby_data_count:=steam.Matchmaking_GetLobbyDataCount(s.steam.i_matchmaking,loby_id)
-				// fmt.print("lobby_data_count",lobby_data_count ,"\n")
-				
-				for data_index in  0..<lobby_data_count{
-					pchKey:[255]u8
-					cchKeyBufferSize: i32=255
-					pchValue:[8192]u8
-					cchValueBufferSize: i32=8192
-					steam.Matchmaking_GetLobbyDataByIndex(s.steam.i_matchmaking,loby_id,data_index,raw_data(&pchKey),cchKeyBufferSize,raw_data(&pchValue),cchValueBufferSize)
-					// fmt.print("pchKey",cast(string)pchKey[:],"\n")
-					// fmt.print("pchValue",pchValue,"\n")
-				}
-				fmt.print("\n\n")
-			}
-			fmt.print(temp.nLobbiesMatching,"\n")
+				fmt.print(temp.nLobbiesMatching,"\n")
 			case .LobbyKicked:
-			fmt.print("LobbyKicked_fin\n")
+				fmt.print("LobbyKicked_fin\n")
 			case:
-			fmt.print(callback.iCallback,"\n")
+				fmt.print(callback.iCallback,"\n")
 			}
 			
 
@@ -356,9 +357,37 @@ get_number_of_current_players :: proc() {
 }
 
 test_loby::proc(){
+	if s.steam.is_using_steam != true {return}
 	steam.Matchmaking_CreateLobby(s.steam.i_matchmaking,.FriendsOnly,10)
 	steam.Matchmaking_RequestLobbyList(s.steam.i_matchmaking,)
 }
+
+status_to_string::proc(stat:steam.EPersonaState)->(new_string:string){
+	switch stat{
+	case.Offline:
+	new_string = "Offline"
+	case.Online:
+	new_string = "Online"
+	case.Busy:
+	new_string = "Busy"
+	case.Away:
+	new_string = "Away"
+	case.Snooze:
+	new_string = "Snooze"
+	case.LookingToTrade:
+	new_string = "Looking To Trade"
+	case.LookingToPlay:
+	new_string = "Looking To Play"
+	case.Invisible:
+	new_string = "Invisible"
+	case.Max:
+	new_string = "Max"
+	}
+	return
+}
+
+
+
 
 
 // Terminal :: struct {
