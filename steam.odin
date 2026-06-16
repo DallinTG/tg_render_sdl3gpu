@@ -291,7 +291,7 @@ run_steam_callbacks :: proc() {
 				fmt.print("LobbyEnter_fin\n")
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
 				if err == .Success {
-					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
+					// s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 					s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
 					s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
 					fmt.print(temp,"\n")

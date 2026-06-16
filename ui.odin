@@ -1718,6 +1718,7 @@ draw_steam_player::proc(
 		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.l_player_icon_id))(defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
 			defalt_txt_dynamic(player.name)
 			defalt_txt_dynamic(player.status_string,text_col_id=player.status,text_size_id = text_size)
+			defalt_txt_dynamic(fmt.tprint(" Lobby_ID: ",player.game.steamIDLobby),)	
 			button_invite_to_lobby(player)
 			button_join_game(player)
 			
