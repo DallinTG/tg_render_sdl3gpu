@@ -23,6 +23,7 @@ create_layout :: proc(dt:=cast(f32)s.time.dt_60_hz) -> cl.ClayArray(cl.RenderCom
 	tg.draw_notification_buffer(&s.notifications)
 	tg.draw_steam_friends()
 	tg.draw_steam_lobby_ui()
+	tg.draw_debug_info()
 	return cl.EndLayout(dt)
 }
 

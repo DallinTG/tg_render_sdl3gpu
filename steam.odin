@@ -46,6 +46,8 @@ Steam_Info::struct{
 MAX_PLAYERS_IN_LOBBY::10
 Steam_Lobby::struct{
 	lobby_id:u64,
+	loby_owner_id:u64,
+	loby_owner_name:string,
 	groop:Steam_Player_Groop,
 }
 
@@ -112,16 +114,12 @@ update_steam_friend_info::proc(){
 update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends){
 	if s.steam.is_using_steam != true {return}
 	clear_player_groop(groop)
-	fmt.print("waffles 0,",groop.filter,"\n")
-	// s.steam.friends.filter = .Immediate
+
 	switch typ in groop.filter{
 	case steam.EFriendFlags:
-		fmt.print("waffles 1,\n")
 		groop.count = steam.Friends_GetFriendCount(i_frd,cast(i32)typ) //→ number of friends
 	case steam.CSteamID:
-		fmt.print("waffles 2,\n")
 		groop.count = steam.Matchmaking_GetNumLobbyMembers(s.steam.i_matchmaking,typ)
-		fmt.print("groop.count",groop.count,"\n")
 	}
 	resize_dynamic_array(&groop.player,groop.count)
 	for i in 0..<groop.count{
@@ -273,10 +271,8 @@ run_steam_callbacks :: proc() {
 				fmt.print("LobbyCreated_fin\n")
 				temp:=transmute(^steam.LobbyCreated)callback.pubParam
 				fmt.print(temp,"\n")
-				loby_owner:=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
-				fmt.print("loby_owner",loby_owner,"\n")
 				if temp.eResult == .OK{
-					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
+					// s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 				}else{
 					fmt.print("Lobby Creation failed",temp.eResult,"\n"  )
 					send_simp_error_notification(&s.notifications, "Lobby Creation failed")
@@ -294,14 +290,10 @@ run_steam_callbacks :: proc() {
 				temp:=transmute(^steam.LobbyEnter)callback.pubParam
 				fmt.print("LobbyEnter_fin\n")
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
-				loby_owner:=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
-				name:=steam.Friends_GetFriendPersonaName(s.steam.i_friends,loby_owner)
-				fmt.print("loby_owner name",name,"\n")
-				fmt.print("loby_owner id",loby_owner,"\n")
 				if err == .Success {
-				
-					fmt.print(temp.ulSteamIDLobby,"\n")
 					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
+					s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
+					s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
 					fmt.print(temp,"\n")
 				}else{
 					fmt.print("Lobby Enter failed",err,"\n"  )
@@ -309,14 +301,12 @@ run_steam_callbacks :: proc() {
 				}
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
-				// steam.Matchmaking_GetLobbyMemberData(s.steam.i_matchmaking,temp.ulSteamIDLobby,temp.ulSteamIDMember,)
-				// steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,temp.ulSteamIDLobby)
 				fmt.print("LobbyDataUpdate_fin\n")
 				s.steam.steam_lobby.groop.filter = cast(steam.CSteamID)s.steam.steam_lobby.lobby_id
 				update_steame_player_groop(&s.steam.steam_lobby.groop,s.steam.i_friends)
-				fmt.print(s.steam.steam_lobby.groop,"s.steam.steam_lobby.lobby_id",s.steam.steam_lobby.lobby_id,"\n","\n")
-				// fmt.print(temp,"\n")
-				// steam.Matchmaking_GetLobbyData()
+				s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
+				s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
+
 			case .LobbyChatUpdate:
 				fmt.print("LobbyChatUpdatee_fin\n")
 			case .LobbyChatMsg:

@@ -1739,10 +1739,10 @@ button_join_game::proc(player:^Steam_Player){
 	}
 }
 button_join_lobby_by_id::proc(lobby_id:u64){
-	if cl.UI(cl.ID("button_join_game_by_id",))(button_dec()) {
+	if cl.UI(cl.ID("button_join_game_by_id",cast(u32)lobby_id))(button_dec()) {
 		button_txt("Join")
 		if cl.Hovered() && s.is_ui_l_click(){
-		fmt.print(lobby_id," lobby id \n")
+			fmt.print("lobby id button cliciked",lobby_id,"\n")
 			steam_join_lobby(lobby_id)
 		}
 	}
@@ -1816,4 +1816,62 @@ all_steame_friends_dec::proc(
 		},
 	}
 	return button
+}
+
+draw_debug_info::proc(){
+	child_gap:=get_ui_child_gap(.normal)
+
+	if cl.UI(cl.ID("Debug_List_outer_box"))({
+		layout = { 
+			layoutDirection = .TopToBottom,
+			sizing = { cl.SizingFit(), cl.SizingGrow() },
+			// childGap = child_gap,
+			childAlignment= {x = .Left,y= .Top},
+
+		},
+		floating =cl.FloatingElementConfig{
+			// attachment = {.Root},
+			offset = {0,0,},
+			attachTo = .Root,
+			pointerCaptureMode =cl.PointerCaptureMode.Passthrough,
+			attachment= cl.FloatingAttachPoints{
+				element = cl.FloatingAttachPointType.LeftTop,
+				parent =   cl.FloatingAttachPointType.LeftTop,
+			}
+		},
+		
+		// transition = cl.TransitionElementConfig{
+
+		// 	handler = cl.EaseOut,
+		// 	duration = .2,
+		// 	properties = cl.TransitionPropertyFlags{.X,.Y},
+		// 	interactionHandling = .AllowInteractionsWhileTransitioningPosition,
+		// 	enter = {
+		// 		setInitialState = state_slide_in_right,
+		// 		trigger = cl.TransitionEnterTriggerType.TriggerOnFirstParentFrame,
+		// 	},
+		// 	exit = {
+		// 		setFinalState = state_slide_in_right,
+		// 		// trigger=         .TriggerOnFirstParentFrame,
+		// 		// siblingOrdering: TriggerOnFirstParentFrame,
+		// 	},
+
+		// },
+		// clip ={
+		// 	horizontal=false,
+		// 	vertical=true,
+		// 	childOffset=cl.GetScrollOffset(),
+		// },
+		backgroundColor = {0,0,0,0},
+		
+	}) {
+		if s.steam.is_using_steam == true {
+			defalt_txt_dynamic("Steam Info __________")
+			// defalt_txt_dynamic(fmt.tprint(" Steam_ID: ",s.steam.))
+			defalt_txt_dynamic(fmt.tprint(" Lobby_ID: ",s.steam.steam_lobby.lobby_id))	
+			defalt_txt_dynamic(fmt.tprint(" Lobby_Size: ",s.steam.steam_lobby.groop.count))	
+			defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_id: ",s.steam.steam_lobby.loby_owner_id))	
+			defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_Name: ",s.steam.steam_lobby.loby_owner_name))	
+		}
+	}
 }
