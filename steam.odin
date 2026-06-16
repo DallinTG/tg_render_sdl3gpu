@@ -432,7 +432,7 @@ steam_invite_player_to_lobby::proc(player_id:steam.CSteamID){
 }
 
 steam_join_lobby::proc(lobby_id:steam.CSteamID){
-	steam.Matchmaking_JoinLobby(s.steam.i_matchmaking,s.steam.steam_lobby.lobby_id)
+	steam.Matchmaking_JoinLobby(s.steam.i_matchmaking, lobby_id)
 }
 
 
