@@ -133,7 +133,6 @@ main :: proc(){
 		}
 
 
-
 		if s.time.is_60_hz{
 
 			g.clay_render_comands=create_layout()

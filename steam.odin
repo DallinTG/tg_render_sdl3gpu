@@ -283,6 +283,8 @@ run_steam_callbacks :: proc() {
 				}
 			case .GameLobbyJoinRequested:
 				fmt.print("GameLobbyJoinRequested_fin\n")
+				temp:=transmute(^steam.GameLobbyJoinRequested)callback.pubParam
+				steam_join_lobby(temp.steamIDLobby)
 			case .LobbyInvite:
 				
 				temp:=transmute(^steam.LobbyInvite)callback.pubParam
