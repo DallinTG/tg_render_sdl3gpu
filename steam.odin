@@ -311,11 +311,13 @@ run_steam_callbacks :: proc() {
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
 				fmt.print("LobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
 				update_lobby_data(temp.ulSteamIDLobby)
+				update_steam_friend_info()
 
 			case .LobbyChatUpdate:
 				fmt.print("LobbyChatUpdatee_fin\n")
 				temp:=transmute(^steam.LobbyChatUpdate)callback.pubParam
 				update_lobby_data(temp.ulSteamIDLobby)
+				update_steam_friend_info()
 			case .LobbyChatMsg:
 				fmt.print("LobbyChatMsg_fin\n")
 			case .LobbyGameCreated:
