@@ -1495,7 +1495,7 @@ draw_notification_buffer::proc(buff:^Notification_Buffer, location:cl.LayoutAlig
 				notification_x_button(&notif)
 				notification_txt_dynamic(notif.mesg_1,text_col_id = notif.mesg_1_col,)
 				if notif.lobby_id_to_join != 0 {
-					button_join_lobby_by_id(notif.lobby_id_to_join)
+					button_join_lobby_by_id(notif.lobby_id_to_join,2789346289)
 				}
 				notification_progress_bar(cast(f32)(notif.time_left/notif.max_time))
 			}
@@ -1738,11 +1738,11 @@ button_join_game::proc(player:^Steam_Player){
 		button_join_lobby_by_id(player.game.steamIDLobby)
 	}
 }
-button_join_lobby_by_id::proc(lobby_id:u64){
-	if cl.UI(cl.ID("button_join_game_by_id",cast(u32)lobby_id))(button_dec()) {
+button_join_lobby_by_id::proc(lobby_id:u64,index:u32=0){
+	if cl.UI(cl.ID("button_join_game_by_id",cast(u32)lobby_id+index))(button_dec()) {
 		button_txt("Join")
 		if cl.Hovered() && s.is_ui_l_click(){
-			fmt.print("lobby id button cliciked",lobby_id,"\n")
+			fmt.print("join lobby button cliciked",lobby_id,"\n")
 			steam_join_lobby(lobby_id)
 		}
 	}
