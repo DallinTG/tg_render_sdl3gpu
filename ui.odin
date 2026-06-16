@@ -1620,6 +1620,80 @@ draw_steam_friends::proc(location:cl.LayoutAlignmentX = .Right){
 	}
 }
 
+draw_steam_lobby_ui::proc(location:cl.LayoutAlignmentX = .Right){
+	if s.steam.is_using_steam != true {return}
+
+	child_gap:=get_ui_child_gap(.normal)
+	
+	List_box_data:=cl.GetElementData(cl.ID("steam_lobby_List_iner_box"))
+	custom_offset:[2]f32={List_box_data.boundingBox.width,0}
+	if cl.PointerOver(cl.ID("Player_lobby_icon_box"))||cl.PointerOver(cl.ID("steam_lobby_List_iner_box")){
+		custom_offset={0,0}
+	}
+	if cl.UI(cl.ID("steam_lobby_List_outer_box"))({
+		layout = { 
+			layoutDirection = .LeftToRight,
+			sizing = { cl.SizingFit(), cl.SizingGrow() },
+			// childGap = child_gap,
+			childAlignment= {x = location,y= .Top},
+
+		},
+		floating =cl.FloatingElementConfig{
+			// attachment = {.Root},
+			offset = custom_offset,
+			attachTo = .Root,
+			pointerCaptureMode =cl.PointerCaptureMode.Passthrough,
+			attachment= cl.FloatingAttachPoints{
+				element = cl.FloatingAttachPointType.RightTop,
+				parent =   cl.FloatingAttachPointType.RightTop,
+			}
+		},
+		
+		transition = cl.TransitionElementConfig{
+
+			handler = cl.EaseOut,
+			duration = .2,
+			properties = cl.TransitionPropertyFlags{.X,.Y},
+			interactionHandling = .AllowInteractionsWhileTransitioningPosition,
+			enter = {
+				setInitialState = state_slide_in_right,
+				trigger = cl.TransitionEnterTriggerType.TriggerOnFirstParentFrame,
+			},
+			exit = {
+				setFinalState = state_slide_in_right,
+				// trigger=         .TriggerOnFirstParentFrame,
+				// siblingOrdering: TriggerOnFirstParentFrame,
+			},
+
+		},
+		// clip ={
+		// 	horizontal=false,
+		// 	vertical=true,
+		// 	childOffset=cl.GetScrollOffset(),
+		// },
+		backgroundColor = {0,0,0,0},
+		
+	}) {
+		icon_box_dec:=defalt_box_dec(border_size_id=.normal,layout_direction = .LeftToRight,child_alignment = {.Left,.Top},padding_size_id=.small)
+		icon_box_dec.layout.padding.right = 0
+		icon_box_dec.border.width.right = 0
+	
+		if cl.UI(cl.ID("Player_lobby_icon_box"))(icon_box_dec) {
+			img:=get_texture(.Travel_Person_People_Three)
+			if cl.UI(cl.ID("Player_lobby_icon",))(defalt_img_box_dec(cast(rawptr)&img.id,border_size_id=.non,padding_size_id=.non,size = .big,img_color = .info)) {
+			}
+		}
+		temp_list_iner_box_proc:=cl.UI(cl.ID("steam_lobby_List_iner_box", ))
+		list_box_dec:=defalt_box_dec(clip = {vertical = true},padding_size_id = .non)
+		list_box_dec.border.width.betweenChildren = list_box_dec.border.width.bottom
+		if temp_list_iner_box_proc(list_box_dec,) {
+
+			draw_steam_player_groop(&s.steam.steam_lobby.groop)
+		}
+
+	}
+}
+
 draw_steam_player_groop::proc(groop:^Steam_Player_Groop){
 	if s.steam.is_using_steam != true {return}
 	if groop == nil {return}

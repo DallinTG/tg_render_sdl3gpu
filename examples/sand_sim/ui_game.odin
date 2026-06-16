@@ -22,6 +22,7 @@ create_layout :: proc(dt:=cast(f32)s.time.dt_60_hz) -> cl.ClayArray(cl.RenderCom
 	if g.curent_game_mode == .loby &&  g.server.status == .regected	{loby_joining_regected()}
 	tg.draw_notification_buffer(&s.notifications)
 	tg.draw_steam_friends()
+	tg.draw_steam_lobby_ui()
 	return cl.EndLayout(dt)
 }
 

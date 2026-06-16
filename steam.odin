@@ -46,6 +46,7 @@ Steam_Info::struct{
 MAX_PLAYERS_IN_LOBBY::10
 Steam_Lobby::struct{
 	lobby_id:u64,
+	groop:Steam_Player_Groop,
 }
 
 Steam_Player::struct{
@@ -59,7 +60,7 @@ Steam_Player::struct{
 	l_player_icon_gpu_id:[2]u32,
 }
 Steam_Player_Groop::struct{
-	filter:steam.EFriendFlags,
+	filter:union{steam.EFriendFlags,steam.CSteamID},// CSteamID is for lobbys
 	count:i32,
 	player:[dynamic]Steam_Player,
 }
@@ -102,6 +103,7 @@ init_steam::proc(){
 }
 update_steam_friend_info::proc(){
 	if s.steam.is_using_steam != true {return}
+	s.steam.friends.filter = .Immediate
 	s.steam.i_friends=steam.SteamFriends_v017()
 	i_frd:=s.steam.i_friends
 	s.steam.user_name=cast(string)steam.Friends_GetPersonaName(i_frd) //→ your Steam display name
@@ -110,13 +112,26 @@ update_steam_friend_info::proc(){
 update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends){
 	if s.steam.is_using_steam != true {return}
 	clear_player_groop(groop)
-	s.steam.friends.filter = .Immediate
-	groop.count = steam.Friends_GetFriendCount(i_frd,cast(i32)groop.filter) //→ number of friends
+	fmt.print("waffles 0,",groop.filter,"\n")
+	// s.steam.friends.filter = .Immediate
+	switch typ in groop.filter{
+	case steam.EFriendFlags:
+		fmt.print("waffles 1,\n")
+		groop.count = steam.Friends_GetFriendCount(i_frd,cast(i32)typ) //→ number of friends
+	case steam.CSteamID:
+		fmt.print("waffles 2,\n")
+		groop.count = steam.Matchmaking_GetNumLobbyMembers(s.steam.i_matchmaking,typ)
+		fmt.print("groop.count",groop.count,"\n")
+	}
 	resize_dynamic_array(&groop.player,groop.count)
 	for i in 0..<groop.count{
 		// fmt.print(i,"\n")
-		
-		groop.player[i].cs_id = steam.Friends_GetFriendByIndex(i_frd,i,cast(i32)groop.filter) //→ get each friend's SteamID
+		switch typ in groop.filter{
+		case steam.EFriendFlags:
+			groop.player[i].cs_id = steam.Friends_GetFriendByIndex(i_frd,i,cast(i32)typ) //→ get each friend's SteamID
+		case steam.CSteamID:
+			groop.player[i].cs_id = steam.Matchmaking_GetLobbyMemberByIndex(s.steam.i_matchmaking,typ,i)
+		}
 		// fmt.print(groop.player[i].cs_id,"\n")
 		groop.player[i].name = str.clone_from_cstring(steam.Friends_GetFriendPersonaName(i_frd,groop.player[i].cs_id))
 		// fmt.print(groop.player[i].name,"\n")
@@ -166,7 +181,7 @@ clear_player_groop::proc(groop:^Steam_Player_Groop){
 		delete(player.name)
 	}
 	groop.count = 0
-	groop.filter = {}
+	// groop.filter = {}
 	clear(&groop.player)
 }
 delete_player_groop::proc(groop:^Steam_Player_Groop){
@@ -295,6 +310,9 @@ run_steam_callbacks :: proc() {
 				// steam.Matchmaking_GetLobbyMemberData(s.steam.i_matchmaking,temp.ulSteamIDLobby,temp.ulSteamIDMember,)
 				// steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,temp.ulSteamIDLobby)
 				fmt.print("LobbyDataUpdate_fin\n")
+				s.steam.steam_lobby.groop.filter = cast(steam.CSteamID)s.steam.steam_lobby.lobby_id
+				update_steame_player_groop(&s.steam.steam_lobby.groop,s.steam.i_friends)
+				fmt.print(s.steam.steam_lobby.groop,"s.steam.steam_lobby.lobby_id",s.steam.steam_lobby.lobby_id,"\n","\n")
 				// fmt.print(temp,"\n")
 				// steam.Matchmaking_GetLobbyData()
 			case .LobbyChatUpdate:
