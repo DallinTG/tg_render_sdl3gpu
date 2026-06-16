@@ -286,26 +286,32 @@ run_steam_callbacks :: proc() {
 					send_simp_error_notification(&s.notifications, "Lobby Creation failed")
 				}
 			case .GameLobbyJoinRequested:
-				update_steam_friend_info()
 				fmt.print("GameLobbyJoinRequested_fin\n")
 				temp:=transmute(^steam.GameLobbyJoinRequested)callback.pubParam
 				steam_join_lobby(temp.steamIDLobby)
-			case .LobbyInvite:
 				update_steam_friend_info()
+			case .LobbyInvite:
 				temp:=transmute(^steam.LobbyInvite)callback.pubParam
 				send_accept_invite_to_game_notification(&s.notifications,"you got invite to a game",lobby_id = temp.ulSteamIDLobby)
+				update_steam_friend_info()
 				fmt.print("LobbyInvite_fin\n")
 			case .LobbyEnter:
 				temp:=transmute(^steam.LobbyEnter)callback.pubParam
-				fmt.print("LobbyEnter_fin\n")
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
+				fmt.print("LobbyEnter_fin",err,"\n")
 				if err == .Success {
+					if s.steam.steam_lobby.lobby_id != temp.ulSteamIDLobby{
+						fmt.print("leaving lobby ",s.steam.steam_lobby.lobby_id,"\n")
+						steam.Matchmaking_LeaveLobby(s.steam.i_matchmaking,s.steam.steam_lobby.lobby_id)
+					}
+
 					update_lobby_data(temp.ulSteamIDLobby)
 					update_steam_friend_info()
 					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 					s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
 					s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
 					fmt.print(temp,"\n")
+					
 				}else{
 					fmt.print("Lobby Enter failed",err,"\n"  )
 					send_simp_error_notification(&s.notifications, "Lobby Enter failed")
