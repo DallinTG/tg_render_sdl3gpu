@@ -281,6 +281,7 @@ run_steam_callbacks :: proc() {
 				fmt.print("loby_owner name",name,"\n")
 				fmt.print("loby_owner id",loby_owner,"\n")
 				if err == .Success {
+					s.lobby.st_lobby = temp.ulSteamIDLobby
 					fmt.print(temp,"\n")
 				}else{
 					fmt.print("Lobby Enter failed",err,"\n"  )
