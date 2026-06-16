@@ -269,7 +269,8 @@ run_steam_callbacks :: proc() {
 			case .GameLobbyJoinRequested:
 				fmt.print("GameLobbyJoinRequested_fin\n")
 			case .LobbyInvite:
-				temp:=transmute(^steam.LobbyEnter)callback.pubParam
+				
+				temp:=transmute(^steam.LobbyInvite)callback.pubParam
 				send_accept_invite_to_game_notification(&s.notifications,"you got invite to a game",lobby_id = temp.ulSteamIDLobby)
 				fmt.print("LobbyInvite_fin\n")
 			case .LobbyEnter:
@@ -409,9 +410,9 @@ create_steame_lobby::proc(){
 }
 
 steam_invite_player_to_lobby::proc(player_id:steam.CSteamID){
-	if s.steam.steam_lobby.lobby_id == 0{
-		create_steame_lobby()
-	}
+	// if s.steam.steam_lobby.lobby_id == 0{
+	// 	create_steame_lobby()
+	// }
 	steam.Matchmaking_InviteUserToLobby(s.steam.i_matchmaking,s.steam.steam_lobby.lobby_id,player_id)
 }
 
