@@ -111,6 +111,14 @@ update_steam_friend_info::proc(){
 	s.steam.user_name=cast(string)steam.Friends_GetPersonaName(i_frd) //→ your Steam display name
 	update_steame_player_groop(&s.steam.friends,i_frd)
 }
+update_lobby_data::proc(lobby_id:u64){
+	s.steam.steam_lobby.lobby_id = lobby_id
+	fmt.print(s.steam.steam_lobby.lobby_id,"\n")
+	s.steam.steam_lobby.groop.filter = cast(steam.CSteamID)s.steam.steam_lobby.lobby_id
+	update_steame_player_groop(&s.steam.steam_lobby.groop, s.steam.i_friends)
+	s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,lobby_id)
+	s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
+}
 update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends){
 	if s.steam.is_using_steam != true {return}
 	clear_player_groop(groop)
@@ -302,15 +310,12 @@ run_steam_callbacks :: proc() {
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
 				fmt.print("LobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
-				s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
-				fmt.print(s.steam.steam_lobby.lobby_id,"\n")
-				s.steam.steam_lobby.groop.filter = cast(steam.CSteamID)s.steam.steam_lobby.lobby_id
-				update_steame_player_groop(&s.steam.steam_lobby.groop,s.steam.i_friends)
-				s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
-				s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
+				update_lobby_data(temp.ulSteamIDLobby)
 
 			case .LobbyChatUpdate:
 				fmt.print("LobbyChatUpdatee_fin\n")
+				temp:=transmute(^steam.LobbyChatUpdate)callback.pubParam
+				update_lobby_data(temp.ulSteamIDLobby)
 			case .LobbyChatMsg:
 				fmt.print("LobbyChatMsg_fin\n")
 			case .LobbyGameCreated:
