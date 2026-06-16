@@ -63,7 +63,7 @@ State :: struct{
 	ui_style:UI_Style,
 	// ui_settings:UI_Settings,
 	
-	lobby:Lobby,
+	// lobby:Lobby,
 	// key_down: #sparse[sdl.Scancode]bool,
 	// mouse_button_down: #sparse[sdl.MouseButtonFlag]bool,
 	// mouse_move: Vec2,

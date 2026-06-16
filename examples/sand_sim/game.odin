@@ -131,7 +131,7 @@ main :: proc(){
 		tg.update_notification_buffer(&s.notifications,s.time.tick_time)
 		for ev in &tg.s.events {
 		}
-
+		fmt.print(s.steam.steam_lobby.lobby_id," lobby id \n")
 
 
 

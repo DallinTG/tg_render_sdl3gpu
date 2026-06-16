@@ -261,7 +261,7 @@ run_steam_callbacks :: proc() {
 				loby_owner:=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
 				fmt.print("loby_owner",loby_owner,"\n")
 				if temp.eResult == .OK{
-					s.lobby.st_lobby = temp.ulSteamIDLobby
+					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 				}else{
 					fmt.print("Lobby Creation failed",temp.eResult,"\n"  )
 					send_simp_error_notification(&s.notifications, "Lobby Creation failed")
@@ -282,7 +282,9 @@ run_steam_callbacks :: proc() {
 				fmt.print("loby_owner name",name,"\n")
 				fmt.print("loby_owner id",loby_owner,"\n")
 				if err == .Success {
-					s.lobby.st_lobby = temp.ulSteamIDLobby
+				
+					fmt.print(temp.ulSteamIDLobby,"\n")
+					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 					fmt.print(temp,"\n")
 				}else{
 					fmt.print("Lobby Enter failed",err,"\n"  )
