@@ -149,6 +149,11 @@ main :: proc(){
 				dt_time=cast(f32)s.time.dt_60_hz,
 				// enable_drag_scrolling=.
 			)
+			if is_input_event(.ui_shift){
+				// tg.update_lobby_data(temp.ulSteamIDLobby)
+				fmt.print("updating_stuff\n")
+				tg.update_steam_friend_info()
+			}
 			
 			tg.pros_server_cmd_q(&g.server)
 			manage_gmae_mode_state()
