@@ -302,6 +302,7 @@ run_steam_callbacks :: proc() {
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
 				fmt.print("LobbyDataUpdate_fin\n")
+				s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 				s.steam.steam_lobby.groop.filter = cast(steam.CSteamID)s.steam.steam_lobby.lobby_id
 				update_steame_player_groop(&s.steam.steam_lobby.groop,s.steam.i_friends)
 				s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
