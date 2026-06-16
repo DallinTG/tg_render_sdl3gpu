@@ -1456,6 +1456,7 @@ Notification::struct{
 	time_left:f64,
 	mesg_1:string,
 	mesg_1_col:Color_Types,
+	lobby_id_to_join:u64,
 }
 init_notification_buffer::proc(buff:^Notification_Buffer){
 
@@ -1493,6 +1494,9 @@ draw_notification_buffer::proc(buff:^Notification_Buffer, location:cl.LayoutAlig
 			if cl.UI(cl.ID("Notification", notif.id))(notification_dec(&notif)) {
 				notification_x_button(&notif)
 				notification_txt_dynamic(notif.mesg_1,text_col_id = notif.mesg_1_col,)
+				if notif.lobby_id_to_join != 0 {
+					button_join_lobby_by_id(notif.lobby_id_to_join)
+				}
 				notification_progress_bar(cast(f32)(notif.time_left/notif.max_time))
 			}
 		}
@@ -1521,6 +1525,17 @@ send_simp_notification::proc(
 	time:f64=5,
 ){
 	send_notification(buff,{max_time= time,time_left = time,mesg_1=mesg})
+}
+
+send_accept_invite_to_game_notification::proc(
+	buff:^Notification_Buffer,
+	mesg:string,
+	time:f64=5,
+	lobby_id:u64 = 0,
+){
+	if lobby_id != 0{
+		send_notification(buff,{max_time= time,time_left = time,mesg_1=mesg,lobby_id_to_join = lobby_id})
+	}
 }
 
 send_simp_error_notification::proc(
@@ -1629,7 +1644,32 @@ draw_steam_player::proc(
 		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.l_player_icon_id))(defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
 			defalt_txt_dynamic(player.name)
 			defalt_txt_dynamic(player.status_string,text_col_id=player.status,text_size_id = text_size)
+			button_invite_to_lobby(player)
+			button_join_game(player)
 			
+		}
+	}
+}
+button_invite_to_lobby::proc(player:^Steam_Player){
+	if cl.UI(cl.ID("button_invite_to_lobby",cast(u32)player.cs_id))(button_dec()) {
+		button_txt("Invite")
+		if cl.Hovered() && s.is_ui_l_click(){
+			steam_invite_player_to_lobby(player.cs_id)
+		}
+	}
+}
+
+button_join_game::proc(player:^Steam_Player){
+	if player.game.steamIDLobby != 0{
+		button_join_lobby_by_id(player.game.steamIDLobby)
+	}
+}
+button_join_lobby_by_id::proc(lobby_id:u64){
+	if cl.UI(cl.ID("button_join_game_by_id",))(button_dec()) {
+		button_txt("Join")
+		if cl.Hovered() && s.is_ui_l_click(){
+		fmt.print(lobby_id," lobby id \n")
+			steam_join_lobby(lobby_id)
 		}
 	}
 }

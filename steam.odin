@@ -41,6 +41,11 @@ Steam_Info::struct{
 	i_friends:^steam.IFriends,
 	user_name:string,
 	friends:Steam_Player_Groop,
+	steam_lobby:Steam_Lobby,
+}
+MAX_PLAYERS_IN_LOBBY::10
+Steam_Lobby::struct{
+	lobby_id:u64,
 }
 
 Steam_Player::struct{
@@ -92,7 +97,7 @@ init_steam::proc(){
 
 	s.steam.i_matchmaking = steam.SteamMatchmaking_v009()
 
-
+	create_steame_lobby()
 	s.steam.is_using_steam = true
 }
 update_steam_friend_info::proc(){
@@ -233,6 +238,8 @@ run_steam_callbacks :: proc() {
                     fmt.print("LobbyKicked\n")
                     case .LobbyCreated:
                     fmt.print("LobbyCreated\n")
+                   
+	
                     }
                 }
             }
@@ -251,6 +258,8 @@ run_steam_callbacks :: proc() {
 				fmt.print("LobbyCreated_fin\n")
 				temp:=transmute(^steam.LobbyCreated)callback.pubParam
 				fmt.print(temp,"\n")
+				loby_owner:=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
+				fmt.print("loby_owner",loby_owner,"\n")
 				if temp.eResult == .OK{
 					s.lobby.st_lobby = temp.ulSteamIDLobby
 				}else{
@@ -260,11 +269,17 @@ run_steam_callbacks :: proc() {
 			case .GameLobbyJoinRequested:
 				fmt.print("GameLobbyJoinRequested_fin\n")
 			case .LobbyInvite:
+				temp:=transmute(^steam.LobbyEnter)callback.pubParam
+				send_accept_invite_to_game_notification(&s.notifications,"you got invite to a game",lobby_id = temp.ulSteamIDLobby)
 				fmt.print("LobbyInvite_fin\n")
 			case .LobbyEnter:
 				temp:=transmute(^steam.LobbyEnter)callback.pubParam
 				fmt.print("LobbyEnter_fin\n")
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
+				loby_owner:=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
+				name:=steam.Friends_GetFriendPersonaName(s.steam.i_friends,loby_owner)
+				fmt.print("loby_owner name",name,"\n")
+				fmt.print("loby_owner id",loby_owner,"\n")
 				if err == .Success {
 					fmt.print(temp,"\n")
 				}else{
@@ -388,6 +403,20 @@ status_to_string::proc(stat:steam.EPersonaState)->(new_string:string){
 
 
 
+create_steame_lobby::proc(){
+	steam.Matchmaking_CreateLobby(s.steam.i_matchmaking,.FriendsOnly,10)
+}
+
+steam_invite_player_to_lobby::proc(player_id:steam.CSteamID){
+	if s.steam.steam_lobby.lobby_id == 0{
+		create_steame_lobby()
+	}
+	steam.Matchmaking_InviteUserToLobby(s.steam.i_matchmaking,s.steam.steam_lobby.lobby_id,player_id)
+}
+
+steam_join_lobby::proc(lobby_id:steam.CSteamID){
+	steam.Matchmaking_JoinLobby(s.steam.i_matchmaking,s.steam.steam_lobby.lobby_id)
+}
 
 
 // Terminal :: struct {
