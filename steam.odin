@@ -300,8 +300,8 @@ run_steam_callbacks :: proc() {
 				fmt.print("LobbyEnter_fin\n")
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
 				if err == .Success {
-					update_steam_friend_info()
 					update_lobby_data(temp.ulSteamIDLobby)
+					update_steam_friend_info()
 					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 					s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
 					s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
@@ -313,14 +313,14 @@ run_steam_callbacks :: proc() {
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
 				fmt.print("LobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
-				update_steam_friend_info()
 				update_lobby_data(temp.ulSteamIDLobby)
+				update_steam_friend_info()
 
 			case .LobbyChatUpdate:
 				fmt.print("LobbyChatUpdatee_fin\n")
 				temp:=transmute(^steam.LobbyChatUpdate)callback.pubParam
-				update_steam_friend_info()
 				update_lobby_data(temp.ulSteamIDLobby)
+				update_steam_friend_info()
 			case .LobbyChatMsg:
 				fmt.print("LobbyChatMsg_fin\n")
 			case .LobbyGameCreated:
