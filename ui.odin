@@ -1626,7 +1626,7 @@ draw_steam_lobby_ui::proc(location:cl.LayoutAlignmentX = .Right){
 	child_gap:=get_ui_child_gap(.normal)
 	
 	List_box_data:=cl.GetElementData(cl.ID("steam_lobby_List_iner_box"))
-	custom_offset:[2]f32={List_box_data.boundingBox.width,0}
+	custom_offset:[2]f32={List_box_data.boundingBox.width*-1,0}
 	if cl.PointerOver(cl.ID("Player_lobby_icon_box"))||cl.PointerOver(cl.ID("steam_lobby_List_iner_box")){
 		custom_offset={0,0}
 	}
@@ -1644,8 +1644,8 @@ draw_steam_lobby_ui::proc(location:cl.LayoutAlignmentX = .Right){
 			attachTo = .Root,
 			pointerCaptureMode =cl.PointerCaptureMode.Passthrough,
 			attachment= cl.FloatingAttachPoints{
-				element = cl.FloatingAttachPointType.RightTop,
-				parent =   cl.FloatingAttachPointType.RightTop,
+				element = cl.FloatingAttachPointType.LeftTop,
+				parent =   cl.FloatingAttachPointType.LeftTop,
 			}
 		},
 		
@@ -1674,59 +1674,61 @@ draw_steam_lobby_ui::proc(location:cl.LayoutAlignmentX = .Right){
 		backgroundColor = {0,0,0,0},
 		
 	}) {
+
+	
+		{
+		temp_list_iner_box_proc:=cl.UI(cl.ID("steam_lobby_List_iner_box", ))
+		list_box_dec:=defalt_box_dec(clip = {vertical = true},padding_size_id = .non)
+		list_box_dec.border.width.betweenChildren = list_box_dec.border.width.bottom
+		if temp_list_iner_box_proc(list_box_dec,) {
+			draw_steam_player_groop(&s.steam.steam_lobby.groop, 534121265)
+		}
+		}
 		icon_box_dec:=defalt_box_dec(border_size_id=.normal,layout_direction = .LeftToRight,child_alignment = {.Left,.Top},padding_size_id=.small)
 		icon_box_dec.layout.padding.right = 0
 		icon_box_dec.border.width.right = 0
-	
 		if cl.UI(cl.ID("Player_lobby_icon_box"))(icon_box_dec) {
 			img:=get_texture(.Travel_Person_People_Three)
 			if cl.UI(cl.ID("Player_lobby_icon",))(defalt_img_box_dec(cast(rawptr)&img.id,border_size_id=.non,padding_size_id=.non,size = .big,img_color = .info)) {
 			}
 		}
-		temp_list_iner_box_proc:=cl.UI(cl.ID("steam_lobby_List_iner_box", ))
-		list_box_dec:=defalt_box_dec(clip = {vertical = true},padding_size_id = .non)
-		list_box_dec.border.width.betweenChildren = list_box_dec.border.width.bottom
-		if temp_list_iner_box_proc(list_box_dec,) {
-
-			draw_steam_player_groop(&s.steam.steam_lobby.groop)
-		}
-
 	}
 }
 
-draw_steam_player_groop::proc(groop:^Steam_Player_Groop){
+draw_steam_player_groop::proc(groop:^Steam_Player_Groop,index:u32=0){
 	if s.steam.is_using_steam != true {return}
 	if groop == nil {return}
 	for &player in &groop.player{
 
-		draw_steam_player(&player)
+		draw_steam_player(&player,index)
 	}
 }
 
 
 draw_steam_player::proc(
 	player:^Steam_Player,
+	index:u32=0,
 	text_size:UI_Size = .small,
 	player_icon_size:UI_Size = .large,
 	border_size:UI_Size = .small,
 ){
 	if s.steam.is_using_steam != true {return}
 	if player == nil {return}
-	if cl.UI(cl.ID("Player_Card", cast(u32)player.l_player_icon_id))(defalt_box_dec(border_size_id=border_size,layout_direction = .LeftToRight,child_alignment = {.Left,.Top})) {
-		if cl.UI(cl.ID("Player_larg_icon", cast(u32)player.l_player_icon_id))(defalt_img_box_dec(cast(rawptr)&player.l_player_icon_gpu_id,size = player_icon_size)) {
+	if cl.UI(cl.ID("Player_Card", cast(u32)player.l_player_icon_id+index))(defalt_box_dec(border_size_id=border_size,layout_direction = .LeftToRight,child_alignment = {.Left,.Top})) {
+		if cl.UI(cl.ID("Player_larg_icon", cast(u32)player.l_player_icon_id+index))(defalt_img_box_dec(cast(rawptr)&player.l_player_icon_gpu_id,size = player_icon_size)) {
 		}
-		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.l_player_icon_id))(defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
+		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.l_player_icon_id+index))(defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
 			defalt_txt_dynamic(player.name)
 			defalt_txt_dynamic(player.status_string,text_col_id=player.status,text_size_id = text_size)
 			defalt_txt_dynamic(fmt.tprint(" Lobby_ID: ",player.game.steamIDLobby),)	
-			button_invite_to_lobby(player)
-			button_join_game(player)
+			button_invite_to_lobby(player,index)
+			button_join_game(player,index)
 			
 		}
 	}
 }
-button_invite_to_lobby::proc(player:^Steam_Player){
-	if cl.UI(cl.ID("button_invite_to_lobby",cast(u32)player.cs_id))(button_dec()) {
+button_invite_to_lobby::proc(player:^Steam_Player,index:u32=0){
+	if cl.UI(cl.ID("button_invite_to_lobby",cast(u32)player.cs_id+index))(button_dec()) {
 		button_txt("Invite")
 		if cl.Hovered() && s.is_ui_l_click(){
 			steam_invite_player_to_lobby(player.cs_id)
@@ -1734,9 +1736,9 @@ button_invite_to_lobby::proc(player:^Steam_Player){
 	}
 }
 
-button_join_game::proc(player:^Steam_Player){
+button_join_game::proc(player:^Steam_Player,index:u32=0){
 	if player.game.steamIDLobby != 0{
-		button_join_lobby_by_id(player.game.steamIDLobby)
+		button_join_lobby_by_id(player.game.steamIDLobby,index)
 	}
 }
 button_join_lobby_by_id::proc(lobby_id:u64,index:u32=0){
@@ -1836,8 +1838,8 @@ draw_debug_info::proc(){
 			attachTo = .Root,
 			pointerCaptureMode =cl.PointerCaptureMode.Passthrough,
 			attachment= cl.FloatingAttachPoints{
-				element = cl.FloatingAttachPointType.LeftTop,
-				parent =   cl.FloatingAttachPointType.LeftTop,
+				element = cl.FloatingAttachPointType.CenterTop,
+				parent =   cl.FloatingAttachPointType.CenterTop,
 			}
 		},
 		

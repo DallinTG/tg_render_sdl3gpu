@@ -291,7 +291,7 @@ run_steam_callbacks :: proc() {
 				fmt.print("LobbyEnter_fin\n")
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
 				if err == .Success {
-					// s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
+					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 					s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
 					s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
 					fmt.print(temp,"\n")
@@ -301,8 +301,9 @@ run_steam_callbacks :: proc() {
 				}
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
-				fmt.print("LobbyDataUpdate_fin\n")
+				fmt.print("LobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
 				s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
+				fmt.print(s.steam.steam_lobby.lobby_id,"\n")
 				s.steam.steam_lobby.groop.filter = cast(steam.CSteamID)s.steam.steam_lobby.lobby_id
 				update_steame_player_groop(&s.steam.steam_lobby.groop,s.steam.i_friends)
 				s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
