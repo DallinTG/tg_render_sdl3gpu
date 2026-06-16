@@ -337,6 +337,8 @@ run_steam_callbacks :: proc() {
 				fmt.print(temp.nLobbiesMatching,"\n")
 			case .LobbyKicked:
 				fmt.print("LobbyKicked_fin\n")
+			case .PersonaStateChange:
+				update_steam_friend_info()
 			case:
 				fmt.print(callback.iCallback,"\n")
 			}
