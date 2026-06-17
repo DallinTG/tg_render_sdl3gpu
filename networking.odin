@@ -337,6 +337,10 @@ join_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Inst
 		if s.steam.is_using_steam == true && net_inst.networking_type == .steam{
 		
 			steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
+			fmt.print("conecting to server\n")
+			net_inst.net_state = init_udp_echo_client(ip, port)
+			endpoint :Endpoint=s.steam.steam_lobby.loby_owner_net_id
+			send_join_request(endpoint =endpoint,net_inst=net_inst)
 		}else{
 			fmt.print("conecting to server\n")
 			net_inst.net_state = init_udp_echo_client(ip, port)
@@ -522,7 +526,6 @@ init_networking_instance::proc(
 	net_inst.lobby.is_using_steame_lobby = true// TODO this needs to be moved
 	if s.steam.is_using_steam == true && net_inst.networking_type == .steam{
 		net_inst.id = s.steam.steam_id
-		fmt.print("waffles\n\n\n\n\n")
 		// create_steame_lobby()
 	}else{
 		net_inst.id = cast(u64)rand.uint64_range(0,4294967290)
