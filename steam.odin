@@ -30,6 +30,7 @@ import "core:image/tga"
 
 
 Steam_Info::struct{
+	steam_id:u64,
 	is_using_steam:bool,
 	number_of_current_players: int,
 	client:^steam.IClient,
@@ -57,6 +58,7 @@ Steam_Player::struct{
 	status_string:string,
 	steame_lev:int,
 	cs_id:steam.CSteamID,
+	net_id:steam.SteamNetworkingIdentity,
 	game:steam.FriendGameInfo,
 	l_player_icon_id:i32,
 	l_player_icon_gpu_id:[2]u32,
@@ -65,6 +67,7 @@ Steam_Player_Groop::struct{
 	filter:union{steam.EFriendFlags,steam.CSteamID},// CSteamID is for lobbys
 	count:i32,
 	player:[dynamic]Steam_Player,
+	updated_count:u32,//this is incumented by 1 per update so that other systems know when things have changed
 }
 
 init_steam::proc(){
@@ -83,7 +86,7 @@ init_steam::proc(){
 	// s.steam.client = steam.Client()
 
 	s.steam.client =  steam.SteamClient()
-	// s.steam.user = steam.User()
+	s.steam.user = steam.User()
 	// s.steam.hd_user = steam.User_GetHSteamUser(s.steam.user)
 	// s.steam.hd_pipe = steam.GetHSteamPipe()
 
@@ -96,6 +99,7 @@ init_steam::proc(){
 		fmt.println("USER IS LOGGED IN")
 	}
 	s.steam.i_utils= steam.SteamUtils_v010()
+	s.steam.steam_id = steam.User_GetSteamID(s.steam.user)
 	update_steam_friend_info()
 
 	s.steam.i_matchmaking = steam.SteamMatchmaking_v009()
@@ -179,6 +183,7 @@ update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends
 			}
 		}
 	}
+	groop.count+=1
 }
 
 clear_player_groop::proc(groop:^Steam_Player_Groop){
@@ -405,11 +410,6 @@ get_number_of_current_players :: proc() {
 	hSteamApiCall := steam.UserStats_GetNumberOfCurrentPlayers(steam.UserStats())
 }
 
-test_loby::proc(){
-	if s.steam.is_using_steam != true {return}
-	steam.Matchmaking_CreateLobby(s.steam.i_matchmaking,.FriendsOnly,10)
-	steam.Matchmaking_RequestLobbyList(s.steam.i_matchmaking,)
-}
 
 status_to_string::proc(stat:steam.EPersonaState)->(new_string:string){
 	switch stat{
@@ -438,10 +438,12 @@ status_to_string::proc(stat:steam.EPersonaState)->(new_string:string){
 
 
 create_steame_lobby::proc(){
+	if s.steam.is_using_steam != true {return}
 	steam.Matchmaking_CreateLobby(s.steam.i_matchmaking,.FriendsOnly,10)
 }
 
 steam_invite_player_to_lobby::proc(player_id:steam.CSteamID){
+	if s.steam.is_using_steam != true {return}
 	// if s.steam.steam_lobby.lobby_id == 0{
 	// 	create_steame_lobby()
 	// }
@@ -449,6 +451,7 @@ steam_invite_player_to_lobby::proc(player_id:steam.CSteamID){
 }
 
 steam_join_lobby::proc(lobby_id:steam.CSteamID){
+	if s.steam.is_using_steam != true {return}
 	steam.Matchmaking_JoinLobby(s.steam.i_matchmaking, lobby_id)
 }
 

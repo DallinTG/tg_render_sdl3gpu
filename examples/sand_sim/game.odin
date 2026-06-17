@@ -99,8 +99,6 @@ main :: proc(){
 	}
 	// tg.init_steam()
 	s=tg.init()
-	fmt.print("size_of(tg.Vertex_Data) ",size_of(tg.Vertex_Data),"\n")
-	fmt.print("size_of(tg.UI_Vertex_Data) ",size_of(tg.UI_Vertex_Data),"\n")
 	g.window = tg.init_window()
 
 	g.cam = tg.create_camera(type = .orthographic)
@@ -112,16 +110,10 @@ main :: proc(){
 	g.ui_vert_shader = tg.load_shader_file(file_path = "ui_shader.vert")
 	g.ui_frag_shader = tg.load_shader_file(file_path = "ui_shader.frag")
 
-	// tg.reg_texture_from_file("BAD.png")
-	// tg.reg_texture_from_file("white.png")
-	// tg.reg_all_texture_from_dir_path("assets/textures/icons","icon")
-	// tg.reg_all_texture_from_loaded_directory(#load_directory("assets/textures/icons"),"icon")
 
-	// tg.reg_all_texture_from_dir_path("assets/textures/icons","icon")
 
 	g.pass = tg.create_render_pass(&g.frame_data, g.vert_shader, g.frag_shader)
 	g.ui_pass = tg.create_render_pass(&g.frame_data,g.ui_vert_shader, g.ui_frag_shader)
-
 	init()
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){

@@ -129,7 +129,7 @@ get_entity::proc(hd:Entity_Handle)->(ent:^Entity){
 	return
 }
 All_Player_data::struct{
-	players:map[u16]Entity_Handle,
+	players:map[u64]Entity_Handle,
 }
 Player_CMD::struct{
 	move_vec:[2]f32,
@@ -144,7 +144,7 @@ send_player_cmd::proc(net_inst:^tg.Networking_Instance, cmd:Player_CMD){
 	temp_data:=transmute([size_of(Player_CMD)]u8)cmd
 	tg.send_net_command_to_server(net_inst,{type = cast(u32)Game_Net_Commands_Type.player_cmd}, temp_data[:])
 }
-add_player_by_id::proc(id:u16){
+add_player_by_id::proc(id:u64){
 	player:Entity={
 		pos= {},
 		handle = {},
@@ -154,7 +154,7 @@ add_player_by_id::proc(id:u16){
 	ent_hd:=spawn_entity(&g.entitys,player)
 	g.all_player_data.players[id] = ent_hd
 }
-remove_player_by_id::proc(id:u16){
+remove_player_by_id::proc(id:u64){
 	hm.remove(&g.entitys,g.all_player_data.players[id])
 	delete_key(&g.all_player_data.players, id)
 }

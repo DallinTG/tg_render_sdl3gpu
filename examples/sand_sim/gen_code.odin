@@ -43,4 +43,3 @@ Textures_Data := [Textures_E]Image {
 	.World_Tileset = {  width = 256, height = 256, id = { 2062199185,1287989370},  },
 	.Castle = {  width = 32, height = 32, id = { 2062199185,2379043019},  },
 }
-

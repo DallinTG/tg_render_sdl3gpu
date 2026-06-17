@@ -180,13 +180,13 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	}
 	new_state = s
 	
+	
 	init_steam()
 	s.frame_allocator = runtime.arena_allocator(&s.frame_arena)
 	s.allocator = allocator
 
 	ok = sdl.Init({.VIDEO})
 	assert(ok , "SDL init failed")
-
 	s.gpu_device = sdl.CreateGPUDevice({.SPIRV ,.DXIL ,.MSL} ,true, nil)
 	assert(s.gpu_device != nil,"SDL CreateGPUDevice failed")
 	
