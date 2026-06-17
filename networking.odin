@@ -21,7 +21,7 @@ Networking_State::struct{
 	sock: net.UDP_Socket,
 	buffer:[256]u8,
 
-	st_sock:^steam.INetworkingMessages,
+	// st_sock:^steam.INetworkingMessages,
 	// st_endpoint:^steam.SteamNetworkingIdentity,
 	// buffer:[256]u8,
 }
@@ -56,9 +56,7 @@ init_udp_echo_server :: proc(ip: string, port: int) ->(server:Networking_State){
 	}
 	fmt.printfln("Listening on UDP: %s", net.endpoint_to_string(endpoint))
 	net.set_blocking(sock, false)
-	if s.steam.is_using_steam{
-		server.st_sock = steam.NetworkingMessages_SteamAPI()
-	}
+
 	server.is_up = true
 	server.ip = ip
 	server.port = port
@@ -118,10 +116,6 @@ init_udp_echo_client :: proc(ip: string, port: int) ->(client:Networking_State){
 		return
 	}
 	fmt.println("Client is ready")
-
-	if s.steam.is_using_steam{
-		client.st_sock = steam.NetworkingMessages_SteamAPI()
-	}
 	
 	net.set_blocking(sock, false)
 	client.is_up = true
@@ -190,14 +184,14 @@ send_udp::proc(net_st:^Networking_State, endpoint:Endpoint, data:[]u8)->(bytes_s
 				return
 			}
 		case  steam.SteamNetworkingIdentity:
-		steam.NetworkingMessages_SendMessageToUser(net_st.st_sock,&ep,raw_data(data[:]),cast(u32)len(data[:]),0,0)
+		steam.NetworkingMessages_SendMessageToUser(s.steam.i_networking_messages,&ep,raw_data(data[:]),cast(u32)len(data[:]),0,0)
 	}
 
 	return
 }
 recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_endpoint:Endpoint, err_recv: net.UDP_Recv_Error){
 	steam_msg:^^steam.SteamNetworkingMessage
-	mesg_count:=steam.NetworkingMessages_ReceiveMessagesOnChannel(self = net_st.st_sock, nLocalChannel = 0, ppOutMessages = steam_msg, nMaxMessages = 0)
+	mesg_count:=steam.NetworkingMessages_ReceiveMessagesOnChannel(self = s.steam.i_networking_messages, nLocalChannel = 0, ppOutMessages = steam_msg, nMaxMessages = 0)
 	if mesg_count > 0{
 		remote_endpoint=steam_msg^^.identityPeer
 		bytes_recv = cast(int)steam_msg^^.cbSize
@@ -340,9 +334,14 @@ start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Ins
 }
 join_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
 	if !net_inst.net_state.is_up{
-		fmt.print("conecting to server\n")
-		net_inst.net_state = init_udp_echo_client(ip, port)
-		send_join_request(Endpoint_String{ip,port},net_inst)
+		if s.steam.is_using_steam == true && net_inst.networking_type == .steam{
+		
+			steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
+		}else{
+			fmt.print("conecting to server\n")
+			net_inst.net_state = init_udp_echo_client(ip, port)
+			send_join_request(Endpoint_String{ip,port},net_inst)
+		}
 	}
 	
 }
@@ -520,8 +519,11 @@ init_networking_instance::proc(
 	ensure(arena_err == nil)
 	arena_alloc := vmem.arena_allocator(&net_inst.cmd_q_extra_data)
 	net_inst.networking_type = net_type
+	net_inst.lobby.is_using_steame_lobby = true// TODO this needs to be moved
 	if s.steam.is_using_steam == true && net_inst.networking_type == .steam{
 		net_inst.id = s.steam.steam_id
+		fmt.print("waffles\n\n\n\n\n")
+		// create_steame_lobby()
 	}else{
 		net_inst.id = cast(u64)rand.uint64_range(0,4294967290)
 	}

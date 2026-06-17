@@ -43,12 +43,14 @@ Steam_Info::struct{
 	user_name:string,
 	friends:Steam_Player_Groop,
 	steam_lobby:Steam_Lobby,
+	i_networking_messages:^steam.INetworkingMessages,
 }
 MAX_PLAYERS_IN_LOBBY::10
 Steam_Lobby::struct{
 	lobby_id:u64,
 	loby_owner_id:u64,
 	loby_owner_name:string,
+	loby_owner_net_id:steam.SteamNetworkingIdentity,
 	groop:Steam_Player_Groop,
 }
 
@@ -101,7 +103,7 @@ init_steam::proc(){
 	s.steam.i_utils= steam.SteamUtils_v010()
 	s.steam.steam_id = steam.User_GetSteamID(s.steam.user)
 	update_steam_friend_info()
-
+	s.steam.i_networking_messages = steam.NetworkingMessages_SteamAPI()
 	s.steam.i_matchmaking = steam.SteamMatchmaking_v009()
 
 	create_steame_lobby()
@@ -122,6 +124,7 @@ update_lobby_data::proc(lobby_id:u64){
 	update_steame_player_groop(&s.steam.steam_lobby.groop, s.steam.i_friends)
 	s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,lobby_id)
 	s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
+	steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
 }
 update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends){
 	if s.steam.is_using_steam != true {return}
