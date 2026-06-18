@@ -382,7 +382,7 @@ run_steam_callbacks :: proc() {
 				temp:=transmute(^steam.SteamNetworkingMessagesSessionRequest)callback.pubParam
 				fmt.print("SteamNetworkingMessagesSessionRequest",temp.identityRemote,"\n")
 				steam.NetworkingMessages_AcceptSessionWithUser(s.steam.i_networking_messages,&temp.identityRemote)
-	
+
 			case:
 				fmt.print(callback.iCallback,"\n")
 			}

@@ -223,6 +223,7 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 		}else{
 			fmt.print("recv_udp buff to small\n")
 		}
+		fmt.print(buff,"\n\n")
 		steam.NetworkingMessage_t_Release(steam_msg^)
 	}else{
 		bytes_recv, remote_endpoint, err_recv = net.recv_udp(net_st.sock, buff)

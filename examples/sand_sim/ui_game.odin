@@ -54,6 +54,8 @@ start_menu::proc(){
 					fmt.print("Button--Host\n")
 					string_ep:=tg.endpoint_from_string_endpoint()
 					tg.start_server(server_endpoint = s.steam.networking_identity, net_inst=&g.server)
+					// tg.start_server(server_endpoint = string_ep, net_inst=&g.server)
+			
 				}
 			}
 			if cl.UI(cl.ID("Button--Join"))(tg.button_dec()) {
@@ -64,6 +66,7 @@ start_menu::proc(){
 					fmt.print("Button--Join\n")
 					string_ep:=tg.endpoint_from_string_endpoint()
 					tg.join_server(server_endpoint = s.steam.steam_lobby.loby_owner_net_id, net_inst=&g.server)
+					// tg.join_server(server_endpoint = string_ep, net_inst=&g.server)
 				}
 			}
 		}
