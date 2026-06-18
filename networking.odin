@@ -215,6 +215,7 @@ send_udp::proc(net_st:^Networking_State, endpoint:Endpoint, data:[]u8)->(bytes_s
 recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_endpoint:Endpoint, err_recv: net.UDP_Recv_Error){
 	steam_msg:^^steam.SteamNetworkingMessage
 	mesg_count:=steam.NetworkingMessages_ReceiveMessagesOnChannel(self = s.steam.i_networking_messages, nLocalChannel = 0, ppOutMessages = steam_msg, nMaxMessages = 0)
+	fmt.print("steam mesg\n")
 	if mesg_count > 0{
 		remote_endpoint=steam_msg^^.identityPeer
 		bytes_recv = cast(int)steam_msg^^.cbSize
