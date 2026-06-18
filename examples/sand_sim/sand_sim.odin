@@ -730,7 +730,7 @@ send_sink_chunck::proc(net_inst:^tg.Networking_Instance,pos:[2]int,w_map:^Map){
 		cells = chunck.cells,
 	}
 	temp_buf:=transmute([size_of(Sink_Chunck_Data)]u8)sink_chunck
-	tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_chunck},buf = temp_buf[:])
+	// tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_chunck},buf = temp_buf[:])
 }
 
 sink_next_chunck::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
