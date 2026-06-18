@@ -213,9 +213,10 @@ send_udp::proc(net_st:^Networking_State, endpoint:Endpoint, data:[]u8)->(bytes_s
 	return
 }
 recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_endpoint:Endpoint, err_recv: net.UDP_Recv_Error){
+	fmt.print("steam mesg\n")
 	steam_msg:^^steam.SteamNetworkingMessage
 	mesg_count:=steam.NetworkingMessages_ReceiveMessagesOnChannel(self = s.steam.i_networking_messages, nLocalChannel = 0, ppOutMessages = steam_msg, nMaxMessages = 1)
-	// fmt.print("steam mesg\n")
+	fmt.print("steam mesg_count",mesg_count,"\n")
 	if mesg_count > 0{
 		fmt.print("mesg_count: ",mesg_count,"\n\n")
 		fmt.print("1: ","\n")
@@ -240,6 +241,7 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 			return
 		}
 	}
+	fmt.print("steam mesg end\n")
 	// st_msg:steam.SteamNetworkingMessage
 	// st_msg_pt:=&st_msg
 	// steam.NetworkingMessages_ReceiveMessagesOnChannel(net_st.st_sock,0,&st_msg_pt,1)
