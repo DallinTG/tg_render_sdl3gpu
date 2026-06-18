@@ -37,6 +37,7 @@ Map::struct{
 	list_of_add_cell_CMD:[MAX_CELL_CMDS]Add_Cell_CMD,
 	cell_CMD_count:int,
 	next_chunck_to_sink:[2]int,
+	time_to_next_chunck_sink:i32,
 	// info:Map_Info,
 }
 Chunck::struct{
@@ -730,11 +731,14 @@ send_sink_chunck::proc(net_inst:^tg.Networking_Instance,pos:[2]int,w_map:^Map){
 		cells = chunck.cells,
 	}
 	temp_buf:=transmute([size_of(Sink_Chunck_Data)]u8)sink_chunck
-	// tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_chunck},buf = temp_buf[:])
+	tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_chunck},buf = temp_buf[:])
 }
 
 sink_next_chunck::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
 	if g.server.status != .hosting{return}
+	w_map.time_to_next_chunck_sink -= 1
+	if w_map.time_to_next_chunck_sink > 0{return}
+	w_map.time_to_next_chunck_sink = 10
 	w_map.next_chunck_to_sink.x+=1
 	if w_map.next_chunck_to_sink.x > MAP_SIZE.x-1{
 		w_map.next_chunck_to_sink.x = 0
