@@ -378,6 +378,10 @@ run_steam_callbacks :: proc() {
 				fmt.print("LobbyKicked_fin\n")
 			case .PersonaStateChange:
 				update_steam_friend_info()
+			case .SteamNetworkingMessagesSessionRequest:
+				fmt.print("SteamNetworkingMessagesSessionRequest\n")
+				temp:=transmute(^steam.SteamNetworkingMessagesSessionRequest)callback.pubParam
+				steam.NetworkingMessages_AcceptSessionWithUser(s.steam.i_networking_messages,&temp.identityRemote)
 			case:
 				fmt.print(callback.iCallback,"\n")
 			}
