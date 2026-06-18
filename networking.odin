@@ -34,37 +34,49 @@ Endpoint::union{
 	net.Endpoint,
 	steam.SteamNetworkingIdentity,
 }
-	
-init_udp_echo_server :: proc(ip: string, port: int) ->(server:Networking_State){
+// init_udp_echo_server :: proc(ip: string, port: int) ->(server:Networking_State){
+init_udp_echo_server :: proc(server_endpoint:Endpoint) ->(server:Networking_State){
 	// resize(&server.buffer,1000 )
-	local_addr, ok := net.parse_ip4_address(ip)
-	if !ok {
-		fmt.println("Failed to parse IP address")
-		return
-	}
-	endpoint := net.Endpoint {
-		address = local_addr,
-		port    = port,
-	}
+	// local_addr, ok := net.parse_ip4_address(ip)
+	// if !ok {
+	// 	fmt.println("Failed to parse IP address")
+	// 	return
+	// }
+	// endpoint := net.Endpoint {
+	// 	address = local_addr,
+	// 	port    = port,
+	// }
 	// for the server, we create a *bound* UDP socket,
 	// because we want to start listen the port immediately
-	sock, err := net.make_bound_udp_socket(endpoint.address, endpoint.port)
+	switch ep in server_endpoint{
+	case net.Endpoint:
+		sock, err := net.make_bound_udp_socket(ep.address, ep.port)
+		if err != nil {
+			fmt.println("Failed to make bound UDP socket", err)
+			return
+		}
+		fmt.printfln("Listening on UDP: %s", net.endpoint_to_string(ep))
+		net.set_blocking(sock, false)
 	
-	if err != nil {
-		fmt.println("Failed to make bound UDP socket", err)
-		return
+		server.is_up = true
+		// server.ip = ip
+		// server.port = port
+		server.endpoint = ep
+		server.sock = sock
+		// buffer: [256]u8
+		
+		server.type = .host
+	case steam.SteamNetworkingIdentity:
+		server.is_up = true
+		// server.ip = ip
+		// server.port = port
+		server.endpoint = ep
+		// server.sock = sock
+		// buffer: [256]u8
+		
+		server.type = .host
 	}
-	fmt.printfln("Listening on UDP: %s", net.endpoint_to_string(endpoint))
-	net.set_blocking(sock, false)
-
-	server.is_up = true
-	server.ip = ip
-	server.port = port
-	server.endpoint = endpoint
-	server.sock = sock
-	// buffer: [256]u8
 	
-	server.type = .host
 	return
 }
 
@@ -98,33 +110,44 @@ is_eol :: proc(bytes : []u8) -> bool {
 	return is_lf(bytes) || is_crlf(bytes)
 }
 
-init_udp_echo_client :: proc(ip: string, port: int) ->(client:Networking_State){
+// init_udp_echo_client :: proc(ip: string, port: int) ->(client:Networking_State){
+init_udp_echo_client :: proc(server_endpoint:Endpoint) ->(client:Networking_State){
 	// resize(&client.buffer,1000 )
-	local_addr, ok := net.parse_ip4_address(ip)
-	if !ok {
-		fmt.println("Failed to parse IP address")
-		return
-	}
-	server_endpoint := net.Endpoint {
-		address = local_addr,
-		port    = port,
-	}
-
-	sock, err := net.make_unbound_udp_socket(net.family_from_address(local_addr))
-	if err != nil {
-		fmt.println("Failed to make unbound UDP socket", err)
-		return
-	}
-	fmt.println("Client is ready")
+	// local_addr, ok := net.parse_ip4_address(ip)
+	// if !ok {
+	// 	fmt.println("Failed to parse IP address")
+	// 	return
+	// }
+	// server_endpoint := net.Endpoint {
+	// 	address = local_addr,
+	// 	port    = port,
+	// }
+	switch ep in server_endpoint{
+	case net.Endpoint:
+		sock, err := net.make_unbound_udp_socket(net.family_from_address(ep.address))
+		if err != nil {
+			fmt.println("Failed to make unbound UDP socket", err)
+			return
+		}
+		fmt.println("Client is ready")
+		
+		net.set_blocking(sock, false)
+		client.is_up = true
+		// client.ip = ip
+		// client.port = port
+		client.sock = sock
+		client.endpoint = server_endpoint
 	
-	net.set_blocking(sock, false)
-	client.is_up = true
-	client.ip = ip
-	client.port = port
-	client.sock = sock
-	client.endpoint = server_endpoint
-
-	client.type = .client
+		client.type = .client
+	case steam.SteamNetworkingIdentity:
+		client.is_up = true
+		// client.ip = ip
+		// client.port = port
+		// client.sock = sock
+		client.endpoint = server_endpoint
+	
+		client.type = .client
+	}
 	return
 }
 
@@ -318,11 +341,11 @@ Server_Status::enum{
 
 
 
-
-start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
+start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
+// start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
 	if !net_inst.net_state.is_up{
 		fmt.print("starting server\n")
-		net_inst.net_state = init_udp_echo_server(ip, port)
+		net_inst.net_state = init_udp_echo_server(server_endpoint)
 		net_inst.status = .hosting
 		if net_inst.lobby.is_using_steame_lobby == true{
 			create_steame_lobby()
@@ -332,19 +355,20 @@ start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Ins
 		}
 	}
 }
-join_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
+join_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
+// join_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
 	if !net_inst.net_state.is_up{
 		if s.steam.is_using_steam == true && net_inst.networking_type == .steam{
 		
 			steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
 			fmt.print("conecting to server\n")
-			net_inst.net_state = init_udp_echo_client(ip, port)
+			net_inst.net_state = init_udp_echo_client(server_endpoint)
 			endpoint :Endpoint=s.steam.steam_lobby.loby_owner_net_id
 			send_join_request(endpoint =endpoint,net_inst=net_inst)
 		}else{
 			fmt.print("conecting to server\n")
-			net_inst.net_state = init_udp_echo_client(ip, port)
-			send_join_request(Endpoint_String{ip,port},net_inst)
+			net_inst.net_state = init_udp_echo_client(server_endpoint)
+			send_join_request(server_endpoint,net_inst)
 		}
 	}
 	
@@ -404,32 +428,27 @@ Endpoint_String::struct{
 	ip:string,
 	port:int,
 }
-
-send_join_request::proc(endpoint:union{Endpoint_String,Endpoint}= Endpoint_String{ip="10.0.0.155", port=35823}, net_inst:^Networking_Instance){
-
-	new_endpoint:Endpoint
-	net_inst.status = .joining
-	
-	switch val in endpoint{
-	case Endpoint_String:
-		local_addr, ok := net.parse_ip4_address(val.ip)
-		if !ok {
-			fmt.println("Failed to parse IP address")
-			return
-		}
-		new_endpoint = net.Endpoint {
-			address = local_addr,
-			port    = val.port,
-		}
-	case Endpoint:
-		new_endpoint = val
+endpoint_from_string_endpoint::proc(endpoint_string:Endpoint_String={ip="10.0.0.155", port=35823})->(new_endpoint:Endpoint){
+	local_addr, ok := net.parse_ip4_address(endpoint_string.ip)
+	if !ok {
+		fmt.println("Failed to parse IP address")
+		return
 	}
+	new_endpoint = net.Endpoint {
+		address = local_addr,
+		port    = endpoint_string.port,
+	}
+	return
+}
+
+send_join_request::proc(endpoint:Endpoint, net_inst:^Networking_Instance){
+	net_inst.status = .joining
 	net_inst.status = .joining
 	cmd:Net_Command
 	cmd.type = cast(u32)Net_Commands_Type.join
 	// if new_endpoint.(^steam.steam.SteamNetworkingIdentity)
 	// steam_join_lobby()
-	send_net_command(net_inst, new_endpoint, cmd)
+	send_net_command(net_inst, endpoint, cmd)
 }
 
 send_net_command::proc(net_inst:^Networking_Instance,endpoint:Endpoint, cmd:Net_Command, buf:[]u8 = {},){

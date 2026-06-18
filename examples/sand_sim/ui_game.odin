@@ -52,7 +52,8 @@ start_menu::proc(){
 				if cl.Hovered() && is_input_event(.ui_l_c){
 					g.next_game_mode = .loby
 					fmt.print("Button--Host\n")
-					tg.start_server(net_inst=&g.server)
+					string_ep:=tg.endpoint_from_string_endpoint()
+					tg.start_server(server_endpoint = s.steam.networking_identity, net_inst=&g.server)
 				}
 			}
 			if cl.UI(cl.ID("Button--Join"))(tg.button_dec()) {
@@ -61,7 +62,8 @@ start_menu::proc(){
 				if cl.Hovered() && is_input_event(.ui_l_c){
 					g.next_game_mode = .loby
 					fmt.print("Button--Join\n")
-					tg.join_server(net_inst=&g.server)
+					string_ep:=tg.endpoint_from_string_endpoint()
+					tg.join_server(server_endpoint = s.steam.networking_identity, net_inst=&g.server)
 				}
 			}
 		}

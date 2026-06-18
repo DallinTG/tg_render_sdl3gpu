@@ -43,6 +43,7 @@ Steam_Info::struct{
 	user_name:string,
 	friends:Steam_Player_Groop,
 	steam_lobby:Steam_Lobby,
+	networking_identity:steam.SteamNetworkingIdentity,
 	i_networking_messages:^steam.INetworkingMessages,
 }
 MAX_PLAYERS_IN_LOBBY::10
@@ -105,7 +106,7 @@ init_steam::proc(){
 	update_steam_friend_info()
 	s.steam.i_networking_messages = steam.NetworkingMessages_SteamAPI()
 	s.steam.i_matchmaking = steam.SteamMatchmaking_v009()
-
+	steam.NetworkingIdentity_SetSteamID(&s.steam.networking_identity, s.steam.steam_id)
 	create_steame_lobby()
 	s.steam.is_using_steam = true
 }
