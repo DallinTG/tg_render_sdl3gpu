@@ -713,7 +713,7 @@ sink_all_chuncks::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
 	if g.server.status == .hosting{
 		for &row,x in &w_map.chuncks{
 			for &chunck,y in &row{
-				send_sink_chunck(net_inst,{x,y},w_map)
+				// send_sink_chunck(net_inst,{x,y},w_map)
 			}
 		}
 	}
