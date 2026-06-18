@@ -145,6 +145,7 @@ main :: proc(){
 				// tg.update_lobby_data(temp.ulSteamIDLobby)
 				fmt.print("updating_stuff\n")
 				tg.update_steam_friend_info()
+				tg.join_server(server_endpoint = s.steam.steam_lobby.loby_owner_net_id, net_inst=&g.server)
 			}
 			
 			tg.pros_server_cmd_q(&g.server)
@@ -156,7 +157,7 @@ main :: proc(){
 				do_mode_loby()
 				case .in_game:
 				do_mode_game()
-			}
+			} 
 			maintain_input_info()
 		}
 
