@@ -357,21 +357,18 @@ start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 }
 join_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 // join_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
-	if !net_inst.net_state.is_up{
-		if s.steam.is_using_steam == true && net_inst.networking_type == .steam{
-		
-			steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
-			fmt.print("conecting to server\n")
-			net_inst.net_state = init_udp_echo_client(server_endpoint)
-			endpoint :Endpoint=s.steam.steam_lobby.loby_owner_net_id
-			send_join_request(endpoint =endpoint,net_inst=net_inst)
-		}else{
-			fmt.print("conecting to server\n")
-			net_inst.net_state = init_udp_echo_client(server_endpoint)
-			send_join_request(server_endpoint,net_inst)
-		}
-	}
-	
+	// switch ep in server_endpoint{
+	// case net.Endpoint:
+		fmt.print("conecting to server\n")
+		net_inst.net_state = init_udp_echo_client(server_endpoint)
+		send_join_request(server_endpoint,net_inst)
+// 	case steam.SteamNetworkingIdentity:
+// 		steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
+// 		fmt.print("conecting to server\n")
+// 		net_inst.net_state = init_udp_echo_client(server_endpoint)
+// 		endpoint :Endpoint=s.steam.steam_lobby.loby_owner_net_id
+// 		send_join_request(endpoint =endpoint,net_inst=net_inst)
+// 	}	
 }
 leave_shutdown_server::proc(net_inst:^Networking_Instance){
 	if net_inst.status == .joined{
