@@ -207,34 +207,25 @@ send_udp::proc(net_st:^Networking_State, endpoint:Endpoint, data:[]u8)->(bytes_s
 				return
 			}
 		case  steam.SteamNetworkingIdentity:
-		steam.NetworkingMessages_SendMessageToUser(s.steam.i_networking_messages,&ep,raw_data(data[:]),cast(u32)len(data[:]),0,0)
+		steam.NetworkingMessages_SendMessageToUser(s.steam.i_networking_messages,&ep,raw_data(data[:]),cast(u32)len(data[:]),1,0)
 	}
 
 	return
 }
 recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_endpoint:Endpoint, err_recv: net.UDP_Recv_Error){
-	fmt.print("steam mesg\n")
 	steam_msg_data:steam.SteamNetworkingMessage
 	steam_msg_data_p:^steam.SteamNetworkingMessage=&steam_msg_data
 	steam_msg:^^steam.SteamNetworkingMessage = &steam_msg_data_p
 	mesg_count:=steam.NetworkingMessages_ReceiveMessagesOnChannel(self = s.steam.i_networking_messages, nLocalChannel = 0, ppOutMessages = steam_msg, nMaxMessages = 1)
-	fmt.print("steam mesg_count",mesg_count,"\n")
 	if mesg_count > 0{
-		fmt.print("mesg_count: ",mesg_count,"\n\n")
-		fmt.print("1: ","\n")
 		remote_endpoint=steam_msg^^.identityPeer
-		fmt.print("2: ","\n")
 		bytes_recv = cast(int)steam_msg^^.cbSize
-		fmt.print("3: ","\n")
 		if cast(int)steam_msg^^.cbSize<len(buff){
 			mem.copy(raw_data(buff),steam_msg^^.pData,cast(int)steam_msg^^.cbSize)
-			fmt.print("__1: ","\n")
+
 		}else{
-			fmt.print("recv_udp buff to small\n")
-			fmt.print("__2: ","\n")
+
 		}
-		fmt.print("buff: ",buff,"\n\n")
-		fmt.print("4: ","\n")
 		steam.NetworkingMessage_t_Release(steam_msg^)
 	}else{
 		bytes_recv, remote_endpoint, err_recv = net.recv_udp(net_st.sock, buff)
@@ -243,7 +234,6 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 			return
 		}
 	}
-	fmt.print("steam mesg end\n")
 	// st_msg:steam.SteamNetworkingMessage
 	// st_msg_pt:=&st_msg
 	// steam.NetworkingMessages_ReceiveMessagesOnChannel(net_st.st_sock,0,&st_msg_pt,1)
