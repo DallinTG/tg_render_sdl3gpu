@@ -207,7 +207,7 @@ send_udp::proc(net_st:^Networking_State, endpoint:Endpoint, data:[]u8)->(bytes_s
 				return
 			}
 		case  steam.SteamNetworkingIdentity:
-		steam.NetworkingMessages_SendMessageToUser(s.steam.i_networking_messages,&ep,raw_data(data[:]),cast(u32)len(data[:]),1,0)
+		steam.NetworkingMessages_SendMessageToUser(s.steam.i_networking_messages,&ep,raw_data(data[:]),cast(u32)len(data[:]),5,0)
 	}
 
 	return
