@@ -47,7 +47,7 @@ Game::struct{
 	render_thread:^thread.Thread,
 	server:tg.Networking_Instance,
 	input_events:event_data,
-	game_should_close:bool,
+	// game_should_close:bool,
 
 	clay_render_comands:cl.ClayArray(cl.RenderCommand),
 	
@@ -76,7 +76,7 @@ init::proc(){
 	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.ui_vert_shader, g.ui_frag_shader, gbl_font_size = .1)
 	init_rendering_thread()
 	tg.update_steam_friend_info()
-	fmt.print("inport theems\n")
+
 	// tg.load_ui_theme_by_file("themes/tokyo-night.json",&s.ui_style)
 	// tg.load_ui_theme_by_file("themes/catppuccin-mauve.json",&s.ui_style,0)
 	// tg.load_ui_theme_by_file("themes/dracula.json",&s.ui_style,1)
@@ -86,6 +86,7 @@ init::proc(){
 	tg.load_ui_theme_by_file("themes/everforest-regular.json",&s.ui_style,2)
 	
 	// spawn_entity(&g.entitys)
+
 }
 
 main :: proc(){
@@ -166,6 +167,7 @@ main :: proc(){
 		// do_rendering()
 	}
 	tg.leave_shutdown_server(&g.server)
+	
 	cleane_up_game()
 
 	when USE_TRACKING_ALLOCATOR {
@@ -182,19 +184,23 @@ main :: proc(){
 	}
 }
 cleane_up_game::proc(){
-	thread.terminate(g.render_thread,0)
-	thread.terminate(g.server.net_thread,0)
+	fmt.print("g.game_should_close",s.app_should_close,"\n")
+
+	thread.join(g.render_thread)
 	thread.destroy(g.render_thread)
+	thread.join(g.server.net_thread)
 	thread.destroy(g.server.net_thread)
+
 	tg.delete_r_pass(&g.pass)
 	tg.delete_r_pass(&g.ui_pass)
+	tg.delete_mesh(g.entitys_mesh)
 	delete_w_map(g.w_map)
 	tg.delete_camera(&g.cam)
 	hm.delete(&g.entitys)
 	delete(g.server.clients)
 	delete(g.all_player_data.players)
 	tg.delete_clay_instance(g.ui_clay_inst)
-	tg.cleane_app()
+	tg.cleane_up_app()
 }
 
 do_mode_start::proc(){
@@ -216,9 +222,9 @@ do_mode_game::proc(){
 	}
 	if is_input_event(.ui_shift){
 		// enabled := steam.Utils_IsOverlayEnabled(steam.Utils())
-		// fmt.println("overlay enabled:", enabled)
+
 		// friends := steam.Friends()
-		// fmt.print(friends,friends != nil)
+
 		// steam.Friends_ActivateGameOverlay(friends,"Friends")
 		tg.send_simp_notification(&s.notifications,"waffles shift")
 		tg.update_steam_friend_info()
@@ -263,12 +269,11 @@ manage_gmae_mode_state::proc(){
 }
 
 init_rendering_thread::proc(){
-	g.render_thread = thread.create_and_start(do_rendering)
+	g.render_thread = thread.create_and_start(do_rendering,self_cleanup = false)
 }
 
 do_rendering::proc(){
-	rendering_loop:for !g.game_should_close {
-		
+	rendering_loop:for !s.app_should_close {
 		tg.start_frame(&g.frame_data)
 
 		// do gameplay pass
@@ -278,7 +283,6 @@ do_rendering::proc(){
 		render_entitys(&g.entitys)
 		// tg.render_clay_instance(g.ui_clay_inst,&g.pass,&g.cam_ui)
 		tg.submit_render(&g.pass)
-
 
 		//do render pass
 		tg.start_render(&g.ui_pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
@@ -290,7 +294,10 @@ do_rendering::proc(){
 		
 		tg.submit_frame(&g.frame_data)
 
+
 	}
+	log.logf(.Info,"closeing Render Thread",)
+
 }
 
 init_tg_inputs::proc(){
@@ -311,7 +318,6 @@ update_camera_2d_pan::proc(cam:^tg.Camera, dt:f32=1, speed:f32=1,){
 		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
 		motion := move_input * (speed*cam.zoom) * dt
 		cam.pos += motion
-		// fmt.print(motion,"pan",move_input,"mouse move" ,g.input_events.mouse_move,"\n")
 	}
 }
 

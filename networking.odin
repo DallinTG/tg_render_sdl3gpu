@@ -2,6 +2,7 @@ package tg_render
 
 import "core:fmt"
 import "core:net"
+import "core:log"
 import "core:os"
 import "core:mem"
 import st"core:strings"
@@ -39,7 +40,7 @@ init_udp_echo_server :: proc(server_endpoint:Endpoint) ->(server:Networking_Stat
 	// resize(&server.buffer,1000 )
 	// local_addr, ok := net.parse_ip4_address(ip)
 	// if !ok {
-	// 	fmt.println("Failed to parse IP address")
+
 	// 	return
 	// }
 	// endpoint := net.Endpoint {
@@ -52,10 +53,10 @@ init_udp_echo_server :: proc(server_endpoint:Endpoint) ->(server:Networking_Stat
 	case net.Endpoint:
 		sock, err := net.make_bound_udp_socket(ep.address, ep.port)
 		if err != nil {
-			fmt.println("Failed to make bound UDP socket", err)
+			log.logf(.Warning,"Failed to make bound UDP socket",err)
 			return
 		}
-		fmt.printfln("Listening on UDP: %s", net.endpoint_to_string(ep))
+		log.logf(.Info,"Listening on UDP: %s", net.endpoint_to_string(ep))
 		net.set_blocking(sock, false)
 	
 		server.is_up = true
@@ -83,18 +84,17 @@ init_udp_echo_server :: proc(server_endpoint:Endpoint) ->(server:Networking_Stat
 // do_udp_echo_server:: proc(server:^Networking_State) {
 // 	bytes_recv, remote_endpoint, err_recv := recv_udp(server)
 // 	received := server.buffer[:bytes_recv]
-// 	fmt.printfln("Server received from %s", net.endpoint_to_string(remote_endpoint))
-// 	fmt.printfln("Received data [ %d bytes ]: %s", len(received), received)
+
 // 	if len(received) == 0 {return}
 // 	bytes_sent, err_send := send_udp(server,remote_endpoint,received)
 // 	sent := received[:bytes_sent]
-// 	fmt.printfln("Server sent [ %d bytes ]: %s", len(sent), sent)
+
 // 	free_all(context.temp_allocator)
 // }
 
 // stop_udp_echo_server:: proc(server:^Networking_State) {
 // 	net.close(server.sock)
-// 	fmt.println("Closed socket")
+
 // }
 
 
@@ -115,7 +115,7 @@ init_udp_echo_client :: proc(server_endpoint:Endpoint) ->(client:Networking_Stat
 	// resize(&client.buffer,1000 )
 	// local_addr, ok := net.parse_ip4_address(ip)
 	// if !ok {
-	// 	fmt.println("Failed to parse IP address")
+
 	// 	return
 	// }
 	// server_endpoint := net.Endpoint {
@@ -126,10 +126,11 @@ init_udp_echo_client :: proc(server_endpoint:Endpoint) ->(client:Networking_Stat
 	case net.Endpoint:
 		sock, err := net.make_unbound_udp_socket(net.family_from_address(ep.address))
 		if err != nil {
-			fmt.println("Failed to make unbound UDP socket", err)
+			log.logf(.Warning,"Failed to make unbound UDP socket ", err)
 			return
 		}
-		fmt.println("Client is ready")
+	
+		log.logf(.Info,"Client is ready ")
 		
 		net.set_blocking(sock, false)
 		client.is_up = true
@@ -164,15 +165,15 @@ init_udp_echo_client :: proc(server_endpoint:Endpoint) ->(client:Networking_Stat
 // 	bytes_sent, err_send :=send_udp(client,client.endpoint, data)
 
 // 	sent := data[:bytes_sent]
-// 	fmt.printfln("Client sent [ %d bytes ]: %s", len(sent), sent)
+
 // 	bytes_recv, _, err_recv  := recv_udp(client, client.buffer[:])
 // 	if err_recv != nil {
-// 		fmt.println("Failed to receive data", err_recv)
+
 // 		return
 // 	}
 
 // 	received := client.buffer[:bytes_recv]
-// 	fmt.printfln("Client received [ %d bytes ]: %s", len(received), received)
+
 // }
 
 do_udp_print_server::proc(server:^Networking_State){
@@ -186,7 +187,7 @@ do_udp_print_server::proc(server:^Networking_State){
 		if len(received) == 0 {return}
 		// bytes_sent, err_send := send_udp(server,remote_endpoint,received)
 		// sent := received[:bytes_sent]
-		// fmt.printfln("Server sent [ %d bytes ]: %s", len(sent), sent)
+
 		free_all(context.temp_allocator)
 	case steam.SteamNetworkingIdentity:
 	}
@@ -203,7 +204,7 @@ send_udp::proc(net_st:^Networking_State, endpoint:Endpoint, data:[]u8)->(bytes_s
 		case  net.Endpoint:
 			bytes_sent, err_send = net.send_udp(net_st.sock, data[:], ep)
 			if err_send != nil {
-				fmt.println("Failed to send data", err_send)
+				log.logf(.Warning, "Failed to send data", err_send)
 				return
 			}
 		case  steam.SteamNetworkingIdentity:
@@ -230,7 +231,6 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 	}else{
 		bytes_recv, remote_endpoint, err_recv = net.recv_udp(net_st.sock, buff)
 		if err_recv != nil {
-			// fmt.println("Failed to receive data", err_recv)
 			return
 		}
 	}
@@ -245,7 +245,7 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 
 stop_udp_echo_client:: proc(client:^Networking_State) {
 	net.close(client.sock)
-	fmt.println("Closed socket")
+	log.logf(.Info, "Closed socket")
 }
 
 // steam_recv_messag::proc(net_st:^Networking_State, endpoint:net.Endpoint, data:[]u8)->(bytes_sent:int, err_send:net.UDP_Send_Error){
@@ -347,7 +347,7 @@ Server_Status::enum{
 start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 // start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
 	if !net_inst.net_state.is_up{
-		fmt.print("starting server\n")
+		log.logf(.Info, "starting server")
 		net_inst.net_state = init_udp_echo_server(server_endpoint)
 		net_inst.status = .hosting
 		if net_inst.lobby.is_using_steame_lobby == true{
@@ -362,12 +362,11 @@ join_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 // join_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
 	// switch ep in server_endpoint{
 	// case net.Endpoint:
-		fmt.print("conecting to server\n")
+		log.logf(.Info, "conecting to server")
 		net_inst.net_state = init_udp_echo_client(server_endpoint)
 		send_join_request(server_endpoint,net_inst)
 // 	case steam.SteamNetworkingIdentity:
 // 		steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
-// 		fmt.print("conecting to server\n")
 // 		net_inst.net_state = init_udp_echo_client(server_endpoint)
 // 		endpoint :Endpoint=s.steam.steam_lobby.loby_owner_net_id
 // 		send_join_request(endpoint =endpoint,net_inst=net_inst)
@@ -381,6 +380,7 @@ leave_shutdown_server::proc(net_inst:^Networking_Instance){
 	}
 	if net_inst.status == .hosting{
 		send_net_command_to_all_clients(net_inst, cmd={type=cast(u32)Net_Commands_Type.server_shutdown,flags={.force_process}})
+		
 		net_inst.status = .nil
 		// g.curent_game_mode = .start
 	}
@@ -395,7 +395,7 @@ do_networking::proc(net_inst_pt:rawptr){
 	for !s.app_should_close{
 		switch net_inst.net_state.type{
 		case .nil:
-		time.sleep(10000000)
+			time.sleep(100000)
 		case .host:
 			cmd,endpoint,buf,ok:=recv_command(net_inst)
 			if ok{
@@ -409,6 +409,8 @@ do_networking::proc(net_inst_pt:rawptr){
 			}
 		}
 	}
+	log.logf(.Info,"closing networking thread")
+
 }
 
 update_network_clients_in_steam_lobby::proc(net_inst:^Networking_Instance){
@@ -431,7 +433,7 @@ Endpoint_String::struct{
 endpoint_from_string_endpoint::proc(endpoint_string:Endpoint_String={ip="10.0.0.155", port=35823})->(new_endpoint:Endpoint){
 	local_addr, ok := net.parse_ip4_address(endpoint_string.ip)
 	if !ok {
-		fmt.println("Failed to parse IP address")
+		log.logf(.Warning,"Failed to parse IP address")
 		return
 	}
 	new_endpoint = net.Endpoint {
@@ -552,7 +554,7 @@ init_networking_instance::proc(
 	// net_inst.net_thread = thread.create_and_start(do_networking)
 	net_inst.cb_start_server = cb_start_server
 	net_inst.cb_pros_server_cmd = cb_pros_server_cmd
-	thread.create_and_start_with_data(net_inst, do_networking)
+	net_inst.net_thread = thread.create_and_start_with_data(net_inst, do_networking)
 }
 
 // init_net_thread::proc(net_inst:^Networking_Instance,){
@@ -599,12 +601,11 @@ pros_server_cmd_q::proc(net_inst:^Networking_Instance){
 				// 	send_net_command_to_client(net_inst,client_data,Net_Command{type = cast(u32)Net_Commands_Type.accept_join, flags = {.force_process}})
 				// }else{
 				// 	send_net_command(net_inst,endpoint, Net_Command{type = cast(u32)Net_Commands_Type.regect_join, flags = {.force_process}})
-				// 	fmt.print("Received multipul join reqwests\n")
 				// }
 				join_client(net_inst,cmd.id,endpoint)
 			case .leave:
 			case .accept_join,.regect_join,.server_shutdown:
-				fmt.print("Server Received Server Commands\n")
+				log.logf(.Info,"Server Received Server Commands")
 			}
 		case .client:
 			switch cmd_type{
@@ -616,14 +617,13 @@ pros_server_cmd_q::proc(net_inst:^Networking_Instance){
 			case .server_shutdown:
 				net_inst.status = .nil
 			case .join,.leave:
-				fmt.print("Client Received Client Commands",cmd.type,"\n")
+				log.logf(.Info,"Client Received Client Commands",cmd.type,)
 			}
 		}
 		if net_inst.cb_pros_server_cmd != nil{
 			net_inst.cb_pros_server_cmd(net_inst,server_cmd)
 		}
 	}
-	// fmt.print("total_reserved",g.server.cmd_q_extra_data.total_reserved,"   total_used",g.server.cmd_q_extra_data.total_used,"\n")
 	vmem.arena_free_all(&net_inst.cmd_q_extra_data)
 	hm.clear(&net_inst.cmd_q)
 }
@@ -638,6 +638,6 @@ join_client::proc(net_inst:^Networking_Instance,client_id:u64,clients_endpoint:E
 		send_net_command_to_client(net_inst,client_data,Net_Command{type = cast(u32)Net_Commands_Type.accept_join, flags = {.force_process}})
 	}else{
 		send_net_command(net_inst,clients_endpoint, Net_Command{type = cast(u32)Net_Commands_Type.regect_join, flags = {.force_process}})
-		fmt.print("Received multipul join reqwests\n")
+		log.logf(.Info,"Received multipul join reqwests")
 	}
 }

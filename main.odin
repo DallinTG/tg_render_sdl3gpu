@@ -314,7 +314,10 @@ do_render_pass::proc(
 	cam:^Camera,
 	meshes_hd:[]Mesh_Handle,
 ){
-
+	if pass == nil {
+		fmt.print("pass == nil\n")
+		return
+	}
 	if pass.render_target == nil{return}
 
 	view_mat :Mat4= 1//lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
@@ -440,8 +443,20 @@ start_render::proc(
 	d_store_op: sdl.GPUStoreOp = .STORE,
 	clear_color:[4]f32={.3,.3,.3,1},
 ){
+	if pass == nil {
+		fmt.print("pass == nil\n")
+		return
+	}
+	if cam == nil {
+		fmt.print("cam == nil\n")
+		return
+	}
 	// pass.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	pass.render_target = get_render_target(render_target)
+	if pass.render_target == nil {
+		fmt.print("pass.render_target == nil\n")
+		return
+	}
 	switch rt in render_target {
 		case Window_Handle:
 			win:=get_window(rt)
@@ -477,6 +492,14 @@ start_render::proc(
 }
 
 submit_render::proc(pass:^R_Pass,){
+	if pass == nil {
+		fmt.print("pass == nil\n")
+		return
+	}
+	if pass.render_target == nil {
+		fmt.print("pass.render_target == nil\n")
+		return
+	}
 	sdl.EndGPURenderPass(pass.render_pas)
 	// ok := sdl.SubmitGPUCommandBuffer(pass.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
 }
@@ -680,7 +703,8 @@ get_render_target::proc(render_target:Render_Targets)->(texture:^Render_Target){
 
 //------------------------------------------------------------------------------
 //call befor closing app dus not close app
-cleane_app::proc(){
+cleane_up_app::proc(){
+	cleane_up_steam()
 	delete(s.events)
 	delete(s.texture_arr_map)
 	hm.delete(&s.meshes)
@@ -688,7 +712,6 @@ cleane_app::proc(){
 	hm.delete(&s.windows)
 	hm.delete(&s.shaders)
 	hm.delete(&s.clay_instances)
-	delete_player_groop(&s.steam.friends)
 	free(s)
 }
 delete_r_pass::proc(pass:^R_Pass){

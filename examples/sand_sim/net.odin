@@ -360,7 +360,7 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		remove_player_by_id(client_data.id)
 		delete_key(&net_inst.clients, cmd.id)
 	case .accept_join,.regect_join,.server_shutdown:
-		fmt.print("Server Received Server Commands\n")
+		log.logf(.Warning, "Server Received Server Commands")
 	}
 	case .client:
 		switch cmd_type{
@@ -373,7 +373,8 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 			g.curent_game_mode = .start
 			g.next_game_mode = .start
 		case .join,.leave:
-			fmt.print("Client Received Client Commands",cmd.type,"\n")
+
+			log.logf(.Warning, "Client Received Client Commands",cmd.type,)
 		}
 	}
 
@@ -388,7 +389,7 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		case .player_cmd:
 			do_player_cmd(server_cmd)
 		case .sink_all_entity_data,.sink_chunck,.sink_cell_cmds,.sink_w_map_info:
-			fmt.print("Server Received Server Commands\n")
+			log.logf(.Warning, "Server Received Server Commands")
 		}
 			
 	case .client:
@@ -406,7 +407,7 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		case .sink_w_map_info:
 			resv_w_map_info(server_cmd,g.w_map)
 		case .player_cmd:
-			fmt.print("Client Received Client Commands",cmd.type,"\n")
+			log.logf(.Warning, "Client Received Client Commands",cmd.type,)
 		}
 	}
 }

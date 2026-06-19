@@ -115,7 +115,7 @@ render_entitys::proc(entitys:^Entity_Handle_Map,){
 	// }
 	// pos:[3]f32
 	// for fri in s.steam.friends.player{
-	// // fmt.print([2]u32{fri.l_player_icon_gpu_id.idx,fri.l_player_icon_gpu_id.gen})
+
 	// 	pos+={100,0,0}
 	// 	tg.draw_rect(&mesh.cpu,fri.l_player_icon_gpu_id,tg.Vertex_Data,{1,1,1,1},{pos,{50,50}})
 	// }
@@ -219,7 +219,7 @@ do_player_cmd::proc(cmd:^tg.Server_CMD){
 	player_e_hd:=g.all_player_data.players[cmd.net_command.id]
 	player:=get_entity(player_e_hd)
 	if player == nil {
-		fmt.print("invalid player sent:",player_e_hd,"\n")
+		log.logf(.Warning, "invalid player sent: ",player_e_hd,)
 		return
 	}
 	temp:[size_of(Player_CMD)]u8

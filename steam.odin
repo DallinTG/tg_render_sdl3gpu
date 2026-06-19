@@ -109,6 +109,15 @@ init_steam::proc(){
 	steam.NetworkingIdentity_SetSteamID(&s.steam.networking_identity, s.steam.steam_id)
 	create_steame_lobby()
 	s.steam.is_using_steam = true
+	
+}
+cleane_up_steam::proc(){
+	delete_player_groop(&s.steam.friends)
+	delete_player_groop(&s.steam.steam_lobby.groop)
+	if s.steam.steam_lobby.loby_owner_name != ""{
+		delete(s.steam.steam_lobby.loby_owner_name)
+	}
+	steam.Shutdown()
 }
 update_steam_friend_info::proc(){
 	if s.steam.is_using_steam != true {return}
@@ -124,7 +133,12 @@ update_lobby_data::proc(lobby_id:u64){
 	s.steam.steam_lobby.groop.filter = cast(steam.CSteamID)s.steam.steam_lobby.lobby_id
 	update_steame_player_groop(&s.steam.steam_lobby.groop, s.steam.i_friends)
 	s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,lobby_id)
-	s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
+	// if s.steam.steam_lobby.loby_owner_name != ""{
+		delete(s.steam.steam_lobby.loby_owner_name)
+	// }
+	temp_name:=steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id)
+	s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(temp_name)
+
 	steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
 }
 update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends){
@@ -202,7 +216,9 @@ clear_player_groop::proc(groop:^Steam_Player_Groop){
 delete_player_groop::proc(groop:^Steam_Player_Groop){
 	if s.steam.is_using_steam != true {return}
 	clear_player_groop(groop)
-	delete(groop.player)
+	if groop.player != nil{
+		delete(groop.player)
+	}
 }
 
 
@@ -316,10 +332,10 @@ run_steam_callbacks :: proc() {
 
 					update_lobby_data(temp.ulSteamIDLobby)
 					update_steam_friend_info()
-					s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
-					s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
-					s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
-					fmt.print(temp,"\n")
+					// s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
+					// s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
+					// s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
+					// fmt.print(temp,"\n")
 					
 				}else{
 					fmt.print("Lobby Enter failed",err,"\n"  )
@@ -463,66 +479,3 @@ steam_join_lobby::proc(lobby_id:steam.CSteamID){
 	if s.steam.is_using_steam != true {return}
 	steam.Matchmaking_JoinLobby(s.steam.i_matchmaking, lobby_id)
 }
-
-
-// Terminal :: struct {
-//     master: posix.FD,
-//     pid:    posix.pid_t,
-// }
-
-// terminal_create :: proc(shell: cstring) -> (Terminal, bool) {
-//     master := posix.posix_openpt({.RDWR , .NOCTTY})
-//     if master < 0 {
-//         return {}, false
-//     }
-
-//     if posix.grantpt(master) == .FAIL {
-//         return {}, false
-//     }
-
-//     if posix.unlockpt(master) == .FAIL {
-//         return {}, false
-//     }
-
-//     slave_name := posix.ptsname(master)
-//     if slave_name == nil {
-//         return {}, false
-//     }
-
-//     pid := posix.fork()
-
-//     if pid == 0 {
-//         posix.setsid()
-
-//         slave := posix.open(slave_name, {.NOCTTY}, {.IRUSR , .IWUSR})
-
-//         posix.dup2(slave, 0)
-//         posix.dup2(slave, 1)
-//         posix.dup2(slave, 2)
-
-//         posix.close(slave)
-//         posix.close(master)
-
-//         argv := [?]cstring{shell, nil}
-
-//         posix.execv(shell, &argv[0])
-
-//         posix._exit(1)
-//     }
-
-//     return Terminal{
-//         master = master,
-//         pid = pid,
-//     }, true
-// }
-
-// terminal_write :: proc(t: ^Terminal, s: string) {
-//     _ = posix.write(t.master, raw_data(s), len(s))
-// }
-// terminal_read :: proc(t: ^Terminal, buf: []u8) -> int {
-//     return posix.read(t.master, raw_data(buf), len(buf))
-// }
-
-// terminal_destroy :: proc(t: ^Terminal) {
-//     posix.close(t.master)
-// }
