@@ -5,6 +5,7 @@ import sdl "vendor:sdl3"
 import "core:log"
 import "core:mem"
 import "core:hash"
+import "core:slice"
 import "core:c"
 import "core:fmt"
 import "core:math"
@@ -47,7 +48,8 @@ Chunck::struct{
 	cells:[CHUNCK_SIZE][CHUNCK_SIZE]Cell,
 	cell_has_moved:[CHUNCK_SIZE][CHUNCK_SIZE]bool,
 	has_changed:bool,
-	change_count:i32,
+	// change_count:i32,
+	changes_since_last_sync:u32,
 }
 Sink_Chunck_Data::struct{//this is the data that gets sent over udp to sink chunck data
 	pos:[2]int,
@@ -501,7 +503,7 @@ set_cell_moved::proc(cell:[2]int,w_map:^Map, state:bool = true){
 	chunck:=get_chunck(cell, w_map)
 	chunck.has_changed =  state
 	if state == true{
-		chunck.change_count += 1
+		chunck.changes_since_last_sync += 1
 	}
 	chunck.cell_has_moved[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE] = state
 }
@@ -519,6 +521,16 @@ get_chunck_by_pos::proc(pos:[2]int,w_map:^Map)->(chunck_data:^Chunck){
 	if pos.y < 0 || pos.y > MAP_SIZE.y-1{return nil}
 	chunck_data = &w_map.chuncks[pos.x][pos.y]
 	return chunck_data
+}
+get_chunck_change_count_by_cell::proc(cell:[2]int,w_map:^Map)->(change_count:u32){
+	chunck:=get_chunck(cell,w_map)
+	change_count=chunck.changes_since_last_sync
+	return change_count
+}
+get_chunck_change_count::proc(pos:[2]int,w_map:^Map)->(change_count:u32){
+	chunck:=get_chunck_by_pos(pos,w_map)
+	change_count=chunck.changes_since_last_sync
+	return change_count
 }
 
 get_cell_data::proc(cell:[2]int,w_map:^Map)->(cell_data:^Cell_Data){
@@ -714,7 +726,7 @@ sink_all_chuncks::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
 	if g.server.status == .hosting{
 		for &row,x in &w_map.chuncks{
 			for &chunck,y in &row{
-				// send_sink_chunck(net_inst,{x,y},w_map)
+				send_sink_chunck(net_inst,{x,y},w_map)
 			}
 		}
 	}
@@ -725,7 +737,7 @@ send_sink_chunck::proc(net_inst:^tg.Networking_Instance,pos:[2]int,w_map:^Map){
 		fmt.print("faild to send chunk spesifid cunck is out of bounds\n")
 		return
 	}
-	chunck.change_count = 0
+	chunck.changes_since_last_sync = 0
 	sink_chunck:Sink_Chunck_Data={
 		pos = pos,
 		cells = chunck.cells,
@@ -739,6 +751,7 @@ sink_next_chunck::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
 	w_map.time_to_next_chunck_sink -= 1
 	if w_map.time_to_next_chunck_sink > 0{return}
 	w_map.time_to_next_chunck_sink = 10
+	sink_most_changed_chunck(net_inst,w_map)
 	w_map.next_chunck_to_sink.x+=1
 	if w_map.next_chunck_to_sink.x > MAP_SIZE.x-1{
 		w_map.next_chunck_to_sink.x = 0
@@ -748,8 +761,35 @@ sink_next_chunck::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
 		w_map.next_chunck_to_sink.y = 0
 		w_map.next_chunck_to_sink.x = 0
 	}
-	send_sink_chunck(net_inst,w_map.next_chunck_to_sink,w_map,)
+	// send_sink_chunck(net_inst,w_map.next_chunck_to_sink,w_map,)
+
 	
+}
+sink_most_changed_chunck::proc(net_inst:^tg.Networking_Instance,w_map:^Map){
+	chunck_count::MAP_SIZE.x * MAP_SIZE.y
+	chunck_list:[chunck_count][2]int
+	list_index:int=0
+	for &chuncks,x in &w_map.chuncks{
+		for &chunck,y in &chuncks{
+			chunck_list[list_index] = {x,y}
+			list_index+=1
+		}
+	}
+	slice.sort_by_cmp_with_data(chunck_list[:],cmp_chunks_by_changes,cast(rawptr)w_map )
+	send_sink_chunck(net_inst,chunck_list[0],w_map,)
+}
+cmp_chunks_by_changes::proc(chucnk_a, chucnk_b: [2]int, data:rawptr) -> (order:slice.Ordering){
+	w_map:= cast(^Map)data
+	a:=get_chunck_change_count(chucnk_a,w_map)
+	b:=get_chunck_change_count(chucnk_b,w_map)
+	if a < b{
+		order = .Greater
+	}else if a > b{
+		order = .Less
+	}else{
+		order = .Equal
+	}
+	return order
 }
 
 resv_sink_chunck::proc(server_cmd:^tg.Server_CMD){
