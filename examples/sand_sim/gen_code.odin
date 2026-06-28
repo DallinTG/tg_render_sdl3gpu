@@ -12,8 +12,10 @@ Image :: struct {
 
 Src_E :: enum {
 	 Ui_Shader_vert ,
+	 Sand_Sim_Shader_frag ,
 	 Shader_vert ,
 	 Ui_Shader_frag ,
+	 Sand_Sim_Shader_vert ,
 	 Shader_frag ,
 }
 
@@ -43,3 +45,4 @@ Textures_Data := [Textures_E]Image {
 	.World_Tileset = {  width = 256, height = 256, id = { 2062199185,1287989370},  },
 	.Castle = {  width = 32, height = 32, id = { 2062199185,2379043019},  },
 }
+

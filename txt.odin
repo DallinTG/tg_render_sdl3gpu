@@ -67,6 +67,7 @@ load_font_from_data :: proc(font_id:string ,height:f32, ttf_data:[]u8 = DEFALT_F
 	reg_texture_from_bits(&img,id, format = .R8G8B8A8_UNORM)
 	font.sg_image = id
 	font_hd = hm.add(&s.fonts, font)
+
 	return
 }
 get_font::proc(font_hd:Font_Handle)->(font:^Font){

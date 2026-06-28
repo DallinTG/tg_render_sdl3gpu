@@ -20,7 +20,7 @@ import "base:intrinsics"
 // MAP_SIZE:[2]int:{32,16}
 // CHUNCK_SIZE::16
 MAP_SIZE:[2]int:{16,8}
-CHUNCK_SIZE::32 
+CHUNCK_SIZE::32
 CELL_SIZE::10
 FULL_MAP_SIZE:[2]int:{ MAP_SIZE.x * CHUNCK_SIZE *CELL_SIZE, (MAP_SIZE.y * CHUNCK_SIZE *CELL_SIZE)}
 // MAP_SIZE:[2]int:{8,4}
@@ -39,6 +39,8 @@ Map::struct{
 	cell_CMD_count:int,
 	next_chunck_to_sink:[2]int,
 	time_to_next_chunck_sink:i32,
+
+	overlay_mesh:tg.Mesh_Handle,
 	// info:Map_Info,
 }
 Chunck::struct{
@@ -48,17 +50,33 @@ Chunck::struct{
 	cells:[CHUNCK_SIZE][CHUNCK_SIZE]Cell,
 	cell_has_moved:[CHUNCK_SIZE][CHUNCK_SIZE]bool,
 	has_changed:bool,
-	// change_count:i32,
 	changes_since_last_sync:u32,
+	ticks_to_sleep:i32, // this is the number of ticks untill the chunk will sleep will wakeup if somthing changes in it
+
+	dirty_rect_last:[4]int,
+	dirty_rect_cur:[4]int,
 }
 Sink_Chunck_Data::struct{//this is the data that gets sent over udp to sink chunck data
 	pos:[2]int,
 	cells:[CHUNCK_SIZE][CHUNCK_SIZE]Cell,
 }
-waf::2
+   
+
 Map_Info::struct{
-	wh:[waf]u32,
+	wh:[2]u32,
 }
+
+Sand_Sim_Cell_Vertex_Data :: struct #align(16) {
+	pos:tg.Vec4,
+	// _1:f32,
+	col:tg.Vec4,
+	// uv: [2]f32,
+	// _2:[2]f32,
+	// img_index:u32,
+	// layer:u32,
+	// col_over:[4]f32,
+}
+
 DEFALT_MAP_INFO::Map_Info{
 	wh = {CHUNCK_SIZE,CHUNCK_SIZE},
 }
@@ -119,11 +137,9 @@ Cell_Data::struct{
 	density:f32,
 	flow_rate:int,
 	starting_hp:u8,
+	hp_decay_rate:i32,
+	hp_decay_chance:f32,
 	on_contact:proc([2]int,),
-	// has_grav:bool,
-	// solid:bool,
-	// is_gass:bool,
-	
 }
 
 Cell_Info:=[Cell_ids]Cell_Data{
@@ -143,6 +159,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		slippage = 2,
 		color = {.9,.8,.2,1},
 		density = 3,
+		starting_hp = 5,
 	},
 	.gravel ={
 		flags={
@@ -153,6 +170,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		slippage = 1,
 		color = {.23,.22,.27,1},
 		density = 4,
+		starting_hp = 5,
 	},
 	.up_sand ={
 		flags={
@@ -162,16 +180,18 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		slippage = 2,
 		color = {.9,.8,.2,1},
 		density = -3,
+		starting_hp = 5,
 	},
 	.water ={
 		flags={
 
 			.has_grav,
 		},
-		slippage = 4,
+		slippage = 1,
 		color = {.27,.49,.9,1},
 		density = 1,
-		flow_rate = 4,
+		flow_rate = 5,
+		starting_hp = 10,
 		// temperature = -90,
 		// cold_transmute_temp = -100,
 		// cold_transmute = .ice,
@@ -187,6 +207,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		// slippage = 4,
 		color = {.349,.78,.851,1},
 		density = .9,
+		starting_hp = 5,
 		// flow_rate = 4,
 		// temperature = -1,
 		// cold_transmute_temp = -100,
@@ -202,6 +223,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		color = {.929,.337,.055,1},
 		density = 3,
 		flow_rate = 2,
+		starting_hp = 10,
 		// temperature = 1500,
 		// cold_transmute_temp = -1,
 		// cold_transmute = .stone,
@@ -216,6 +238,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		// slippage = 4,
 		color = {.38,.365,.341,1},
 		density = 4,
+		starting_hp = 50,
 		// flow_rate = 4,
 		// temperature = 0,
 		// cold_transmute_temp = -100,
@@ -233,6 +256,9 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		color = {.129,.237,.355,4},
 		density = 1,
 		flow_rate = 2,
+		starting_hp = 5,
+		hp_decay_rate = 1,
+		hp_decay_chance = .1,
 		// temperature = 200,
 		// hot_transmute_temp = 10000,
 		// cold_transmute_temp = -10,
@@ -251,10 +277,14 @@ out_of_bounds_cell:Cell={
 	id = .out_of_bounds,
 }
 
+CHUNCK_VERTEX_TYPE::Sand_Sim_Cell_Vertex_Data
 init_chunck_mesh::proc(w_map:^Chunck, map_info:=DEFALT_MAP_INFO){
-	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data}
+	mesh_cpu:tg.Mesh_CPU={attribute_type = CHUNCK_VERTEX_TYPE}
 	mesh_attribute_info:=type_info_of(mesh_cpu.attribute_type)
-	w_map.mesh = tg.create_mesh(mesh_cpu,cast(int)(map_info.wh.x*map_info.wh.y)*mesh_attribute_info.size)
+	// resize(&mesh_cpu.vertex_buf,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4) 
+	tg.init_buffer(&mesh_cpu.vertex_buf,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4,.static_buff)
+	resize(&mesh_cpu.index_buf,CHUNCK_SIZE * CHUNCK_SIZE * 6) 
+	w_map.mesh = tg.create_mesh(mesh_cpu,CHUNCK_SIZE * CHUNCK_SIZE * 4,CHUNCK_SIZE * CHUNCK_SIZE * 6,debug_name = "chunk")
 }
 
 get_cell_pos_by_pos::proc(pos:[2]f32)->([2]int){
@@ -271,12 +301,15 @@ init_map::proc(new_map:^^Map,){
 			init_chunck_mesh(&chunck)
 		}
 	}
+	overlay_mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data}
+	new_map^.overlay_mesh = tg.create_mesh(overlay_mesh_cpu,debug_name = "overlay_mesh")
+	
 }
-init_chunck::proc(new_chunck:^^Chunck,){
-	delete_chunck(new_chunck^)
-	new_chunck^ = new(Chunck)
-	init_chunck_mesh(new_chunck^)
-}
+// init_chunck::proc(new_chunck:^^Chunck,){
+// 	delete_chunck(new_chunck^)
+// 	new_chunck^ = new(Chunck)
+// 	init_chunck_mesh(new_chunck^)
+// }
 delete_w_map::proc(w_map:^Map){
 	if w_map == nil{return}
 	for &row in w_map^.chuncks{
@@ -284,6 +317,7 @@ delete_w_map::proc(w_map:^Map){
 			tg.delete_mesh(chunck.mesh)
 		}
 	}
+	tg.delete_mesh(w_map.overlay_mesh)
 	free(w_map)
 }
 delete_chunck::proc(w_map:^Chunck){
@@ -295,7 +329,7 @@ mesh_map::proc(w_map:^Map){
 	for &chuncks,x in &w_map.chuncks{
 		for &chunck,y in &chuncks{
 			if chunck.has_changed{
-				mesh_chunck(&chunck,{x,y})
+				mesh_chunck(&chunck,{x,y},w_map)
 			}
 		}
 	}
@@ -305,20 +339,61 @@ mesh_map::proc(w_map:^Map){
 			chunck.cell_has_moved = {}
 		}
 	}
+	tg.update_mesh(w_map.overlay_mesh)
+	mesh:=tg.get_mesh(w_map.overlay_mesh)
+	tg.clear_mesh_cpu(&mesh.cpu)
 }
 
-mesh_chunck::proc(chunck:^Chunck,pos:[2]int){
+mesh_chunck::proc(chunck:^Chunck,pos:[2]int,w_map:^Map){
 	mesh:=tg.get_mesh(chunck.mesh)
-	tg.clear_mesh_cpu(&mesh.cpu)//TODO Clears the mesh every frame this should only do that if somthing has changed
+	// tg.clear_mesh_cpu(&mesh.cpu)//TODO Clears the mesh every frame this should only do that if somthing has changed
 	draw_chunck(
 		mesh = &mesh.cpu,
 		tex_id = 1,
-		vert_t = tg.Vertex_Data,
+		vert_t = Sand_Sim_Cell_Vertex_Data,
 		pos = {cast(f32)(pos.x*CELL_SIZE*CHUNCK_SIZE),cast(f32)(pos.y*CELL_SIZE*CHUNCK_SIZE*-1),0},
 		// w_h = {CHUNCK_SIZE,CHUNCK_SIZE},
 		chunck = chunck,
 		scale = {CELL_SIZE,CELL_SIZE},
 	)
+	w_map_overlay_mesh:=tg.get_mesh(w_map.overlay_mesh)
+	if chunck.dirty_rect_last != {CHUNCK_SIZE,CHUNCK_SIZE,0,0}{
+		tg.draw_rect(
+			mesh = &w_map_overlay_mesh.cpu, 
+			tex_id = 1,
+			vert_t = tg.Vertex_Data, 
+			rect = {
+				// {
+				// 	cast(f32)(chunck.dirty_rect_last.x + pos.x*CHUNCK_SIZE) * (CELL_SIZE),
+				// 	cast(f32)((chunck.dirty_rect_last.y*-1 + pos.y*-1*CHUNCK_SIZE) * (CELL_SIZE) + (CHUNCK_SIZE*CHUNCK_SIZE*CELL_SIZE*pos.y)),
+				// 	0,
+				// },
+				// {
+				// 	cast(f32)((chunck.dirty_rect_last.z + pos.x*CHUNCK_SIZE) * (CELL_SIZE)-(chunck.dirty_rect_last.x + pos.x*CHUNCK_SIZE) * (CELL_SIZE)),
+				// 	cast(f32)((chunck.dirty_rect_last.w + pos.y*CHUNCK_SIZE) * (CELL_SIZE)-(chunck.dirty_rect_last.y + pos.y*CHUNCK_SIZE) * (CELL_SIZE)),
+				// }
+				{
+					cast(f32)(chunck.dirty_rect_last.x) * (CELL_SIZE),
+					cast(f32)(chunck.dirty_rect_last.y*-1) * (CELL_SIZE),
+					0,
+				},
+				{
+					cast(f32)((chunck.dirty_rect_last.z) * (CELL_SIZE)-(chunck.dirty_rect_last.x) * (CELL_SIZE)),
+					cast(f32)((chunck.dirty_rect_last.w) * (CELL_SIZE)-(chunck.dirty_rect_last.y) * (CELL_SIZE)),
+				},
+			},
+			origin = {
+				cast(f32)(pos.x*CHUNCK_SIZE*CELL_SIZE),
+				cast(f32)(pos.y*CHUNCK_SIZE*CELL_SIZE*-1),
+				0,
+			},
+			col = {1,1,1,.25}
+		)
+	}
+	// if chunck.ticks_to_sleep > 0 {
+	// 	tg.draw_text(mesh = &mesh.cpu,vert_t = tg.Vertex_Data,pos = {cast(f32)(pos.x*CELL_SIZE*CHUNCK_SIZE),cast(f32)(pos.y*CELL_SIZE*CHUNCK_SIZE*-1),0},text =fmt.tprint(chunck.ticks_to_sleep))
+	// }
+	// tg.draw_text(mesh = &mesh.cpu,vert_t = tg.Vertex_Data,pos = {cast(f32)(pos.x*CELL_SIZE*CHUNCK_SIZE),cast(f32)(pos.y*CELL_SIZE*CHUNCK_SIZE*-1),0},text =fmt.tprint(chunck.ticks_to_sleep))
 	tg.update_mesh(chunck.mesh)
 }
 
@@ -331,7 +406,11 @@ render_map::proc(w_map:^Map){
 			index+=1
 		}
 	}
-	tg.do_render_pass(&g.pass, &g.cam, meshes[:],)
+	tg.do_render_pass(&g.sand_sim_pass, &g.cam, meshes[:],)
+}
+
+render_map_debug_overlay::proc(w_map:^Map){
+	tg.do_render_pass(&g.pass, &g.cam, {w_map.overlay_mesh},)
 }
 
 rand_1_1:[2]int:{1,-1}
@@ -343,7 +422,14 @@ update_map::proc(w_map:^Map){
 	}else{
 		w_map.l_r = 1
 	}
-
+	// rand.reset(cast(u64)w_map.rand_tick_seed)
+	temp:=rand.int32_range(0,2)
+	if temp == 0{
+		w_map.l_r = -1
+	}else{
+		w_map.l_r = 1
+	}
+	// rand.reset(cast(u64)w_map.rand_tick_seed)
 	// w_map.l_r=rand.choice(rand_1[:])
 
 
@@ -353,11 +439,21 @@ update_map::proc(w_map:^Map){
 	sink_w_map_info(&g.server, g.w_map)
 
 
+	// for &chuncks,x in &w_map.chuncks{
+	// 	for &chunck,y in &chuncks{
+	// 		update_chunck(&chunck,x,y,w_map)
+	// 	}
+	// }
+	
+	
 	for &chuncks,x in &w_map.chuncks{
 		for &chunck,y in &chuncks{
 			update_chunck(&chunck,x,y,w_map)
+			chunck.dirty_rect_last = chunck.dirty_rect_cur
+			chunck.dirty_rect_cur = {CHUNCK_SIZE,CHUNCK_SIZE,0,0}
 		}
 	}
+
 
 	w_map.tick_count+=1
 	w_map.tick_count_loc+=1
@@ -369,28 +465,60 @@ update_chunck::proc(chunck:^Chunck,c_x:int,c_y:int,w_map:^Map){
 	// rand_1:[2]int=rand_1_1
 	// chunck.l_r=rand.choice(rand_1[:])
 
+	if chunck.ticks_to_sleep <=0 {return}
+	chunck.ticks_to_sleep -= 1
 
-	for &cells,x in &chunck.cells{
-		if w_map.tick_count % 2 == 0{
-			for &cell,y in &cells{
-				update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),&cell,w_map)
+	dirt_rect:=chunck.dirty_rect_last + {-1,-1,1,1}
+	dirt_rect.x = clamp(dirt_rect.x,0,CHUNCK_SIZE-1)
+	dirt_rect.y = clamp(dirt_rect.y,0,CHUNCK_SIZE-1)
+	dirt_rect.z = clamp(dirt_rect.z,0,CHUNCK_SIZE-1)
+	dirt_rect.w = clamp(dirt_rect.w,0,CHUNCK_SIZE-1)
+	
+	temp:=rand.int32_range(0,2)
+	if temp == 0{
+		for x := dirt_rect.x; x <= dirt_rect.z; x += 1 {
+			if w_map.tick_count % 2 == 0{
+				for y := dirt_rect.y; y <= dirt_rect.w; y += 1 {
+					cell:=get_cell({x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE)},w_map)
+					update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),cell,w_map)
+				}
+			}else{
+				for y := dirt_rect.w; y >= dirt_rect.y; y -= 1 {
+					cell:=get_cell({x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE)},w_map)
+					update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),cell,w_map)
+				}
 			}
-		}else{
-			#reverse for &cell,y in &cells{
-				update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),&cell,w_map)
+		}
+	}else{
+		for x := dirt_rect.z; x >= dirt_rect.x; x -= 1 {
+			if w_map.tick_count % 2 == 0{
+				for y := dirt_rect.y; y <= dirt_rect.w; y += 1 {
+					cell:=get_cell({x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE)},w_map)
+					update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),cell,w_map)
+				}
+			}else{
+				for y := dirt_rect.w; y >= dirt_rect.y; y -= 1 {
+					cell:=get_cell({x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE)},w_map)
+					update_cell(x+(c_x*CHUNCK_SIZE),y+(c_y*CHUNCK_SIZE),cell,w_map)
+				}
 			}
 		}
 	}
+
+	
 }
 update_cell::proc(x,y:int,cell:^Cell,w_map:^Map){
 	c:=&Cell_Info[cell.id]
 	if cell.id == .air {return}
 	if !is_cell_valid({x,y}, w_map){return}
 	if !get_cell_moved({x,y}, w_map){
+		do_cell_decay(cell, c, {x,y}, w_map)
+		if cell.id == .air {return}
 		// do_cell_temperature(c, {x,y}, w_map)
 		do_cell_gass(cell, c, {x,y}, w_map)
 		do_cell_grav(cell, c, {x,y}, w_map)
-		do_cell_flow(cell, c, {x,y}, w_map)
+
+	do_cell_flow(cell, c, {x,y}, w_map)
 	}
 }
 
@@ -414,17 +542,58 @@ do_cell_grav::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
 	}
 }
 
+do_cell_decay::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
+	cell_data:=get_cell_data(pos,w_map)
+	rand_val:=rand.float32_range(0,1)
+	if cell_data.hp_decay_chance > rand_val {
+		cell.hp -= cast(u8)cell_data.hp_decay_rate
+	}
+	if cell.hp <=0 {
+		destroy_cell(pos,w_map)
+	}
+}
+
+
 do_cell_flow::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
-	if get_cell_moved(pos, w_map){return}
+	// if get_cell_moved(pos, w_map){return}
+	// if can_cell_fall_through(pos,{pos.x, pos.y-1},w_map)||can_cell_fall_through(pos,{pos.x, pos.y-2},w_map){return}
 	if c.flow_rate > 0{ // flowing
-		for i in 1..=c.flow_rate{
-			if can_cell_fall_through(pos,{pos.x+w_map.l_r*i, pos.y},w_map){ //flow right
-				swap_cell(pos,{pos.x+w_map.l_r*i,pos.y},w_map)
-				return
-			}else if can_cell_fall_through(pos,{pos.x+w_map.l_r*-1*i, pos.y},w_map){ //flow left
-				swap_cell(pos,{pos.x+w_map.l_r*-1*i, pos.y},w_map)
-				return
-			}
+		// for i in 1..=c.flow_rate{
+		// 	if can_cell_fall_through(pos,{pos.x+w_map.l_r*i, pos.y},w_map){ //flow right
+		// 		swap_cell(pos,{pos.x+w_map.l_r*i,pos.y},w_map)
+		// 		return
+		// 	}else if can_cell_fall_through(pos,{pos.x+w_map.l_r*-1*i, pos.y},w_map){ //flow left
+		// 		swap_cell(pos,{pos.x+w_map.l_r*-1*i, pos.y},w_map)
+		// 		return
+		// 	}
+
+		// }
+		
+		
+
+		if can_cell_fall_through(pos,{pos.x+w_map.l_r, pos.y},w_map){ //flow right
+			// swap_cell(pos,{pos.x+w_map.l_r,pos.y},w_map)
+			shift_cells_in_row(cell,pos,w_map,c.flow_rate,1*w_map.l_r)
+			return
+		// }
+		}else if can_cell_fall_through(pos,{pos.x+w_map.l_r*-1, pos.y},w_map){ //flow left
+			// swap_cell(pos,{pos.x+w_map.l_r*-1, pos.y},w_map)
+			shift_cells_in_row(cell,pos,w_map,c.flow_rate,-1*w_map.l_r)
+			return
+		}
+		
+		
+	}
+}
+shift_cells_in_row::proc(cell:^Cell,pos:[2]int,w_map:^Map,shift_count:int,shift_dir:int){
+	for i in 1..=shift_count{
+	// i:=1
+		cell_id:=cell.id
+		if cell_id == get_cell({pos.x+(i-1)*shift_dir,pos.y},w_map).id{
+		// if can_cell_fall_through(pos,{pos.x+i*shift_dir, pos.y},w_map){
+			swap_cell({pos.x+(i-1)*shift_dir,pos.y},{pos.x+i*shift_dir,pos.y},w_map)
+		}else{
+			return
 		}
 	}
 }
@@ -504,8 +673,18 @@ set_cell_moved::proc(cell:[2]int,w_map:^Map, state:bool = true){
 	chunck.has_changed =  state
 	if state == true{
 		chunck.changes_since_last_sync += 1
+		chunck.ticks_to_sleep = 10
+		// update_chuncks_dirty_rect(cell,w_map)
 	}
 	chunck.cell_has_moved[cell.x%CHUNCK_SIZE][cell.y%CHUNCK_SIZE] = state
+}
+destroy_cell::proc(cell:[2]int,w_map:^Map){
+	cell_data:=get_cell(cell,w_map)
+	cell_data^ = {}
+	chunck:=get_chunck(cell, w_map)
+	chunck.has_changed = true
+	chunck.ticks_to_sleep = 10
+	update_chuncks_dirty_rect(cell,w_map)
 }
 get_cell_moved::proc(cell:[2]int,w_map:^Map,)->(bool){
 	if !is_cell_valid(cell,w_map) {return true}
@@ -531,6 +710,22 @@ get_chunck_change_count::proc(pos:[2]int,w_map:^Map)->(change_count:u32){
 	chunck:=get_chunck_by_pos(pos,w_map)
 	change_count=chunck.changes_since_last_sync
 	return change_count
+}
+update_chuncks_dirty_rect::proc(pos:[2]int,w_map:^Map){
+	chunck:=get_chunck(pos,w_map)
+	if pos.x%CHUNCK_SIZE < chunck.dirty_rect_cur.x+1{
+		chunck.dirty_rect_cur.x = pos.x%CHUNCK_SIZE-1
+	}
+	if pos.y%CHUNCK_SIZE < chunck.dirty_rect_cur.y+1{
+		chunck.dirty_rect_cur.y = pos.y%CHUNCK_SIZE-1
+	}
+	if pos.x%CHUNCK_SIZE > chunck.dirty_rect_cur.z-2{
+		chunck.dirty_rect_cur.z = pos.x%CHUNCK_SIZE+2
+	}
+	if pos.y%CHUNCK_SIZE > chunck.dirty_rect_cur.w-2{
+		chunck.dirty_rect_cur.w = pos.y%CHUNCK_SIZE+2
+	}
+
 }
 
 get_cell_data::proc(cell:[2]int,w_map:^Map)->(cell_data:^Cell_Data){
@@ -588,6 +783,8 @@ swap_cell::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map){
 	cell_a_p^ = cell_b_val
 	cell_b_p^ = cell_a_val
 
+	update_chuncks_dirty_rect(cell_a,w_map)
+	update_chuncks_dirty_rect(cell_b,w_map)
 	// set that the cell has moved this frame to stop it frome moving multipul times
 	set_cell_moved(cell_a, w_map, true)
 	set_cell_moved(cell_b, w_map, true)
@@ -595,7 +792,10 @@ swap_cell::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map){
 set_cell::proc(cell:[2]int, new_cell_data:Cell, w_map:^Map){
 	if !is_cell_valid(cell,w_map) {return}
 	// w_map.cells[cell.x][cell.y] = new_cell_data
+	chunck:=get_chunck(cell, w_map)
 	get_cell(cell,w_map)^ = new_cell_data
+	chunck.ticks_to_sleep = 10
+	update_chuncks_dirty_rect(cell,w_map)
 }
 set_cell_by_id::proc(cell:[2]int, id:Cell_ids, w_map:^Map){
 	set_cell(cell, {id =id, temperature = Cell_Info[id].starting_temperature ,hp = Cell_Info[id].starting_hp, flags = Cell_Info[id].flags}, w_map)
@@ -675,9 +875,29 @@ draw_chunck::proc(
 	rotate_m4:    tg.Mat4 = lin.matrix4_from_quaternion_f32(rotate_q)
 	mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
 
-	for y in 0..<CHUNCK_SIZE{
-		for x in 0..<CHUNCK_SIZE{
+	// resize(&mesh.vertex_buf,size_of(vert_t) * CHUNCK_SIZE * CHUNCK_SIZE * 4) 
+	// resize(&mesh.index_buf,CHUNCK_SIZE * CHUNCK_SIZE * 6) 
+
+	mesh.index_buf_used = CHUNCK_SIZE * CHUNCK_SIZE * 6
+	// mesh.vertex_buf_used = size_of(vert_t) * CHUNCK_SIZE * CHUNCK_SIZE * 4
+	// mesh.vertex_count = CHUNCK_SIZE * CHUNCK_SIZE * 4
+
+	// fmt.print(mesh.index_buf_used,mesh.vertex_buf_used,mesh.vertex_count,"\n\n")
+
+	dirt_rect:=chunck.dirty_rect_last + {-1,-1,1,1}
+	dirt_rect.x = clamp(dirt_rect.x,0,CHUNCK_SIZE-1)
+	dirt_rect.y = clamp(dirt_rect.y,0,CHUNCK_SIZE-1)
+	dirt_rect.z = clamp(dirt_rect.z,0,CHUNCK_SIZE-1)
+	dirt_rect.w = clamp(dirt_rect.w,0,CHUNCK_SIZE-1)
+	
+	for x in dirt_rect.x..=dirt_rect.z{
+		for y in dirt_rect.y..=dirt_rect.w{
+	// for y in 0..<CHUNCK_SIZE{
+	// 	for x in 0..<CHUNCK_SIZE{
+			vert_offset:= (y*CHUNCK_SIZE+x) * 4
+			index_offset:= (y*CHUNCK_SIZE+x) * 6
 			if chunck.cells[x][y].id != .air{
+				// fmt.print("vert_offset:",vert_offset , "   index_offset:",index_offset,"\n")
 				when intrinsics.type_has_field(vert_t, "pos"){
 					//front
 					// fmt.print( (x+w_h.x*y)*4 ,x,y," {x*y =",x*y,"}","\n")
@@ -716,7 +936,11 @@ draw_chunck::proc(
 						vert.layer = tex.layer
 					}
 				}
-				tg.draw_verts_by_quad_mat(mesh, cast(u32)(1), verts[:], mat)
+				// tg.draw_verts_by_quad_mat(mesh, cast(u32)(1), verts[:], mat)
+				tg.draw_over_verts_by_quad_mat(mesh, cast(u32)(1), verts[:],vert_offset,index_offset, mat)
+			}else{
+				verts = {}
+				tg.draw_over_verts_by_quad_mat(mesh, cast(u32)(1), verts[:],vert_offset,index_offset, mat)
 			}
 		}
 	}

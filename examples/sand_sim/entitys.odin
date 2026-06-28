@@ -46,7 +46,7 @@ Mob_Entitys::struct{
 init_entitys_mesh::proc(){
 	mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data}
 	mesh_attribute_info:=type_info_of(mesh_cpu.attribute_type)
-	g.entitys_mesh = tg.create_mesh(mesh_cpu,10000)
+	g.entitys_mesh = tg.create_mesh(mesh_cpu,10000 ,debug_name = "entitys")
 }
 
 spawn_entity::proc(entitys:^Entity_Handle_Map,ent:Entity={})->(hd:Entity_Handle){

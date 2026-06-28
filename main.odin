@@ -230,7 +230,7 @@ init_window::proc(dec:Init_Dec=INIT_DEC)->(window_hd:Window_Handle){
 	s.swap_chain_texture_format = window.swap_chain_format
 	window_hd = hm.add(&s.windows,window)
 
-	// swapchane_ok:=sdl.SetGPUSwapchainParameters(s.gpu_device,window.data,.SDR,.IMMEDIATE)
+	swapchane_ok:=sdl.SetGPUSwapchainParameters(s.gpu_device,window.data,.SDR,.IMMEDIATE)
 	return
 }
 
@@ -357,9 +357,11 @@ do_render_pass::proc(
 
 	for mesh_hd in meshes_hd{
 		mesh:=get_mesh(mesh_hd)
+		// sdl.BindGPUVertexStorageBuffers
 		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
 		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)	
-		sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0)
+		sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0) 
+		
 	}
 }
 check_and_resize_all_frame_buffers::proc(

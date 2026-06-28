@@ -32,16 +32,20 @@ Game::struct{
 	all_player_data:All_Player_data,
 	// world_mesh:tg.Mesh_Handle,
 	frame_data:tg.Frame_Data,
-	pass:tg.R_Pass,
-	ui_pass:tg.R_Pass,
 	window:tg.Window_Handle, 
 	curent_game_mode:Game_Mode,
 	next_game_mode:Game_Mode,
+
+	pass:tg.R_Pass,
+	ui_pass:tg.R_Pass,
+	sand_sim_pass:tg.R_Pass,
 
 	vert_shader:tg.Shader_Handle,
 	frag_shader:tg.Shader_Handle,
 	ui_vert_shader:tg.Shader_Handle,
 	ui_frag_shader:tg.Shader_Handle,
+	sand_sim_vert_shader:tg.Shader_Handle,
+	sand_sim_frag_shader:tg.Shader_Handle,
 
 
 	render_thread:^thread.Thread,
@@ -111,10 +115,15 @@ main :: proc(){
 	g.ui_vert_shader = tg.load_shader_file(file_path = "ui_shader.vert")
 	g.ui_frag_shader = tg.load_shader_file(file_path = "ui_shader.frag")
 
+	g.sand_sim_vert_shader = tg.load_shader_file(file_path = "sand_sim_shader.vert")
+	g.sand_sim_frag_shader = tg.load_shader_file(file_path = "sand_sim_shader.frag")
+
 
 
 	g.pass = tg.create_render_pass(&g.frame_data, g.vert_shader, g.frag_shader)
-	g.ui_pass = tg.create_render_pass(&g.frame_data,g.ui_vert_shader, g.ui_frag_shader)
+	g.ui_pass = tg.create_render_pass(&g.frame_data, g.ui_vert_shader, g.ui_frag_shader)
+	g.sand_sim_pass = tg.create_render_pass(&g.frame_data, g.sand_sim_vert_shader, g.sand_sim_frag_shader)
+
 	init()
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
@@ -142,12 +151,12 @@ main :: proc(){
 				dt_time=cast(f32)s.time.dt_60_hz,
 				// enable_drag_scrolling=.
 			)
-			if is_input_event(.ui_shift){
-				// tg.update_lobby_data(temp.ulSteamIDLobby)
-				fmt.print("updating_stuff\n")
-				tg.update_steam_friend_info()
-				tg.join_server(server_endpoint = s.steam.steam_lobby.loby_owner_net_id, net_inst=&g.server)
-			}
+			// if is_input_event(.ui_shift){
+			// 	// tg.update_lobby_data(temp.ulSteamIDLobby)
+			// 	fmt.print("updating_stuff\n")
+			// 	tg.update_steam_friend_info()
+			// 	tg.join_server(server_endpoint = s.steam.steam_lobby.loby_owner_net_id, net_inst=&g.server)
+			// }
 			
 			tg.pros_server_cmd_q(&g.server)
 			manage_gmae_mode_state()
@@ -215,19 +224,27 @@ do_mode_game::proc(){
 	if g.server.status == .hosting{
 		server_set_cell_by_id({10,10}, .sand,g.w_map)
 		server_set_cell_by_id({20,20}, .water,g.w_map)
-		server_set_cell_by_id({200,20}, .gravel,g.w_map)
-		server_set_cell_by_id({175,20}, .lava,g.w_map)
-		server_set_cell_by_id({150,20}, .steam,g.w_map)
-		server_set_cell_by_id({350,20}, .steam,g.w_map)
+		server_set_cell_by_id({200,20}, .lava,g.w_map)
+		server_set_cell_by_id({175,20}, .water,g.w_map)
+		server_set_cell_by_id({150,20}, .gravel,g.w_map)
+		server_set_cell_by_id({350,20}, .water,g.w_map)
 	}
 	if is_input_event(.ui_shift){
+		if g.server.status == .hosting{
+			server_set_cell_by_id({10,10}, .sand,g.w_map)
+			server_set_cell_by_id({20,20}, .water,g.w_map)
+			server_set_cell_by_id({200,20}, .water,g.w_map)
+			server_set_cell_by_id({175,20}, .water,g.w_map)
+			server_set_cell_by_id({150,20}, .water,g.w_map)
+			server_set_cell_by_id({350,20}, .water,g.w_map)
+		}
 		// enabled := steam.Utils_IsOverlayEnabled(steam.Utils())
 
 		// friends := steam.Friends()
 
 		// steam.Friends_ActivateGameOverlay(friends,"Friends")
-		tg.send_simp_notification(&s.notifications,"waffles shift")
-		tg.update_steam_friend_info()
+		// tg.send_simp_notification(&s.notifications,"waffles shift")
+		// tg.update_steam_friend_info()
 	}
 	do_entitys(&g.entitys)
 	draw_update_entitys_mesh(&g.entitys)
@@ -274,14 +291,19 @@ init_rendering_thread::proc(){
 
 do_rendering::proc(){
 	rendering_loop:for !s.app_should_close {
+
+		// mesh_map(g.w_map)
+	
 		tg.start_frame(&g.frame_data)
 
 		// do gameplay pass
-		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
+		tg.start_render(&g.sand_sim_pass ,&g.cam_ui, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
 		render_map(g.w_map)
-		// draw_update_entitys_mesh(&g.entitys)
+		tg.submit_render(&g.sand_sim_pass)
+
+		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE_AND_STORE)
 		render_entitys(&g.entitys)
-		// tg.render_clay_instance(g.ui_clay_inst,&g.pass,&g.cam_ui)
+		render_map_debug_overlay(g.w_map)
 		tg.submit_render(&g.pass)
 
 		//do render pass
