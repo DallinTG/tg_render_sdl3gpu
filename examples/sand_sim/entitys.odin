@@ -7,6 +7,7 @@ import "core:mem"
 import "core:hash"
 import "core:c"
 import "core:fmt"
+import "core:math"
 import hm "../../handle_map_static_virtual"
 import an"../../ansi"
 import lin"core:math/linalg"
@@ -50,7 +51,7 @@ init_entitys_mesh::proc(){
 }
 
 spawn_entity::proc(entitys:^Entity_Handle_Map,ent:Entity={})->(hd:Entity_Handle){
-	hd = hm.add(entitys,Entity{type_data = Player_Entitys{},collider = {2,3}})
+	hd = hm.add(entitys,Entity{type_data = Player_Entitys{},collider = {20,30}})
 	return
 }
 
@@ -77,10 +78,10 @@ draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	mesh:=tg.get_mesh(g.entitys_mesh)
 	tg.clear_mesh_cpu(&mesh.cpu)
 	for ent in hm.iter(&ent_iter) {
-		tg.draw_rect(&mesh.cpu,"",tg.Vertex_Data,{1,1,1,1},{ent.pos,{10,10}})
-		tg.draw_rect_rounded(&mesh.cpu,"",tg.Vertex_Data,col={1,1,1,1},rec={ent.pos+{20,20,0},{100,100}},roundness = .2)
-		
-		tg.draw_ring(&mesh.cpu,.Hats_Balloon_Party,tg.Vertex_Data,ent.pos,10,10,20,col={1,1,1,1})
+		tg.draw_rect(&mesh.cpu,"",tg.Vertex_Data,{1,1,1,1},{ent.pos,{ent.collider.x,ent.collider.y},},origin = {-ent.collider.x/2, ent.collider.y,0},)
+		// tg.draw_rect_rounded(&mesh.cpu,"",tg.Vertex_Data,col={1,1,1,1},rec={ent.pos+{20,20,0},{100,100}},roundness = .2)
+
+		// tg.draw_ring(&mesh.cpu,.Hats_Balloon_Party,tg.Vertex_Data,ent.pos,10,10,20,col={1,1,1,1})
 		// switch &e in &ent.type_data{
 		// 	case Player_Entitys:
 		// 	do_players(ent,&e)
@@ -88,40 +89,17 @@ draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 			
 		// }
 	}
-	pos:[3]f32
-	for fri in s.steam.friends.player{
-	// fmt.print([2]u32{fri.l_player_icon_gpu_id.idx,fri.l_player_icon_gpu_id.gen})
-		pos+={100,0,0}
-		tg.draw_rect(&mesh.cpu,fri.l_player_icon_gpu_id,tg.Vertex_Data,{1,1,1,1},{pos,{50,50}})
-	}
+	// pos:[3]f32
+	// for fri in s.steam.friends.player{
+	// // fmt.print([2]u32{fri.l_player_icon_gpu_id.idx,fri.l_player_icon_gpu_id.gen})
+	// 	pos+={100,0,0}
+	// 	tg.draw_rect(&mesh.cpu,fri.l_player_icon_gpu_id,tg.Vertex_Data,{1,1,1,1},{pos,{50,50}})
+	// }
 	tg.draw_fps(&mesh.cpu,tg.Vertex_Data,{0,0,0})
 	tg.draw_tps(&mesh.cpu,tg.Vertex_Data,{0,-20,0})
 	tg.update_mesh(g.entitys_mesh)
 }
 render_entitys::proc(entitys:^Entity_Handle_Map,){
-	
-	// ent_iter := hm.make_iter(entitys)
-	// mesh:=tg.get_mesh(g.entitys_mesh)
-	// tg.clear_mesh_cpu(&mesh.cpu)
-	// for ent in hm.iter(&ent_iter) {
-	// 	tg.draw_rect(&mesh.cpu,"",tg.Vertex_Data,{1,1,1,1},{ent.pos,{10,10}})
-		
-	// 	// switch &e in &ent.type_data{
-	// 	// 	case Player_Entitys:
-	// 	// 	do_players(ent,&e)
-	// 	// 	case Mob_Entitys:
-			
-	// 	// }
-	// }
-	// pos:[3]f32
-	// for fri in s.steam.friends.player{
-
-	// 	pos+={100,0,0}
-	// 	tg.draw_rect(&mesh.cpu,fri.l_player_icon_gpu_id,tg.Vertex_Data,{1,1,1,1},{pos,{50,50}})
-	// }
-	// tg.draw_fps(&mesh.cpu,tg.Vertex_Data,{0,0,0})
-	// tg.draw_tps(&mesh.cpu,tg.Vertex_Data,{0,-20,0})
-	// tg.update_mesh(g.entitys_mesh)
 	tg.do_render_pass(&g.pass, &g.cam, {g.entitys_mesh})
 }
 get_entity::proc(hd:Entity_Handle)->(ent:^Entity){
@@ -149,6 +127,7 @@ add_player_by_id::proc(id:u64){
 		pos= {},
 		handle = {},
 		type = .player,
+		collider = {10,10},
 		type_data = Player_Entitys{},
 	}
 	ent_hd:=spawn_entity(&g.entitys,player)
@@ -166,6 +145,7 @@ AIR_RESIST: f32 : 0.98
 do_entity_physics::proc(ent:^Entity){
 	ent.velocity +=GRAV
 	ent.velocity *= AIR_RESIST
+	colide_whith_cells(ent,g.w_map)
 	if ent.pos.x + ent.velocity.x <= 0{ // MAP_SIZE.x * CHUNCK_SIZE *CELL_SIZE
 		ent.pos.x = 0
 		ent.velocity.x = 0
@@ -182,8 +162,138 @@ do_entity_physics::proc(ent:^Entity){
 		ent.pos.y = cast(f32)-FULL_MAP_SIZE.y
 		ent.velocity.y = 0
 	}
-	ent.pos.xy += ent.velocity
+	// ent.pos.xy += ent.velocity
 }
+EPS :: 0.001 // this is to help whith flouting point errs
+is_coliding_on_x::proc(ent:^Entity, w_map:^Map, offset:[2]f32 = {})->(left:bool,right:bool,cell_pos:[2]int,){
+
+
+	
+	min_y := cast(int)math.floor(((-ent.pos.y + offset.y) - ent.collider.y) / CELL_SIZE)
+	max_y := cast(int)math.floor((-ent.pos.y + offset.y) / CELL_SIZE)
+
+	if ent.velocity.x > 0{
+		cell_x :=  math.floor(((ent.pos.x + offset.x + ent.collider.x * 0.5) / CELL_SIZE))
+		for y := min_y; y <= max_y; y += 1 {
+			cell := get_cell({cast(int)cell_x, y}, w_map)
+			if .is_solid in cell.flags  {
+				right = true
+				cell_pos = {cast(int)cell_x, y}
+		        // ent.pos.x = (cell_x * CELL_SIZE) - ent.collider.x * 0.5 - EPS
+		        // ent.velocity.x = 0
+		        return
+		    }
+		}
+	}
+	if ent.velocity.x < 0{
+		cell_x := math.floor(((ent.pos.x + offset.x - ent.collider.x * 0.5) / CELL_SIZE))
+		for y := min_y; y <= max_y; y += 1 {
+			cell := get_cell({cast(int)cell_x, y}, w_map)
+			if .is_solid in cell.flags  {
+				left = true
+				cell_pos = {cast(int)cell_x, y}
+		        // ent.pos.x = ((cell_x + 1) * CELL_SIZE) + ent.collider.x * 0.5 + EPS
+		        // ent.velocity.x = 0
+		        return
+		    }
+		}
+	}
+	return
+}
+
+is_coliding_on_y::proc(ent:^Entity, w_map:^Map, offset:[2]f32 = {})->(up:bool,down:bool,cell_pos:[2]int,){
+
+	min_x :=  cast(int)math.floor(((ent.pos.x + offset.x - ent.collider.x/2) / CELL_SIZE))
+	max_x := cast(int)math.floor(((ent.pos.x + offset.x + ent.collider.x/2) / CELL_SIZE))
+
+	if ent.velocity.y > 0{
+
+		cell_y := math.floor((((-ent.pos.y + offset.y) - ent.collider.y) / CELL_SIZE))
+		for x := min_x; x <= max_x; x += 1 {
+			cell := get_cell({x, cast(int)cell_y}, w_map)
+			if .is_solid in cell.flags  {
+				up = true
+				cell_pos = {x, cast(int)cell_y}
+		        // ent.pos.y = -((cell_y + 1) * CELL_SIZE) + ent.collider.y + EPS
+		        // ent.velocity.y = 0
+		        return
+		    }
+		}
+	}
+	if ent.velocity.y < 0{
+		cell_y := math.floor(((-ent.pos.y + offset.y) / CELL_SIZE))
+
+		for x := min_x; x <= max_x; x += 1 {
+			cell := get_cell({x, cast(int)cell_y}, w_map)
+			if .is_solid in cell.flags  {
+				down = true
+				cell_pos = {x, cast(int)cell_y}
+		        // ent.pos.y = -(cell_y * CELL_SIZE) - EPS
+		        // ent.velocity.y = 0
+		        return
+		    }
+		}
+	}
+	return
+}
+
+colide_whith_cells::proc(ent:^Entity,w_map:^Map){
+	steps_x := max(1,cast(int)math.ceil(math.abs(ent.velocity.x) / CELL_SIZE),)
+	step_x := ent.velocity.x / cast(f32)steps_x
+	step_up_hight_incriment:f32=CELL_SIZE * 3
+	x_step_loop:for i := 0; i < steps_x; i += 1 {
+		ent.pos.x += step_x
+		left,right,cell_pos_x:=is_coliding_on_x(ent,w_map)
+		if left{
+			step_up_loop_l:for step_up_hight :f32= CELL_SIZE; step_up_hight < step_up_hight_incriment+CELL_SIZE; step_up_hight += CELL_SIZE {
+				j_left,j_right,j_cell_pos:=is_coliding_on_x(ent,w_map,{0,-step_up_hight})
+				fmt.print(step_up_hight," l\n")
+				if !j_left && !j_right {
+					ent.pos.y += step_up_hight
+					break x_step_loop
+				}
+			}
+        	ent.pos.x = (cast(f32)(cell_pos_x.x + 1) * CELL_SIZE) + ent.collider.x * 0.5 + EPS
+        	ent.velocity.x = 0
+			break x_step_loop
+		}
+		if right{
+			
+			step_up_loop_r:for step_up_hight :f32= CELL_SIZE; step_up_hight < step_up_hight_incriment+CELL_SIZE; step_up_hight += CELL_SIZE {
+				j_left,j_right,j_cell_pos:=is_coliding_on_x(ent,w_map,{0,-step_up_hight})
+				fmt.print(step_up_hight," r\n")
+				if !j_left && !j_right {
+					ent.pos.y += step_up_hight
+					break x_step_loop
+				}
+			}
+			ent.pos.x = (cast(f32)cell_pos_x.x * CELL_SIZE) - ent.collider.x * 0.5 - EPS
+			ent.velocity.x = 0
+			break x_step_loop
+		}
+	}
+
+	steps_y := max(1,cast(int)math.ceil(math.abs(ent.velocity.y) / CELL_SIZE),)
+	step_y := ent.velocity.y / cast(f32)steps_y
+	y_step_loop:for i := 0; i < steps_y; i += 1 {
+
+	ent.pos.y += step_y
+	up,down,cell_pos_y:=is_coliding_on_y(ent,w_map)
+
+		if up{
+			ent.pos.y = -(cast(f32)(cell_pos_y.y + 1) * CELL_SIZE) + ent.collider.y - EPS
+			ent.velocity.y = 0
+			break y_step_loop
+		}
+		if down{
+			ent.pos.y = -(cast(f32)cell_pos_y.y * CELL_SIZE) + EPS
+			ent.velocity.y = 0
+			break y_step_loop
+		}
+	}
+	// fmt.print(ent.pos,"\n")
+}
+
 
 do_player_inputs::proc(){
 

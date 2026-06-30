@@ -126,25 +126,15 @@ delete_mesh::proc(mesh_hd:Mesh_Handle){
 }
 update_mesh::proc(mesh_hd:Mesh_Handle){
 	mesh:=get_mesh(mesh_hd)
-	// fmt.print("updating mesh ",mesh.cpu.name, mesh_hd,"\n\n")
-	// vertices_byte_size:=len(mesh.cpu.vertex_buf)//_________________________________
-	// vertices_byte_size := mesh.cpu.vertex_buf_used
 	vertices_byte_size := len(mesh.cpu.vertex_buf.buffer.buf)
-
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
-	// indices_byte_size:=cast(int)mesh.cpu.index_buf_used * size_of(u32)
-	// fmt.print("indices_byte_size",indices_byte_size,"len(mesh.cpu.index_buf)",len(mesh.cpu.index_buf), "||",mesh.cpu.index_buf_used * size_of(u32),"vs",cast(int)mesh.cpu.index_buf_used * size_of(u32),"\n")
-	// fmt.print(vertices_byte_size,indices_byte_size,"\n")
-	// if vertices_byte_size == 0 || indices_byte_size == 0 {return }
-
 	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, false)//TODO may be ablle to remove the mem copyes by seting the transfer buff as cpu data
-	// mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf), cast(int)vertices_byte_size)
-	mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf.buffer.buf), cast(int)vertices_byte_size)
+	// mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf.buffer.buf), cast(int)vertices_byte_size)
+	copy(transfer_mem[:vertices_byte_size],mesh.cpu.vertex_buf.buffer.buf[:])
 	mem.copy(transfer_mem[vertices_byte_size:], raw_data(mesh.cpu.index_buf), indices_byte_size)
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
-	// fmt.print(vertices_byte_size,"\n")
 
 	if vertices_byte_size > 0 {
 		sdl.UploadToGPUBuffer(
@@ -252,13 +242,6 @@ clear_mesh_cpu::proc(mesh:^Mesh_CPU){
 	// mesh.vertex_buf_used = 0
 	// mesh.vertex_count = 0
 }
-
-// Mesh_vert::union{
-// 	Mesh,
-// 	Mesh_CPU,
-// }
-
-
 transform_verts::proc(verts:$T/[]$E , mat:matrix[4, 4]f32 = Mat4(1)){
 	vec4:Vec4
 	for &v , i in verts{
