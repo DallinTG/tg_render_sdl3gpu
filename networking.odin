@@ -199,7 +199,7 @@ do_udp_server::proc(server:^Networking_State){
 	if len(received) == 0 {return}
 	free_all(context.temp_allocator)
 }
-send_udp::proc(net_st:^Networking_State, endpoint:Endpoint, data:[]u8)->(bytes_sent:int, err_send:net.UDP_Send_Error){
+send_udp::proc(net_st:^Networking_State, endpoint:^Endpoint, data:[]u8)->(bytes_sent:int, err_send:net.UDP_Send_Error){
 	switch &ep in endpoint{
 		case  net.Endpoint:
 			bytes_sent, err_send = net.send_udp(net_st.sock, data[:], ep)
@@ -358,12 +358,12 @@ start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 		}
 	}
 }
-join_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
+join_server::proc(server_endpoint:^Endpoint, net_inst:^Networking_Instance){
 // join_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
 	// switch ep in server_endpoint{
 	// case net.Endpoint:
 		log.logf(.Info, "conecting to server")
-		net_inst.net_state = init_udp_echo_client(server_endpoint)
+		net_inst.net_state = init_udp_echo_client(server_endpoint^)
 		send_join_request(server_endpoint,net_inst)
 // 	case steam.SteamNetworkingIdentity:
 // 		steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
@@ -417,8 +417,9 @@ update_network_clients_in_steam_lobby::proc(net_inst:^Networking_Instance){
 	if s.steam.is_using_steam != true {return}
 	if net_inst.networking_type != .steam {return}
 	if s.steam.steam_lobby.groop.updated_count > net_inst.last_time_steam_updated_lobby {
-		for player in s.steam.steam_lobby.groop.player{
-			join_client(net_inst,player.cs_id,player.net_id)
+		for &player in s.steam.steam_lobby.groop.player{
+			temp_endpoint:Endpoint = player.net_id
+			join_client(net_inst,player.cs_id,&temp_endpoint)
 		}
 		net_inst.last_time_steam_updated_lobby = s.steam.steam_lobby.groop.updated_count
 	}
@@ -443,7 +444,7 @@ endpoint_from_string_endpoint::proc(endpoint_string:Endpoint_String={ip="10.0.0.
 	return
 }
 
-send_join_request::proc(endpoint:Endpoint, net_inst:^Networking_Instance){
+send_join_request::proc(endpoint:^Endpoint, net_inst:^Networking_Instance){
 	net_inst.status = .joining
 	net_inst.status = .joining
 	cmd:Net_Command
@@ -453,7 +454,7 @@ send_join_request::proc(endpoint:Endpoint, net_inst:^Networking_Instance){
 	send_net_command(net_inst, endpoint, cmd)
 }
 
-send_net_command::proc(net_inst:^Networking_Instance,endpoint:Endpoint, cmd:Net_Command, buf:[]u8 = {},){
+send_net_command::proc(net_inst:^Networking_Instance,endpoint:^Endpoint, cmd:Net_Command, buf:[]u8 = {},){
 	cmd:=cmd
 	cmd.id =  net_inst.id
 	cmd.data_len = cast(u32)len(buf)
@@ -486,7 +487,7 @@ send_net_command_to_server::proc(net_inst:^Networking_Instance, cmd:Net_Command,
 		}
 		add_server_cmd_to_q(net_inst,cmd,net_inst.server.endpoint,new_buf)
 	}else{
-		send_net_command(net_inst,net_inst.server.endpoint, cmd, buf)
+		send_net_command(net_inst,&net_inst.server.endpoint, cmd, buf)
 	}
 }
 
@@ -498,7 +499,7 @@ send_net_command_to_client::proc(net_inst:^Networking_Instance,client :^Client, 
 		cmd.id =  net_inst.id
 		// command:=transmute([size_of(Net_Command)]u8)cmd
 		// bsent,err:=tg.send_udp(&g.server.net_state, client.endpoint, command[:])
-		send_net_command(net_inst ,client.endpoint, cmd, buf)
+		send_net_command(net_inst ,&client.endpoint, cmd, buf)
 	
 
 }
@@ -602,7 +603,7 @@ pros_server_cmd_q::proc(net_inst:^Networking_Instance){
 				// }else{
 				// 	send_net_command(net_inst,endpoint, Net_Command{type = cast(u32)Net_Commands_Type.regect_join, flags = {.force_process}})
 				// }
-				join_client(net_inst,cmd.id,endpoint)
+				join_client(net_inst,cmd.id,&endpoint)
 			case .leave:
 			case .accept_join,.regect_join,.server_shutdown:
 				log.logf(.Info,"Server Received Server Commands")
@@ -628,13 +629,13 @@ pros_server_cmd_q::proc(net_inst:^Networking_Instance){
 	hm.clear(&net_inst.cmd_q)
 }
 
-join_client::proc(net_inst:^Networking_Instance,client_id:u64,clients_endpoint:Endpoint){
+join_client::proc(net_inst:^Networking_Instance,client_id:u64,clients_endpoint:^Endpoint){
 	has_allredy_joined := client_id in net_inst.clients
 	if !has_allredy_joined {
 		net_inst.clients[client_id] = {}
 		client_data:=&net_inst.clients[client_id]
 		client_data.id = client_id
-		client_data.endpoint = clients_endpoint
+		client_data.endpoint = clients_endpoint^
 		send_net_command_to_client(net_inst,client_data,Net_Command{type = cast(u32)Net_Commands_Type.accept_join, flags = {.force_process}})
 	}else{
 		send_net_command(net_inst,clients_endpoint, Net_Command{type = cast(u32)Net_Commands_Type.regect_join, flags = {.force_process}})

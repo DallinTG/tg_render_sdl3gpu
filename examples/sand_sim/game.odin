@@ -69,6 +69,7 @@ Game_Mode::enum{
 
 init::proc(){
 	// tg.init_steam()
+	
 	init_map(&g.w_map)
 	wh:=tg.get_window_size(g.window)
 	fmt.print(wh)
@@ -80,7 +81,6 @@ init::proc(){
 	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.ui_vert_shader, g.ui_frag_shader, gbl_font_size = .1)
 	init_rendering_thread()
 	tg.update_steam_friend_info()
-
 	// tg.load_ui_theme_by_file("themes/tokyo-night.json",&s.ui_style)
 	// tg.load_ui_theme_by_file("themes/catppuccin-mauve.json",&s.ui_style,0)
 	// tg.load_ui_theme_by_file("themes/dracula.json",&s.ui_style,1)
@@ -94,7 +94,9 @@ init::proc(){
 }
 
 main :: proc(){
+	fmt.print("waffles 1\n\n")
 	g = new(Game)
+	fmt.print("waffles 2\n\n")
 	context.logger = log.create_console_logger()
 	when USE_TRACKING_ALLOCATOR {
 		tracking_allocator: mem.Tracking_Allocator
@@ -104,6 +106,7 @@ main :: proc(){
 	}
 	// tg.init_steam()
 	s=tg.init()
+	fmt.print("waffles 3\n\n")
 	g.window = tg.init_window()
 
 	g.cam = tg.create_camera(type = .orthographic)
@@ -221,6 +224,8 @@ do_mode_loby::proc(){
 }
 do_mode_game::proc(){
 	do_player_inputs()
+	// spawn_p_cell_by_id(.gravel,{600,-100},{0,0},g.w_map)
+	spawn_berst_of_p_cell_by_id(.gravel,{600,-100},g.w_map)
 	if g.server.status == .hosting{
 		server_set_cell_by_id({10,10}, .sand,g.w_map)
 		server_set_cell_by_id({20,20}, .water,g.w_map)
@@ -247,7 +252,9 @@ do_mode_game::proc(){
 		// tg.update_steam_friend_info()
 	}
 	do_entitys(&g.entitys)
+	update_p_cells(g.w_map)
 	draw_update_entitys_mesh(&g.entitys)
+	draw_p_cells(g.w_map)
 	update_map(g.w_map)
 	mesh_map(g.w_map)
 

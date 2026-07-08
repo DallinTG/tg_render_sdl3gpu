@@ -189,6 +189,10 @@ reg_all_texture_from_dir_path::proc(dir: string,mod_name: string = ""){
 reg_all_texture_from_loaded_directory::proc(all_fil_info: []runtime.Load_Directory_File,mod_name: string = ""){
 	for &fil in all_fil_info{
 		img,err:=image.load_from_bytes(fil.data,{},context.temp_allocator)
+		if err != nil{
+			assert(err == nil, fmt.tprint("image.load_from_bytes() has faild on file:",fil.name,err,"\n\n"))
+			continue
+		}
 		reg_texture_from_bits(img,[2]string{mod_name,fil.name})
 		// fmt.print("reg fil.name",fil.name,get_texture_id([2]string{mod_name,fil.name}),"\n")
 	}
@@ -196,7 +200,8 @@ reg_all_texture_from_loaded_directory::proc(all_fil_info: []runtime.Load_Directo
 }
 
 // This adds the img data to the gpu and then lets you draw it whith {tex_id:Texture_ID_Types}
-reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: sdl.GPUTextureFormat = .R8G8B8A8_UNORM)->(raw_id:[2]u32){
+reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: sdl.GPUTextureFormat = .R8G8B8A8_UNORM,)->(raw_id:[2]u32){
+	assert(img != nil,fmt.tprint("img data is nil"," tex_id:",tex_id))
 	id:=get_texture_id(tex_id)
 	ARR_INFO:=TEXTURE_ARR_INFO
 	tex_map:=&s.texture_arr_map

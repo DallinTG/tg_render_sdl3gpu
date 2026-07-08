@@ -32,9 +32,9 @@ Map::struct{
 	tick_count:u32,
 	rand_tick_seed:u32,
 	tick_count_loc:u32,
-	chuncks:[MAP_SIZE.x][MAP_SIZE.y]Chunck,
 	l_r:int,
-
+	physics_cells:Physics_Cells,
+	chuncks:[MAP_SIZE.x][MAP_SIZE.y]Chunck,
 	list_of_add_cell_CMD:[MAX_CELL_CMDS]Add_Cell_CMD,
 	cell_CMD_count:int,
 	next_chunck_to_sink:[2]int,
@@ -112,6 +112,7 @@ Cell::struct{
 	hp:u8,
 }
 
+
 Cell_ids::enum u16{
 	air,
 	sand,
@@ -139,6 +140,13 @@ Cell_Data::struct{
 	starting_hp:u8,
 	hp_decay_rate:i32,
 	hp_decay_chance:f32,
+
+	// cold_transmute_at_temp:Cell_Temperature,
+	// cold_transmute_into_id:Cell_ids,
+
+	// hot_transmute_at_temp:Cell_Temperature,
+	// hot_transmute_into_id:Cell_ids,
+
 	on_contact:proc([2]int,),
 }
 

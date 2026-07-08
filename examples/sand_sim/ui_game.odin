@@ -65,7 +65,8 @@ start_menu::proc(){
 					g.next_game_mode = .loby
 					fmt.print("Button--Join\n")
 					string_ep:=tg.endpoint_from_string_endpoint()
-					tg.join_server(server_endpoint = s.steam.steam_lobby.loby_owner_net_id, net_inst=&g.server)
+					temp_endpoint:tg.Endpoint = s.steam.steam_lobby.loby_owner_net_id
+					tg.join_server(server_endpoint = &temp_endpoint, net_inst=&g.server)
 					// tg.join_server(server_endpoint = string_ep, net_inst=&g.server)
 				}
 			}
