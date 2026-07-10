@@ -27,13 +27,8 @@ reg_defalt_assets::proc(){
 	reg_defalt_textures()
 }
 reg_defalt_textures::proc(){
-	fmt.print("waffles 2.10.1\n\n")
 	reg_bad_defalt_texture()
-	fmt.print("waffles 2.10.2\n\n")
 	reg_white_defalt_texture()
-	fmt.print("waffles 2.10.3\n\n")
 	reg_all_texture_from_loaded_directory(Icons_Dir,"icons")
-	fmt.print("waffles 2.10.4\n\n")
 	reg_all_texture_from_loaded_directory(Textures_Dir,"textures")
-	fmt.print("waffles 2.10.5\n\n")
 }

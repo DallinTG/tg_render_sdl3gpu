@@ -42,11 +42,13 @@ spawn_berst_of_p_cell_by_id::proc(id:Cell_ids,pos:[2]f32,w_map:^Map,p_count:int=
 }
 
 spawn_p_cell_by_id::proc(id:Cell_ids,pos:[2]f32,velocity:[2]f32,w_map:^Map){
+	new_flags:=Cell_Info[id].flags
+	new_flags+=get_rand_color_offset_flag()
 	cell:Cell={
 		id =id,
 		temperature = Cell_Info[id].starting_temperature,
 		hp = Cell_Info[id].starting_hp,
-		flags = Cell_Info[id].flags
+		flags = new_flags
 	}
 	spawn_p_cell(cell,pos,velocity,w_map)
 }
@@ -56,7 +58,6 @@ spawn_p_cell::proc(cell:Cell,pos:[2]f32,velocity:[2]f32,w_map:^Map){
 }
 remove_p_cell_by_index::proc(index:int,w_map:^Map){
 	p_cells:=&w_map.physics_cells.cells
-	fmt.print("removed:",index," len:",len(p_cells),"\n")
 	// if index >=len(p_cells){
 		unordered_remove(p_cells,index)
 
@@ -68,7 +69,7 @@ update_p_cells::proc(w_map:^Map){
 		cell.velocity +=GRAV
 		cell.velocity *= AIR_RESIST
 		// cell.pos += cell.velocity
-		fmt.print(index,"index\n")
+
 		steps_x := max(1,cast(int)math.ceil(math.abs(cell.velocity.x) / CELL_SIZE),)
 		step_x := cell.velocity.x / cast(f32)steps_x
 		step_up_hight_incriment:f32=CELL_SIZE * 3
@@ -81,7 +82,6 @@ update_p_cells::proc(w_map:^Map){
 				// if grid_cell.id == .air{
 					set_cell(pos_x+{-1,0},cell.cell,w_map,)
 				// }
-				fmt.print(pos_x,"lesft\n")
 				remove_p_cell_by_index(index,w_map)
 				continue p_cell_loop
 			}
@@ -90,7 +90,6 @@ update_p_cells::proc(w_map:^Map){
 				// if grid_cell.id == .air{
 					set_cell(pos_x+{1,0},cell.cell,w_map,)
 				// }
-				fmt.print(pos_x,"right\n")
 				remove_p_cell_by_index(index,w_map)
 				continue p_cell_loop
 			}
@@ -107,7 +106,6 @@ update_p_cells::proc(w_map:^Map){
 				// if grid_cell.id == .air{
 					set_cell(pos_y+{0,1},cell.cell,w_map,)
 				// }
-				fmt.print(pos_y,"up\n")
 				remove_p_cell_by_index(index,w_map)
 				continue p_cell_loop
 			}
@@ -115,7 +113,6 @@ update_p_cells::proc(w_map:^Map){
 				// if grid_cell.id == .air{
 					set_cell(pos_y+{0,-1},cell.cell,w_map,)
 				// }
-				fmt.print(pos_y,"down\n")
 				remove_p_cell_by_index(index,w_map)
 				continue p_cell_loop
 			}
@@ -138,13 +135,22 @@ update_p_cells::proc(w_map:^Map){
 			cell.velocity.y = 0
 		}
 	}
-	fmt.print("new loop\n")
 }
 draw_p_cells::proc(w_map:^Map){
 	p_cells:=&w_map.physics_cells.cells
 	for &cell , i in p_cells{
+
+		color_offset:[4]f32
+		if .cell_is_darker in cell.cell.flags{
+			color_offset += {-.010,-.010,-.020,0}
+		}
+		if .cell_is_lighter in cell.cell.flags{
+			color_offset += {.030,.020,.030,0}
+		}
+
+
 		mesh:=tg.get_mesh(w_map.overlay_mesh)
-		tg.draw_rect(&mesh.cpu,1,tg.Vertex_Data,Cell_Info[cell.cell.id].color,{{cell.pos.x,cell.pos.y,0},{CELL_SIZE,CELL_SIZE}},{-CELL_SIZE/2,-CELL_SIZE,0})
+		tg.draw_rect(&mesh.cpu,1,tg.Vertex_Data,Cell_Info[cell.cell.id].color+color_offset,{{cell.pos.x,cell.pos.y,0},{CELL_SIZE,CELL_SIZE}},{-CELL_SIZE/2,-CELL_SIZE,0})
 	}
 }
 
@@ -161,7 +167,6 @@ is_p_cell_coliding_on_x::proc(ent:^Physics_Cell, w_map:^Map, offset:[2]f32 = {})
 			cell := get_cell({cast(int)cell_x, y}, w_map)
 			// if .is_solid in cell.flags  {
 			if cell.id != .air  {
-				fmt.print(cell.id,"\n")
 				right = true
 				cell_pos = {cast(int)cell_x, y}
 		        // ent.pos.x = (cell_x * CELL_SIZE) - ent.collider.x * 0.5 - EPS
@@ -176,7 +181,6 @@ is_p_cell_coliding_on_x::proc(ent:^Physics_Cell, w_map:^Map, offset:[2]f32 = {})
 			cell := get_cell({cast(int)cell_x, y}, w_map)
 			// if .is_solid in cell.flags  {
 			if cell.id != .air  {
-				fmt.print(cell.id,"\n")
 				left = true
 				cell_pos = {cast(int)cell_x, y}
 		        // ent.pos.x = ((cell_x + 1) * CELL_SIZE) + ent.collider.x * 0.5 + EPS
@@ -201,7 +205,6 @@ is_p_cell_coliding_on_y::proc(ent:^Physics_Cell, w_map:^Map, offset:[2]f32 = {})
 			cell := get_cell({x, cast(int)cell_y}, w_map)
 			// if .is_solid in cell.flags  {
 			if cell.id != .air  {
-				fmt.print(cell.id,"\n")
 				up = true
 				cell_pos = {x, cast(int)cell_y}
 		        // ent.pos.y = -((cell_y + 1) * CELL_SIZE) + ent.collider.y + EPS
@@ -217,7 +220,6 @@ is_p_cell_coliding_on_y::proc(ent:^Physics_Cell, w_map:^Map, offset:[2]f32 = {})
 			cell := get_cell({x, cast(int)cell_y}, w_map)
 			// if .is_solid in cell.flags  {
 			if cell.id != .air  {
-				fmt.print(cell.id,"\n")
 				down = true
 				cell_pos = {x, cast(int)cell_y}
 		        // ent.pos.y = -(cell_y * CELL_SIZE) - EPS

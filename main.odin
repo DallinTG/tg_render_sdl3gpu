@@ -180,42 +180,32 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	}
 	new_state = s
 	
-	fmt.print("waffles 2.1\n\n")
 	init_steam()
-	fmt.print("waffles 2.2\n\n")
 	s.frame_allocator = runtime.arena_allocator(&s.frame_arena)
 	s.allocator = allocator
-	fmt.print("waffles 2.3\n\n")
 	ok = sdl.Init({.VIDEO})
 	assert(ok , "SDL init failed")
 	s.gpu_device = sdl.CreateGPUDevice({.SPIRV ,.DXIL ,.MSL} ,true, nil)
 	assert(s.gpu_device != nil,"SDL CreateGPUDevice failed")
 	
 	
-	fmt.print("waffles 2.4\n\n")
 	try_depth_format::proc(format: sdl.GPUTextureFormat){
 		if sdl.GPUTextureSupportsFormat(s.gpu_device, format, .D2, {.DEPTH_STENCIL_TARGET}){
 			s.depth_texture_format = format
 		}
 	}
-	fmt.print("waffles 2.5\n\n")
 	s.depth_texture_format = .D16_UNORM
 	try_depth_format(.D32_FLOAT)
 	try_depth_format(.D24_UNORM)
-	fmt.print("waffles 2.6\n\n")
 	
 	s.copy_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
-	fmt.print("waffles 2.7\n\n")
 	init_texture_arr_groop()
-	fmt.print("waffles 2.8\n\n")
 	s.defalt_font = load_font_from_data(font_id = "font_1",height = 16)
-	fmt.print("waffles 2.9\n\n")
 	s.defalt_context = context
-	fmt.print("waffles 2.10\n\n")
 	reg_defalt_assets()
-	fmt.print("waffles 2.11\n\n")
+
 	set_ui_style()
-	fmt.print("waffles 2.12\n\n")
+
 	
 	return
 }

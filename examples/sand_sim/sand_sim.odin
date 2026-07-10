@@ -90,19 +90,25 @@ Cell_Neighbors:[4][2]int:{
 
 Cell_Temperature::enum i8{
 	
-	Deth_Cold = -6,
-	Unbelievably_Cold = -5,
-	Extremely_Cold = -4,
-	Very_Cold = -3,
+	Deth_Cold = -8,
+	Impossibly_Cold = -7,
+	Unbelievably_Cold = -6,
+	Extremely_Cold = -5,
+	Very_Cold = -4,
+	Freezing= -3,
 	Cold = -2,
 	Cool = -1,
+
 	Room = 0,
+
 	Warm = 1,
 	Hot = 2,
-	Very_Hot = 3,
-	Extremely_Hot = 4,
-	Unbelievably_Hot = 5,
-	Deth_Hot = 6,
+	Melting = 3,
+	Very_Hot = 4,
+	Extremely_Hot = 5,
+	Unbelievably_Hot = 6,
+	Impossibly_Hot = 7,
+	Deth_Hot = 8,
 }
 
 Cell::struct{
@@ -129,6 +135,8 @@ Cell_Flags::enum{
 	has_grav,
 	is_solid,
 	is_gass,
+	cell_is_darker,
+	cell_is_lighter,
 }
 Cell_Data::struct{
 	color:[4]f32,
@@ -141,11 +149,11 @@ Cell_Data::struct{
 	hp_decay_rate:i32,
 	hp_decay_chance:f32,
 
-	// cold_transmute_at_temp:Cell_Temperature,
-	// cold_transmute_into_id:Cell_ids,
+	cold_transmute_at_temp:Cell_Temperature,
+	cold_transmute_into_id:Cell_ids,
 
-	// hot_transmute_at_temp:Cell_Temperature,
-	// hot_transmute_into_id:Cell_ids,
+	hot_transmute_at_temp:Cell_Temperature,
+	hot_transmute_into_id:Cell_ids,
 
 	on_contact:proc([2]int,),
 }
@@ -168,6 +176,14 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		color = {.9,.8,.2,1},
 		density = 3,
 		starting_hp = 5,
+
+		cold_transmute_at_temp = .Room,
+		cold_transmute_into_id = .out_of_bounds,
+
+		starting_temperature = .Room,
+
+		hot_transmute_at_temp = .Unbelievably_Hot,
+		hot_transmute_into_id = .lava,
 	},
 	.gravel ={
 		flags={
@@ -179,6 +195,14 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		color = {.23,.22,.27,1},
 		density = 4,
 		starting_hp = 5,
+
+		cold_transmute_at_temp = .Room,
+		cold_transmute_into_id = .out_of_bounds,
+
+		starting_temperature = .Room,
+
+		hot_transmute_at_temp = .Unbelievably_Hot,
+		hot_transmute_into_id = .lava,
 	},
 	.up_sand ={
 		flags={
@@ -189,6 +213,14 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		color = {.9,.8,.2,1},
 		density = -3,
 		starting_hp = 5,
+
+		cold_transmute_at_temp = .Room,
+		cold_transmute_into_id = .out_of_bounds,
+
+		starting_temperature = .Room,
+
+		hot_transmute_at_temp = .Unbelievably_Hot,
+		hot_transmute_into_id = .lava,
 	},
 	.water ={
 		flags={
@@ -200,11 +232,14 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		density = 1,
 		flow_rate = 5,
 		starting_hp = 10,
-		// temperature = -90,
-		// cold_transmute_temp = -100,
-		// cold_transmute = .ice,
-		// hot_transmute_temp = 101,
-		// hot_transmute = .steam,
+		
+		cold_transmute_at_temp = .Freezing,
+		cold_transmute_into_id = .ice,
+
+		starting_temperature = .Cold,
+
+		hot_transmute_at_temp = .Extremely_Hot,
+		hot_transmute_into_id = .steam,
 	},
 	.ice ={
 		flags={
@@ -216,12 +251,14 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		color = {.349,.78,.851,1},
 		density = .9,
 		starting_hp = 5,
-		// flow_rate = 4,
-		// temperature = -1,
-		// cold_transmute_temp = -100,
-		// cold_transmute = .air,
-		// hot_transmute_temp = 1,
-		// hot_transmute = .water,
+
+		cold_transmute_at_temp = .Room,
+		// cold_transmute_into_id = .,
+
+		starting_temperature = .Very_Cold,
+
+		hot_transmute_at_temp = .Very_Hot,
+		hot_transmute_into_id = .water,
 	},
 	.lava ={
 		flags={
@@ -237,6 +274,16 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		// cold_transmute = .stone,
 		// hot_transmute_temp = 10000,
 		// hot_transmute = .air,
+
+		cold_transmute_at_temp = .Cold,
+		cold_transmute_into_id = .stone,
+		
+		starting_temperature = .Extremely_Hot,
+
+		// hot_transmute_at_temp = .Extremely_Hot,
+		// hot_transmute_into_id = .steam, 
+ 
+
 	},
 	.stone ={
 		flags={
@@ -253,6 +300,15 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		// cold_transmute = .air,
 		// hot_transmute_temp = 100,
 		// hot_transmute = .lava,
+
+		// cold_transmute_at_temp = .Freezing,
+		// cold_transmute_into_id = .stone,
+		
+		starting_temperature = .Room,
+			
+		hot_transmute_at_temp = .Unbelievably_Hot,
+		hot_transmute_into_id = .lava, 
+
 	},
 	.steam = {
 		flags={
@@ -271,6 +327,15 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		// hot_transmute_temp = 10000,
 		// cold_transmute_temp = -10,
 		// cold_transmute = .water,
+
+		cold_transmute_at_temp = .Cold,
+		cold_transmute_into_id = .water,
+
+		starting_temperature = .Very_Hot,
+
+		// hot_transmute_at_temp = .Unbelievably_Hot,
+		// hot_transmute_into_id = .lava, 
+
 	},
 	.out_of_bounds ={
 		flags={
@@ -525,6 +590,8 @@ update_cell::proc(x,y:int,cell:^Cell,w_map:^Map){
 		// do_cell_temperature(c, {x,y}, w_map)
 		do_cell_gass(cell, c, {x,y}, w_map)
 		do_cell_grav(cell, c, {x,y}, w_map)
+		do_cell_temperature_interaction({x,y},{x,y+1},w_map)
+		do_cell_temperature_interaction({x,y},{x+1,y},w_map)
 
 	do_cell_flow(cell, c, {x,y}, w_map)
 	}
@@ -549,6 +616,8 @@ do_cell_grav::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
 		}
 	}
 }
+
+
 
 do_cell_decay::proc(cell:^Cell, c:^Cell_Data,pos:[2]int,w_map:^Map){
 	cell_data:=get_cell_data(pos,w_map)
@@ -797,6 +866,60 @@ swap_cell::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map){
 	set_cell_moved(cell_a, w_map, true)
 	set_cell_moved(cell_b, w_map, true)
 }
+
+do_cell_temperature_interaction::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map){
+	if !is_cell_valid(cell_a,w_map) {return}
+	if !is_cell_valid(cell_b,w_map) {return}
+
+	ca:=get_cell(cell_a, w_map)
+	cb:=get_cell(cell_b, w_map)
+
+	ca_data:=get_cell_data(cell_a, w_map)
+	cb_data:=get_cell_data(cell_b, w_map)
+
+	new_ca_id:Cell_ids=.out_of_bounds
+	new_cb_id:Cell_ids=.out_of_bounds
+	
+	if 		 cb.temperature >= ca_data.hot_transmute_at_temp && ca_data.hot_transmute_at_temp != .Room{
+		new_ca_id = ca_data.hot_transmute_into_id
+	}else if cb.temperature <= ca_data.cold_transmute_at_temp && ca_data.cold_transmute_at_temp != .Room{
+		new_ca_id = ca_data.cold_transmute_into_id
+	}
+
+	if		 ca.temperature >= cb_data.hot_transmute_at_temp && cb_data.hot_transmute_at_temp != .Room{
+		new_cb_id = cb_data.hot_transmute_into_id
+	}else if ca.temperature <= cb_data.cold_transmute_at_temp && cb_data.cold_transmute_at_temp != .Room{
+		new_cb_id = cb_data.cold_transmute_into_id
+	}
+	if (ca.id ==.water && cb.id == .lava)||(cb.id ==.water && ca.id == .lava){
+		fmt.print(
+			"\n__________________________\n",
+			"CELL A:",ca.id,ca.temperature,"\n",
+			"NEW_ID:",new_ca_id,
+			"HOT_TT:",ca_data.hot_transmute_at_temp,
+			"HOT_TID:",ca_data.hot_transmute_into_id,
+			"COL_TT:",ca_data.cold_transmute_at_temp,
+			"COL_TID:",ca_data.cold_transmute_into_id,
+			"\n__\n",
+			"CELL B:",cb.id,cb.temperature,"\n",
+			"NEW_ID:",new_cb_id,
+			"HOT_TT:",cb_data.hot_transmute_at_temp,
+			"HOT_TID:",cb_data.hot_transmute_into_id,
+			"COL_TT:",cb_data.cold_transmute_at_temp,
+			"COL_TID:",cb_data.cold_transmute_into_id,
+			"\n__________________________\n",
+		)
+	}
+
+	if new_ca_id != .out_of_bounds{
+		set_cell_by_id(cell_a,new_ca_id,w_map)
+	}
+	if new_cb_id != .out_of_bounds{
+		set_cell_by_id(cell_b,new_cb_id,w_map)
+	}
+
+}
+
 set_cell::proc(cell:[2]int, new_cell_data:Cell, w_map:^Map){
 	if !is_cell_valid(cell,w_map) {return}
 	// w_map.cells[cell.x][cell.y] = new_cell_data
@@ -805,8 +928,25 @@ set_cell::proc(cell:[2]int, new_cell_data:Cell, w_map:^Map){
 	chunck.ticks_to_sleep = 10
 	update_chuncks_dirty_rect(cell,w_map)
 }
+
+get_rand_color_offset_flag::proc()->(new_flags:bit_set[Cell_Flags]){
+	range:=rand.int_range(0,3)
+	if range == 0{
+
+	}else if range == 1 {
+		new_flags += {.cell_is_darker}
+	}else if range == 2 {
+		new_flags += {.cell_is_lighter}
+	}else if range == 3 {
+		new_flags += {.cell_is_lighter}
+		new_flags += {.cell_is_darker}
+	}
+	return
+}
 set_cell_by_id::proc(cell:[2]int, id:Cell_ids, w_map:^Map){
-	set_cell(cell, {id =id, temperature = Cell_Info[id].starting_temperature ,hp = Cell_Info[id].starting_hp, flags = Cell_Info[id].flags}, w_map)
+	new_flags:=Cell_Info[id].flags
+	new_flags+=get_rand_color_offset_flag()
+	set_cell(cell, {id =id, temperature = Cell_Info[id].starting_temperature ,hp = Cell_Info[id].starting_hp, flags = new_flags}, w_map)
 }
 
 
@@ -825,7 +965,10 @@ server_set_cell::proc(cell:[2]int, new_cell_data:Cell, w_map:^Map){
 }
 
 server_set_cell_by_id::proc(cell:[2]int, id:Cell_ids, w_map:^Map){
-	server_set_cell(cell, {id =id, temperature = Cell_Info[id].starting_temperature ,hp = Cell_Info[id].starting_hp, flags = Cell_Info[id].flags}, w_map)
+
+	new_flags:=Cell_Info[id].flags
+	new_flags+=get_rand_color_offset_flag()
+	server_set_cell(cell, {id =id, temperature = Cell_Info[id].starting_temperature ,hp = Cell_Info[id].starting_hp, flags = new_flags}, w_map)
 }
 
 
@@ -915,10 +1058,18 @@ draw_chunck::proc(
 					verts[3].pos =  { 1+cast(f32)x,   0 +(cast(f32)y*-1),  0, 1}
 				}
 				when intrinsics.type_has_field(vert_t, "col"){
-					verts[0].col = Cell_Info[chunck.cells[x][y].id].color
-					verts[1].col = Cell_Info[chunck.cells[x][y].id].color
-					verts[2].col = Cell_Info[chunck.cells[x][y].id].color
-					verts[3].col = Cell_Info[chunck.cells[x][y].id].color
+					color_offset:[4]f32
+					if .cell_is_darker in chunck.cells[x][y].flags{
+						color_offset += {-.010,-.010,-.020,0}
+					}
+					if .cell_is_lighter in chunck.cells[x][y].flags{
+						color_offset += {.030,.020,.030,0}
+					}
+
+					verts[0].col = Cell_Info[chunck.cells[x][y].id].color+color_offset
+					verts[1].col = Cell_Info[chunck.cells[x][y].id].color+color_offset
+					verts[2].col = Cell_Info[chunck.cells[x][y].id].color+color_offset
+					verts[3].col = Cell_Info[chunck.cells[x][y].id].color+color_offset
 				}
 				
 				when intrinsics.type_has_field(vert_t, "uv"){
