@@ -9,7 +9,8 @@ import st"core:strings"
 import steam "steamworks"
 import vmem "core:mem/virtual"
 import "core:thread"
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 import "core:math/rand"
 import "core:time"
 
@@ -264,7 +265,9 @@ stop_udp_echo_client:: proc(client:^Networking_State) {
 // _____________________________________
 // 
 Server_CMD_Handle :: distinct Handle
-Server_CMD_Handle_Map :: hm.Handle_Map(Server_CMD, Server_CMD_Handle, 1000)
+// Server_CMD_Handle_Map :: hm.Handle_Map(Server_CMD, Server_CMD_Handle, 1000)
+// Server_CMD_Handle_Map :: hm.Dynamic_Handle_Map(Server_CMD, Server_CMD_Handle)
+Server_CMD_Handle_Map :: hm.Static_Handle_Map(1000,Server_CMD, Server_CMD_Handle)
 
 Net_Commands_Type::enum u32 {
 	join,
@@ -580,11 +583,12 @@ add_server_cmd_to_q::proc(net_inst:^Networking_Instance, net_cmd:Net_Command, en
 		endpoint = endpoint,
 		buf = buf
 	}
-	hm.add(&net_inst.cmd_q,server_cmd)
+	cmd:=hm.add(&net_inst.cmd_q,server_cmd)
+
 }
 pros_server_cmd_q::proc(net_inst:^Networking_Instance){
-	cmd_q_iter := hm.make_iter(&net_inst.cmd_q)
-	for server_cmd in hm.iter(&cmd_q_iter) {
+	cmd_q_iter := hm.iterator_make(&net_inst.cmd_q)
+	for server_cmd, hd in hm.iterate(&cmd_q_iter) {
 		cmd:=server_cmd.net_command
 		endpoint :=server_cmd.endpoint
 		cmd_type:=cast(Net_Commands_Type)cmd.type

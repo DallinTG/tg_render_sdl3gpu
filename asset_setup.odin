@@ -19,7 +19,8 @@ import "core:image/tga"
 
 import stb"vendor:stb/image"
 
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 import "core:encoding/cbor"
 
 

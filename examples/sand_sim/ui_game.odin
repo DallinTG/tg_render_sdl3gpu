@@ -7,7 +7,8 @@ import "core:mem"
 import "core:hash"
 import "core:c"
 import "core:fmt"
-import hm "../../handle_map_static_virtual"
+// import hm "../../handle_map_static_virtual"
+import hm "core:container/handle_map"
 import an"../../ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
@@ -79,7 +80,7 @@ start_menu::proc(){
 }
 
 loby_menu::proc(){
-		if cl.UI(cl.ID("Outer_Container_left"))({
+	if cl.UI(cl.ID("Outer_Container_left"))({
 		layout = { layoutDirection = .TopToBottom, sizing = { cl.SizingGrow(), cl.SizingGrow() } },
 		backgroundColor = {0,0,0,0},
 	}) {}
@@ -168,6 +169,41 @@ loby_joining_regected::proc(){
 			if cl.UI(cl.ID("Button--Back-to-Start"))(tg.button_dec()) {
 				tg.button_txt("Back to Start")
 				g.next_game_mode = .start
+			}
+		}
+	}
+	if cl.UI(cl.ID("Outer_Container_Right"))({
+		layout = { layoutDirection = .TopToBottom, sizing = { cl.SizingGrow(), cl.SizingGrow() } },
+		backgroundColor = {0,0,0,0},
+	}) {}
+}
+
+sand_sim_cell_id_picker::proc(){
+	if cl.UI(cl.ID("sand_sim_ui_Outer_Container_left"))({
+		layout = { layoutDirection = .TopToBottom, sizing = { cl.SizingGrow(), cl.SizingGrow() } },
+		backgroundColor = {0,0,0,0},
+	}) {}
+	if cl.UI(cl.ID("sand_sim_ui_Outer_Container_Mid"))({
+		layout = { layoutDirection = .TopToBottom, sizing = { cl.SizingGrow(), cl.SizingGrow() } },
+		backgroundColor = {0,0,0,0},
+		}) {
+		if cl.UI(cl.ID("sand_sim_ui_Iner_Container_Mid"))(
+			cl.ElementDeclaration{
+				layout = cl.LayoutConfig{
+					layoutDirection = .TopToBottom,
+					sizing = cl.Sizing{ cl.SizingGrow(), cl.SizingGrow() },
+					childGap = 32,
+					childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
+				},
+			backgroundColor = {0,0,0,0},
+		}) {
+			if cl.UI(cl.ID("Button--Start"))(tg.button_dec()) {
+				tg.button_txt("Start")
+
+				if cl.Hovered() && is_input_event(.ui_l_c){
+					g.next_game_mode = .in_game
+					fmt.print("Button--in_game\n")
+				}
 			}
 		}
 	}

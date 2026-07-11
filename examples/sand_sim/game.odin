@@ -9,7 +9,8 @@ import "core:hash"
 import "core:c"
 import "core:fmt"
 import "core:thread"
-import hm "../../handle_map_static_virtual"
+// import hm "../../handle_map_static_virtual"
+import hm "core:container/handle_map"
 import an"../../ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
@@ -18,7 +19,7 @@ import steam "../../steamworks"
 
 USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
 
-Handle :: hm.Handle
+Handle :: hm.Handle32
 s:^tg.State
 g:^Game
 Game::struct{
@@ -94,9 +95,7 @@ init::proc(){
 }
 
 main :: proc(){
-	fmt.print("waffles 1\n\n")
 	g = new(Game)
-	fmt.print("waffles 2\n\n")
 	context.logger = log.create_console_logger()
 	when USE_TRACKING_ALLOCATOR {
 		tracking_allocator: mem.Tracking_Allocator
@@ -106,7 +105,6 @@ main :: proc(){
 	}
 	// tg.init_steam()
 	s=tg.init()
-	fmt.print("waffles 3\n\n")
 	g.window = tg.init_window()
 
 	g.cam = tg.create_camera(type = .orthographic)
@@ -183,11 +181,11 @@ main :: proc(){
 	cleane_up_game()
 
 	when USE_TRACKING_ALLOCATOR {
-		for _, value in tracking_allocator.allocation_map {
-			log.errorf("%v: Leaked %v bytes\n", value.location, value.size)
-			if value.size<256 {
-				str_b:=cast([^]u8)value.memory
-				str_d:=str_b[:value.size]
+		for _, val in tracking_allocator.allocation_map {
+			log.errorf("\n%v: Leaked %v bytes,err: %v , mode:%v\n", val.location, val.size,val.err,val.mode)
+			if val.size<256 {
+				str_b:=cast([^]u8)val.memory
+				str_d:=str_b[:val.size]
 				str:=cast(string)str_d
 				fmt.print(str)
 			}
@@ -208,7 +206,8 @@ cleane_up_game::proc(){
 	tg.delete_mesh(g.entitys_mesh)
 	delete_w_map(g.w_map)
 	tg.delete_camera(&g.cam)
-	hm.delete(&g.entitys)
+	// hm.delete(&g.entitys)
+	hm.dynamic_destroy(&g.entitys)
 	delete(g.server.clients)
 	delete(g.all_player_data.players)
 	tg.delete_clay_instance(g.ui_clay_inst)

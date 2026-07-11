@@ -7,7 +7,8 @@ import "core:mem"
 import "core:hash"
 import "core:c"
 import "core:fmt"
-import hm "../../handle_map_static_virtual"
+// import hm "../../handle_map_static_virtual"
+import hm "core:container/handle_map"
 import an"../../ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
@@ -396,10 +397,11 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		switch cmd_type_game{
 
 		case .sink_all_entity_data:
+									//TODO BROKE THIS WHEN CHANGING HANDLE MAPS ENTITYS WILL NO LONGER WORK
 			items:=mem.slice_data_cast([]Entity,server_cmd.buf)
-			resize_dynamic_array(&g.entitys.items,len(items))
+			// resize_dynamic_array(&g.entitys.items,len(items))
 			// reserve_dynamic_array(&g.entitys.items,len(items))
-			copy( g.entitys.items[:],items[:])
+			// copy( g.entitys.items[:],items[:])
 		case .sink_chunck:
 			resv_sink_chunck(server_cmd)
 		case .sink_cell_cmds:

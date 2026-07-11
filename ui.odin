@@ -8,7 +8,8 @@ import "core:mem"
 import "core:hash"
 import "core:c"
 import "core:fmt"
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 import "core:time"
 import lin"core:math/linalg"
 import cl"clay-odin"
@@ -1877,4 +1878,98 @@ draw_debug_info::proc(){
 			defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_Name: ",s.steam.steam_lobby.loby_owner_name))	
 		}
 	}
+}
+
+
+MAX_NUMBER_OF_UI_Box_Data::1000
+UI_Box_Data_Buffer::struct{
+	notifications:[dynamic;MAX_NUMBER_OF_NOTIFICATION]Notification,
+	last_id_created:u32,
+}
+UI_Box_Data::struct{
+	id:u32,
+	max_time:f64,
+	time_left:f64,
+	mesg_1:string,
+	mesg_1_col:Color_Types,
+	lobby_id_to_join:u64,
+}
+
+delete_ui_box::proc(){
+
+}
+create_ui_box::proc(){
+
+}
+get_ui_box::proc(){
+
+}
+
+ui_drag_box_dec::proc(
+
+	border_col_id:Color_Types = .border,
+	background_col_id:Color_Types = .element_background,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+)->(button:cl.ElementDeclaration){
+	
+	
+	border_col:=get_color(border_col_id)
+	background_col:=get_color(background_col_id)
+	background_huv_col:=get_color(background_huv_col_id)
+
+	border_size:= get_ui_border(border_size_id)
+	padding_size:= get_ui_pading(padding_size_id)
+	child_gap_id:= get_ui_child_gap(child_gap_id)
+	roundnes_id:= get_ui_roundnes(roundnes_id)
+
+	button_hov:=cl.Hovered()
+	button = cl.ElementDeclaration{
+		layout = {
+				layoutDirection = .TopToBottom,
+				sizing = { cl.SizingPercent(.20), cl.SizingFit() },
+				childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
+				padding = {padding_size,padding_size,padding_size,padding_size},
+
+				childGap = child_gap_id,
+			},
+		floating ={
+			// attachment = {.Root},
+			expand = {1000,1000},
+			// offset = {100,10},
+			// attachTo = .Parent,
+			// pointerCaptureMode = .Capture,
+			// attachment= cl.FloatingAttachPoints{
+			// 	element = cl.FloatingAttachPointType.RightTop,
+			// 	parent =   cl.FloatingAttachPointType.RightTop,
+			// }
+		},
+		transition = cl.TransitionElementConfig{
+
+			handler = cl.EaseOut,
+			duration = .2,
+			properties = cl.TransitionPropertyFlags{.X,.Y},
+			interactionHandling = .AllowInteractionsWhileTransitioningPosition,
+			enter = {
+				setInitialState = state_slide_in_right,
+				trigger = cl.TransitionEnterTriggerType.TriggerOnFirstParentFrame,
+			},
+			exit = {
+				setFinalState = state_slide_in_right,
+				// trigger=         .TriggerOnFirstParentFrame,
+				// siblingOrdering: TriggerOnFirstParentFrame,
+			},
+
+		},
+		backgroundColor = background_col if !button_hov else background_huv_col,
+		border = cl.BorderElementConfig{
+			color = border_col,
+			width = cl.BorderWidth{border_size,border_size,border_size,border_size,0}
+		},
+	}
+	return button
 }

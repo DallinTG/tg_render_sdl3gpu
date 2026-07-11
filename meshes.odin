@@ -10,7 +10,8 @@ import "core:path/filepath"
 import "core:encoding/json"
 import lin"core:math/linalg"
 import "base:runtime"
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 import "core:os"
 import "base:intrinsics"
 
@@ -174,7 +175,7 @@ update_mesh::proc(mesh_hd:Mesh_Handle){
 	// sdl.ReleaseGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 }
 get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){
-	mesh = hm.get(s.meshes, mesh_hd)
+	mesh = hm.get(&s.meshes, mesh_hd)
 	return
 }
 

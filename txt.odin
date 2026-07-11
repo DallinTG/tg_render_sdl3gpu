@@ -16,7 +16,8 @@ import "core:math/linalg"
 import tt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
 
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 
 font_bitmap_w :: 64*8
 font_bitmap_h :: 64*8
@@ -71,7 +72,7 @@ load_font_from_data :: proc(font_id:string ,height:f32, ttf_data:[]u8 = DEFALT_F
 	return
 }
 get_font::proc(font_hd:Font_Handle)->(font:^Font){
-	font = hm.get(s.fonts, font_hd)
+	font = hm.get(&s.fonts, font_hd)
 	return
 }
 

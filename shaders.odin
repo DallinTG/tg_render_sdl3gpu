@@ -10,7 +10,8 @@ import "core:path/filepath"
 import "core:encoding/json"
 // import lin"core:math/linalg"
 import "base:runtime"
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 import "core:os"
 
 // import hm "core:container/handle_map"
@@ -55,7 +56,7 @@ destroy_shader::proc(shader:^Shader){
 }
 
 get_shader::proc(shader_hd:Shader_Handle) -> (shader:^Shader){
-	shader = hm.get(s.shaders,shader_hd)
+	shader = hm.get(&s.shaders,shader_hd)
 	return shader
 }
 

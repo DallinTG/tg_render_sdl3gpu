@@ -8,13 +8,16 @@ import "core:hash"
 import "core:c"
 import "core:fmt"
 import "core:math"
-import hm "../../handle_map_static_virtual"
+// import hm "../../handle_map_static_virtual"
+import hm "core:container/handle_map"
 import an"../../ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
 
 Entity_Handle :: distinct Handle
-Entity_Handle_Map :: hm.Handle_Map(Entity, Entity_Handle, 1000)
+// Entity_Handle_Map :: hm.Handle_Map(Entity, Entity_Handle, 1000)
+Entity_Handle_Map :: hm.Dynamic_Handle_Map(Entity, Entity_Handle)
+
 
 Entity_Types::enum{
 	player,
@@ -56,8 +59,10 @@ spawn_entity::proc(entitys:^Entity_Handle_Map,ent:Entity={})->(hd:Entity_Handle)
 }
 
 do_entitys::proc(entitys:^Entity_Handle_Map,){
-	ent_iter := hm.make_iter(entitys)
-	for ent in hm.iter(&ent_iter) {
+	// ent_iter := hm.make_iter(entitys)
+	ent_iter := hm.iterator_make(entitys)
+	// for ent in hm.iter(&ent_iter) {
+	for ent,hd in hm.iterate(&ent_iter) {
 		do_entity_physics(ent)
 		switch &e in &ent.type_data{
 			case Player_Entitys:
@@ -70,14 +75,16 @@ do_entitys::proc(entitys:^Entity_Handle_Map,){
 	sink_all_entity_data(&g.server)
 }
 sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
-	items:=mem.slice_data_cast([]u8,g.entitys.items[:])
+	// items:=mem.slice_data_cast([]u8,g.entitys.items[:])
+	items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
 	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items)
 }
 draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
-	ent_iter := hm.make_iter(entitys)
+	// ent_iter := hm.make_iter(entitys)
+	ent_iter := hm.iterator_make(entitys)
 	mesh:=tg.get_mesh(g.entitys_mesh)
 	tg.clear_mesh_cpu(&mesh.cpu)
-	for ent in hm.iter(&ent_iter) {
+	for ent,hd in hm.iterate(&ent_iter) {
 		tg.draw_rect(&mesh.cpu,"",tg.Vertex_Data,{1,1,1,1},{ent.pos,{ent.collider.x,ent.collider.y},},origin = {-ent.collider.x/2, ent.collider.y,0},)
 		// tg.draw_rect_rounded(&mesh.cpu,"",tg.Vertex_Data,col={1,1,1,1},rec={ent.pos+{20,20,0},{100,100}},roundness = .2)
 
@@ -103,7 +110,7 @@ render_entitys::proc(entitys:^Entity_Handle_Map,){
 	tg.do_render_pass(&g.pass, &g.cam, {g.entitys_mesh})
 }
 get_entity::proc(hd:Entity_Handle)->(ent:^Entity){
-	ent = hm.get(g.entitys,hd)
+	ent = hm.get(&g.entitys,hd)
 	return
 }
 All_Player_data::struct{
@@ -247,7 +254,6 @@ colide_whith_cells::proc(ent:^Entity,w_map:^Map){
 		if left{
 			step_up_loop_l:for step_up_hight :f32= CELL_SIZE; step_up_hight < step_up_hight_incriment+CELL_SIZE; step_up_hight += CELL_SIZE {
 				j_left,j_right,j_cell_pos:=is_coliding_on_x(ent,w_map,{0,-step_up_hight})
-				fmt.print(step_up_hight," l\n")
 				if !j_left && !j_right {
 					ent.pos.y += step_up_hight
 					break x_step_loop
@@ -261,7 +267,6 @@ colide_whith_cells::proc(ent:^Entity,w_map:^Map){
 			
 			step_up_loop_r:for step_up_hight :f32= CELL_SIZE; step_up_hight < step_up_hight_incriment+CELL_SIZE; step_up_hight += CELL_SIZE {
 				j_left,j_right,j_cell_pos:=is_coliding_on_x(ent,w_map,{0,-step_up_hight})
-				fmt.print(step_up_hight," r\n")
 				if !j_left && !j_right {
 					ent.pos.y += step_up_hight
 					break x_step_loop
@@ -291,7 +296,6 @@ colide_whith_cells::proc(ent:^Entity,w_map:^Map){
 			break y_step_loop
 		}
 	}
-	// fmt.print(ent.pos,"\n")
 }
 
 

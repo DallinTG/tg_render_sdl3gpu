@@ -19,13 +19,15 @@ import "core:image/tga"
 
 import stb"vendor:stb/image"
 
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 
 
 Texture_GPU_Handle :: distinct Handle
 
 
-Texture_Groop :: hm.Handle_Map(Texture_GPU_Data, Texture_GPU_Handle, 1024*10)
+// Texture_Groop :: hm.Handle_Map(Texture_GPU_Data, Texture_GPU_Handle, 1024*10)
+Texture_Groop :: hm.Dynamic_Handle_Map(Texture_GPU_Data, Texture_GPU_Handle)
 Texture_Arr_Groop::enum{
 	tex_8x8,
 	tex_16x16,
@@ -529,7 +531,7 @@ destroy_texture :: proc(th: Texture_GPU_Handle, texture_groop:^Texture_Groop = n
 	if texture_groop == nil{
 		texture_groop = &s.texture_groop
 	}
-	tex := hm.get(texture_groop^, th)
+	tex := hm.get(texture_groop, th)
 
 	if tex == nil {
 		return
@@ -545,7 +547,7 @@ get_gpu_texture::proc(tex_h:Texture_GPU_Handle,texture_groop:^Texture_Groop = ni
 	if texture_groop == nil{
 		texture_groop = &s.texture_groop
 	}
-	return hm.get(s.texture_groop,tex_h)
+	return hm.get(&s.texture_groop,tex_h)
 }
 
 

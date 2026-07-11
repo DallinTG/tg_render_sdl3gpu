@@ -8,7 +8,8 @@ import cl "clay-odin"
 import "core:c"
 import "core:math"
 import "core:strings"
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 // import rl "vendor:raylib"
 
 // Raylib_Font :: struct {
@@ -392,7 +393,7 @@ Clay_Instance::struct{
 	gbl_font_size: f32,
 }
 get_clay_instance::proc(hd:Clay_I_Handle)->(clay_instance:^Clay_Instance){
-	clay_instance = hm.get(s.clay_instances,hd)
+	clay_instance = hm.get(&s.clay_instances,hd)
 	return
 }
 

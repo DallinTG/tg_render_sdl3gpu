@@ -11,7 +11,8 @@ import "core:fmt"
 import "core:math"
 import "core:math/rand"
 
-import hm "../../handle_map_static_virtual"
+// import hm "../../handle_map_static_virtual"
+import hm "core:container/handle_map"
 import an"../../ansi"
 import lin"core:math/linalg"
 import cl"../../clay-odin"
@@ -130,6 +131,11 @@ Cell_ids::enum u16{
 	stone,
 	steam,
 	out_of_bounds,
+	
+	smoke,
+	flame,
+	ember,
+	ash,
 }
 Cell_Flags::enum{
 	has_grav,
@@ -148,6 +154,7 @@ Cell_Data::struct{
 	starting_hp:u8,
 	hp_decay_rate:i32,
 	hp_decay_chance:f32,
+	decay_into:Cell_ids,
 
 	cold_transmute_at_temp:Cell_Temperature,
 	cold_transmute_into_id:Cell_ids,
@@ -159,14 +166,14 @@ Cell_Data::struct{
 }
 
 Cell_Info:=[Cell_ids]Cell_Data{
-	.air ={
+	.air =Cell_Data{
 		flags={
 			// .is_solid,
 		},
 		color = {0,1,1,.1},
 		density = 0,
 	},
-	.sand ={
+	.sand =Cell_Data{
 		flags={
 			.has_grav,
 			.is_solid,
@@ -185,7 +192,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		hot_transmute_at_temp = .Unbelievably_Hot,
 		hot_transmute_into_id = .lava,
 	},
-	.gravel ={
+	.gravel =Cell_Data{
 		flags={
 			.has_grav,
 			.is_solid,
@@ -204,7 +211,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		hot_transmute_at_temp = .Unbelievably_Hot,
 		hot_transmute_into_id = .lava,
 	},
-	.up_sand ={
+	.up_sand =Cell_Data{
 		flags={
 			.has_grav,
 			.is_solid,
@@ -222,7 +229,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		hot_transmute_at_temp = .Unbelievably_Hot,
 		hot_transmute_into_id = .lava,
 	},
-	.water ={
+	.water =Cell_Data{
 		flags={
 
 			.has_grav,
@@ -241,7 +248,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		hot_transmute_at_temp = .Extremely_Hot,
 		hot_transmute_into_id = .steam,
 	},
-	.ice ={
+	.ice =Cell_Data{
 		flags={
 			.is_solid,
 
@@ -260,7 +267,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		hot_transmute_at_temp = .Very_Hot,
 		hot_transmute_into_id = .water,
 	},
-	.lava ={
+	.lava =Cell_Data{
 		flags={
 			.has_grav,
 		},
@@ -285,7 +292,7 @@ Cell_Info:=[Cell_ids]Cell_Data{
  
 
 	},
-	.stone ={
+	.stone =Cell_Data{
 		flags={
 			.is_solid,
 		},
@@ -294,12 +301,6 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		color = {.38,.365,.341,1},
 		density = 4,
 		starting_hp = 50,
-		// flow_rate = 4,
-		// temperature = 0,
-		// cold_transmute_temp = -100,
-		// cold_transmute = .air,
-		// hot_transmute_temp = 100,
-		// hot_transmute = .lava,
 
 		// cold_transmute_at_temp = .Freezing,
 		// cold_transmute_into_id = .stone,
@@ -310,26 +311,73 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		hot_transmute_into_id = .lava, 
 
 	},
-	.steam = {
+	.steam = Cell_Data{
 		flags={
 
 			.is_gass,
 		},
 		// has_grav = false,
 		slippage = 2,
-		color = {.129,.237,.355,4},
+		color = {.129,.237,.355,1},
 		density = 1,
 		flow_rate = 2,
 		starting_hp = 5,
 		hp_decay_rate = 1,
 		hp_decay_chance = .1,
-		// temperature = 200,
-		// hot_transmute_temp = 10000,
-		// cold_transmute_temp = -10,
-		// cold_transmute = .water,
+		decay_into = .air,
 
 		cold_transmute_at_temp = .Cold,
 		cold_transmute_into_id = .water,
+
+		starting_temperature = .Melting,
+
+		// hot_transmute_at_temp = .Unbelievably_Hot,
+		// hot_transmute_into_id = .lava, 
+
+	},
+
+	.smoke = Cell_Data{
+		flags={
+
+			.is_gass,
+		},
+		// has_grav = false,
+		slippage = 2,
+		color = {.0990, 0.0441, 0.0495,1},
+		density = 1,
+		flow_rate = 2,
+		starting_hp = 5,
+		hp_decay_rate = 1,
+		hp_decay_chance = .1,
+
+
+		// cold_transmute_at_temp = .Cold,
+		// cold_transmute_into_id = .water,
+
+		starting_temperature = .Warm,
+
+		// hot_transmute_at_temp = .Unbelievably_Hot,
+		// hot_transmute_into_id = .lava, 
+
+	},
+
+	.flame = Cell_Data{
+		flags={
+
+			.is_gass,
+		},
+		// has_grav = false,
+		slippage = 2,
+		color = {.990, 0.441, 0.0495,1},
+		density = 1,
+		flow_rate = 2,
+		starting_hp = 5,
+		hp_decay_rate = 1,
+		hp_decay_chance = .1,
+		decay_into = .smoke,
+
+		// cold_transmute_at_temp = .Cold,
+		// cold_transmute_into_id = .water,
 
 		starting_temperature = .Very_Hot,
 
@@ -337,9 +385,58 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		// hot_transmute_into_id = .lava, 
 
 	},
-	.out_of_bounds ={
+	.ember = Cell_Data{
 		flags={
-			.is_solid 
+			.is_solid,
+			// .is_gass,
+		},
+		// has_grav = false,
+		slippage = 0,
+		color = {.990, .441, .0495,1},
+		density = 1,
+		flow_rate = 0,
+		starting_hp = 25,
+		hp_decay_rate = 1,
+		hp_decay_chance = .1,
+		
+		decay_into = .flame,
+
+		// cold_transmute_at_temp = .Cold,
+		// cold_transmute_into_id = .water,
+
+		starting_temperature = .Very_Hot,
+
+		// hot_transmute_at_temp = .Unbelievably_Hot,
+		// hot_transmute_into_id = .lava, 
+
+	},
+	.ash = Cell_Data{
+		flags={
+			.is_solid,
+			// .is_gass,
+		},
+		// has_grav = false,
+		slippage = 0,
+		color = {.490, .441, .495,1},
+		density = 1,
+		flow_rate = 0,
+		starting_hp = 1,
+		hp_decay_rate = 0,
+		hp_decay_chance = 0,
+		
+
+		// cold_transmute_at_temp = .Cold,
+		// cold_transmute_into_id = .water,
+
+		starting_temperature = .Room,
+
+		// hot_transmute_at_temp = .Unbelievably_Hot,
+		// hot_transmute_into_id = .lava, 
+
+	},
+	.out_of_bounds =Cell_Data{
+		flags={
+			.is_solid,
 		},
 		// has_grav = false,
 		color = {0,0,0,1},

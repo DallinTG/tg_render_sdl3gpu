@@ -11,7 +11,8 @@ import "core:path/filepath"
 import "core:encoding/json"
 import lin"core:math/linalg"
 import "base:runtime"
-import hm "handle_map_static_virtual"
+// import hm "handle_map_static_virtual"
+import hm "core:container/handle_map"
 import steam "steamworks"
 import "core:os"
 
@@ -23,7 +24,7 @@ import "core:image/bmp"
 import "core:image/png"
 import "core:image/tga"
 
-Handle :: hm.Handle
+Handle :: hm.Handle32
 s:^State
 State :: struct{
 	app_should_close:bool,
@@ -42,11 +43,16 @@ State :: struct{
 	texture_arr_groop:[Texture_Arr_Groop]Texture_Arr_Data,
 	
 	texture_groop: Texture_Groop,
-	shaders:        hm.Handle_Map(Shader, Shader_Handle, 200),
-	windows:        hm.Handle_Map(Window, Window_Handle, 50),
-	meshes:         hm.Handle_Map(Mesh, Mesh_Handle, 1024*10),
-	fonts:          hm.Handle_Map(Font, Font_Handle, 200),
-	clay_instances: hm.Handle_Map(Clay_Instance, Clay_I_Handle, 50),
+	// shaders:        hm.Handle_Map(Shader, Shader_Handle, 200),
+	// windows:        hm.Handle_Map(Window, Window_Handle, 50),
+	// meshes:         hm.Handle_Map(Mesh, Mesh_Handle, 1024*10),
+	// fonts:          hm.Handle_Map(Font, Font_Handle, 200),
+	// clay_instances: hm.Handle_Map(Clay_Instance, Clay_I_Handle, 50),
+	shaders:        hm.Dynamic_Handle_Map(Shader, Shader_Handle),
+	windows:        hm.Dynamic_Handle_Map(Window, Window_Handle),
+	meshes:         hm.Dynamic_Handle_Map(Mesh, Mesh_Handle),
+	fonts:          hm.Dynamic_Handle_Map(Font, Font_Handle),
+	clay_instances: hm.Dynamic_Handle_Map(Clay_Instance, Clay_I_Handle),
 	
 	defalt_font:Font_Handle,
 
@@ -522,8 +528,8 @@ submit_frame::proc(frame:^Frame_Data){
 
 
 update_windows::proc(render_cmd_buf :^sdl.GPUCommandBuffer,){
-	my_iter := hm.make_iter(&s.windows)
-	for win, i in hm.iter(&my_iter) {
+	my_iter := hm.iterator_make(&s.windows)
+	for win, hd in hm.iterate(&my_iter) {
 		update_window(win,render_cmd_buf)
 	}
 }
@@ -543,8 +549,8 @@ update_window::proc(win:^Window,render_cmd_buf :^sdl.GPUCommandBuffer,){			swap_
 	if !ok{log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")}
 }
 remove_closed_windows::proc(){
-	windows_iter := hm.make_iter(&s.windows)
-	for window in hm.iter(&windows_iter) {
+	windows_iter := hm.iterator_make(&s.windows)
+	for window,hd in hm.iterate(&windows_iter) {
 		if sdl.GetWindowID(window.data) == 0 {
 			hm.remove(&s.windows,window.handle)
 		}
@@ -552,7 +558,7 @@ remove_closed_windows::proc(){
 }
 
 get_window::proc(window_hd:Window_Handle) -> (window:^Window){
-	window = hm.get(s.windows,window_hd)
+	window = hm.get(&s.windows,window_hd)
 	return window
 }
 get_window_size::proc(window_hd:Window_Handle)-> (win_size:[2]i32) {
@@ -709,11 +715,12 @@ cleane_up_app::proc(){
 	cleane_up_steam()
 	delete(s.events)
 	delete(s.texture_arr_map)
-	hm.delete(&s.meshes)
-	hm.delete(&s.texture_groop)
-	hm.delete(&s.windows)
-	hm.delete(&s.shaders)
-	hm.delete(&s.clay_instances)
+	hm.dynamic_destroy(&s.meshes)
+	hm.dynamic_destroy(&s.texture_groop)
+	hm.dynamic_destroy(&s.windows)
+	hm.dynamic_destroy(&s.shaders)
+	hm.dynamic_destroy(&s.clay_instances)
+	hm.dynamic_destroy(&s.fonts)
 	free(s)
 }
 delete_r_pass::proc(pass:^R_Pass){
