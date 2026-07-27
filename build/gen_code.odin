@@ -113,6 +113,7 @@ Image :: struct {
 	width: int,
 	height: int,
 	id:[2]u32,
+	hd:Texture_HD,//this will be set at runtime
 	data: []u8,
 }
 
