@@ -66,6 +66,7 @@ Steam_Player::struct{
 	game:steam.FriendGameInfo,
 	l_player_icon_id:i32,
 	l_player_icon_gpu_id:[2]u32,
+	l_player_icon_gpu_hd:Texture_HD,
 }
 Steam_Player_Groop::struct{
 	filter:union{steam.EFriendFlags,steam.CSteamID},// CSteamID is for lobbys
@@ -195,7 +196,7 @@ update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends
 					img,image_ok:=image.pixels_to_image(raw_buff,cast(int)w,cast(int)h)
 					if image_ok{
 						// fmt.print("wewoo\n\n")
-						groop.player[i].l_player_icon_gpu_id = reg_texture_from_bits(&img,[2]string{"steam_player_icon_l",groop.player[i].name})
+						groop.player[i].l_player_icon_gpu_hd,groop.player[i].l_player_icon_gpu_id = reg_texture_from_bits(&img,[2]string{"steam_player_icon_l",groop.player[i].name})
 					}
 				}
 				delete(buffer)
@@ -309,7 +310,7 @@ run_steam_callbacks :: proc() {
 					// s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 				}else{
 					fmt.print("Lobby Creation failed",temp.eResult,"\n"  )
-					send_simp_error_notification(&s.notifications, "Lobby Creation failed")
+					send_simp_error_notification(&s.ui.notifications, "Lobby Creation failed")
 				}
 			case .GameLobbyJoinRequested:
 				fmt.print("GameLobbyJoinRequested_fin\n")
@@ -318,7 +319,7 @@ run_steam_callbacks :: proc() {
 				update_steam_friend_info()
 			case .LobbyInvite:
 				temp:=transmute(^steam.LobbyInvite)callback.pubParam
-				send_accept_invite_to_game_notification(&s.notifications,"you got invite to a game",lobby_id = temp.ulSteamIDLobby)
+				send_accept_invite_to_game_notification(&s.ui.notifications,"you got invite to a game",lobby_id = temp.ulSteamIDLobby)
 				update_steam_friend_info()
 				fmt.print("LobbyInvite_fin\n")
 			case .LobbyEnter:
@@ -340,7 +341,7 @@ run_steam_callbacks :: proc() {
 					
 				}else{
 					fmt.print("Lobby Enter failed",err,"\n"  )
-					send_simp_error_notification(&s.notifications, "Lobby Enter failed")
+					send_simp_error_notification(&s.ui.notifications, "Lobby Enter failed")
 				}
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam

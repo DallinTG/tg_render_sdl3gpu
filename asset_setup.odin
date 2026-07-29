@@ -30,6 +30,6 @@ reg_defalt_assets::proc(){
 reg_defalt_textures::proc(){
 	reg_bad_defalt_texture()
 	reg_white_defalt_texture()
-	reg_all_texture_from_loaded_directory(Icons_Dir,"icons")
-	reg_all_texture_from_loaded_directory(Textures_Dir,"textures")
+	reg_all_texture_from_loaded_directory(Icons_Dir,"icons",&Icons_Data)
+	reg_all_texture_from_loaded_directory(Textures_Dir,"textures",&Textures_Data)
 }

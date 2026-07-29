@@ -220,6 +220,9 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 	steam_msg:^^steam.SteamNetworkingMessage = &steam_msg_data_p
 	mesg_count:=steam.NetworkingMessages_ReceiveMessagesOnChannel(self = s.steam.i_networking_messages, nLocalChannel = 0, ppOutMessages = steam_msg, nMaxMessages = 1)
 	if mesg_count > 0{
+		if s.steam.is_using_steam == false{
+			log.log(.Error,"trying to use steme when steame not runing")
+		}
 		remote_endpoint=steam_msg^^.identityPeer
 		bytes_recv = cast(int)steam_msg^^.cbSize
 		if cast(int)steam_msg^^.cbSize<len(buff){
@@ -516,8 +519,8 @@ send_net_command_to_all_clients::proc(net_inst:^Networking_Instance,cmd:Net_Comm
 recv_command::proc(net_inst:^Networking_Instance)->( command:Net_Command, endpoint:Endpoint, buf:[]u8 ,ok:bool){
 	// raw_command:=transmute([size_of(Net_Command)]u8)command
 	// bytes_recv, remote_endpoint, err_recv:=tg.recv_udp(&g.server.net_state ,raw_command[:])
+
 	bytes_recv, remote_endpoint, err_recv:=recv_udp(&net_inst.net_state, net_inst.temp_buff_r[:])
-	
 
 	endpoint = remote_endpoint
 	if err_recv == nil{

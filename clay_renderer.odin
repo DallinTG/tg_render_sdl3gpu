@@ -150,13 +150,13 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
 			if tint == {} {
 				tint = {1, 1, 1, 1}
 			}
-			imageTexture := (^[2]u32)(config.imageData)
+			imageTexture := cast(^Texture_HD)(config.imageData)
 			   rect:Rect={
 		    	pos = {bounds.x,bounds.y*-1,0+inst.z_offset},
 		     	w_h = {bounds.width,bounds.height}
 		    }
 			// draw_rect_clay(inst, mesh,bounds.x, bounds.y, bounds.width, bounds.height, config.backgroundColor,imageTexture^)
-			draw_rect(mesh,imageTexture^,DEFALT_UI_VERTEX_DATA,tint,rect, scissor_rect = get_true_scissor(scissor_stack[:]))
+			draw_rect(mesh,get_texture(imageTexture^),DEFALT_UI_VERTEX_DATA,tint,rect, scissor_rect = get_true_scissor(scissor_stack[:]))
 			// rl.DrawTextureEx(imageTexture^, {bounds.x, bounds.y}, 0, bounds.width / f32(imageTexture.width), clay_color_to_rl_color(tint))
 
         case .ScissorStart:
@@ -334,10 +334,10 @@ scissor_intersect :: proc(a, b: Vec4) -> Vec4 {
 // Helper procs, mainly for repeated conversions
 
 @(private = "file")
-draw_arc :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y: f32, inner_rad, outer_rad: f32,start_angle, end_angle: f32, color: cl.Color = {1,1,1,1},tex_id:[2]u32= {0,1}, scissor_rect:Vec4={}){
+draw_arc :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y: f32, inner_rad, outer_rad: f32,start_angle, end_angle: f32, color: cl.Color = {1,1,1,1},tex_hd:Texture_HD= {0,1}, scissor_rect:Vec4={}){
 	draw_ring(
 		mesh = mesh,
-		tex_id= tex_id,
+		tex= get_texture(tex_hd),
 		segments = 20, 
 		center = {x,y*-1,0+clay_instance.z_offset},
 		innerRadius = math.round(inner_rad),
@@ -352,25 +352,25 @@ draw_arc :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y: f32, inner_r
 
 
 @(private = "file")
-draw_rect_clay :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y, w, h: f32, color: cl.Color,tex_id:[2]u32= {0,1}, scissor_rect:Vec4={}) {
+draw_rect_clay :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU, x, y, w, h: f32, color: cl.Color,tex_hd:Texture_HD= s.white_texture_hd, scissor_rect:Vec4={}) {
     rect:Rect={
     	pos = {x,y*-1,0+clay_instance.z_offset},
      	w_h = {w,h}
     }
     clay_instance.z_offset+=clay_instance.z_offseter
-    draw_rect(mesh = mesh,tex_id= tex_id,rect = rect, vert_t = DEFALT_UI_VERTEX_DATA,col = color,scissor_rect = scissor_rect)
+    draw_rect(mesh = mesh,tex=get_texture(tex_hd),rect = rect, vert_t = DEFALT_UI_VERTEX_DATA,col = color,scissor_rect = scissor_rect)
     // draw_rect(mesh,tex_id,DEFALT_UI_VERTEX_DATA,{1,1,1,1},rect)
 }
 
 @(private = "file")
-draw_rect_rounded_clay :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU,x,y,w,h: f32, radius: f32, color: cl.Color, tex_id:[2]u32= {0,1},scissor_rect:Vec4={}){
+draw_rect_rounded_clay :: proc(clay_instance:^Clay_Instance,mesh:^Mesh_CPU,x,y,w,h: f32, radius: f32, color: cl.Color, tex_hd:Texture_HD= s.white_texture_hd,scissor_rect:Vec4={}){
 	rect:Rect={
     	pos = {x,y*-1,0+clay_instance.z_offset},
      	w_h = {w,h}
     }
     clay_instance.z_offset+=clay_instance.z_offseter
     // draw_rect(mesh = mesh,tex_id= tex_id,rect = rect, vert_t = DEFALT_UI_VERTEX_DATA,col = color,scissor_rect = scissor_rect)
-    draw_rect_rounded(mesh = mesh,tex_id= tex_id,rec = rect,roundness = radius,rot = math.to_radians_f32(180), vert_t = DEFALT_UI_VERTEX_DATA,col = color,scissor_rect = scissor_rect)
+    draw_rect_rounded(mesh = mesh,tex= get_texture(tex_hd),rec = rect,roundness = radius,rot = math.to_radians_f32(180), vert_t = DEFALT_UI_VERTEX_DATA,col = color,scissor_rect = scissor_rect)
     fmt.print(radius,"\n")
     // rl.DrawRectangleRounded({x,y,w,h},radius,8,clay_color_to_rl_color(color))
 }
@@ -391,6 +391,7 @@ Clay_Instance::struct{
 	z_offseter:    f32,
 	z_offset:      f32,
 	gbl_font_size: f32,
+	wh:[2]i32
 }
 get_clay_instance::proc(hd:Clay_I_Handle)->(clay_instance:^Clay_Instance){
 	clay_instance = hm.get(&s.clay_instances,hd)
@@ -438,6 +439,8 @@ update_clay_instance::proc(
 ){
 	inst:=get_clay_instance(clay_instance)
 	mesh:=get_mesh(inst.mesh)
+	inst.wh = wh
+	// fmt.print(wh,"\n")
 	cl.SetLayoutDimensions({ cast(f32)wh.x, cast(f32)wh.y })
 	cl.SetPointerState( mouse_pos, mouse_down)
 	cl.UpdateScrollContainers(enableDragScrolling = enable_drag_scrolling, scrollDelta = scroll_dt, deltaTime = dt_time)
@@ -468,16 +471,16 @@ render_clay_instance::proc(
 		// d_store_op = d_store_op
 	)	
 }
-update_render_clay_instance::proc(
-	clay_instance:Clay_I_Handle,
-	pass:^R_Pass,
-	renderCommands: ^cl.ClayArray(cl.RenderCommand),
-	camera:^Camera,
-	wh:[2]i32
-){
-	update_clay_instance(clay_instance, renderCommands, wh)
-	render_clay_instance(clay_instance,pass, camera,)
-}
+// update_render_clay_instance::proc(
+// 	clay_instance:Clay_I_Handle,
+// 	pass:^R_Pass,
+// 	renderCommands: ^cl.ClayArray(cl.RenderCommand),
+// 	camera:^Camera,
+// 	wh:[2]i32
+// ){
+// 	update_clay_instance(clay_instance, renderCommands, wh)
+// 	render_clay_instance(clay_instance,pass, camera,)
+// }
 delete_clay_instance::proc(clay_instance:Clay_I_Handle){
 	inst:=get_clay_instance(clay_instance)
 	// delete_r_pass(&inst.pass)

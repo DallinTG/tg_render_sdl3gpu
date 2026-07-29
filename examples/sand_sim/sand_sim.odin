@@ -259,10 +259,10 @@ Cell_Info:=[Cell_ids]Cell_Data{
 		density = .9,
 		starting_hp = 5,
 
-		cold_transmute_at_temp = .Room,
+		// cold_transmute_at_temp = .Room,
 		// cold_transmute_into_id = .,
 
-		starting_temperature = .Very_Cold,
+		starting_temperature = .Cold,
 
 		hot_transmute_at_temp = .Very_Hot,
 		hot_transmute_into_id = .water,
@@ -519,7 +519,7 @@ mesh_chunck::proc(chunck:^Chunck,pos:[2]int,w_map:^Map){
 	// tg.clear_mesh_cpu(&mesh.cpu)//TODO Clears the mesh every frame this should only do that if somthing has changed
 	draw_chunck(
 		mesh = &mesh.cpu,
-		tex_id = 1,
+		tex = tg.get_texture(s.white_texture_hd),
 		vert_t = Sand_Sim_Cell_Vertex_Data,
 		pos = {cast(f32)(pos.x*CELL_SIZE*CHUNCK_SIZE),cast(f32)(pos.y*CELL_SIZE*CHUNCK_SIZE*-1),0},
 		// w_h = {CHUNCK_SIZE,CHUNCK_SIZE},
@@ -530,7 +530,7 @@ mesh_chunck::proc(chunck:^Chunck,pos:[2]int,w_map:^Map){
 	if chunck.dirty_rect_last != {CHUNCK_SIZE,CHUNCK_SIZE,0,0}{
 		tg.draw_rect(
 			mesh = &w_map_overlay_mesh.cpu, 
-			tex_id = 1,
+			tex = tg.get_texture(s.white_texture_hd),
 			vert_t = tg.Vertex_Data, 
 			rect = {
 				// {
@@ -608,7 +608,6 @@ update_map::proc(w_map:^Map){
 	sink_next_chunck(&g.server, w_map)
 	sink_w_map_info(&g.server, g.w_map)
 
-
 	// for &chuncks,x in &w_map.chuncks{
 	// 	for &chunck,y in &chuncks{
 	// 		update_chunck(&chunck,x,y,w_map)
@@ -624,11 +623,8 @@ update_map::proc(w_map:^Map){
 		}
 	}
 
-
 	w_map.tick_count+=1
 	w_map.tick_count_loc+=1
-
-
 }
 update_chunck::proc(chunck:^Chunck,c_x:int,c_y:int,w_map:^Map){
 	// chunck.cell_has_moved = {}
@@ -988,25 +984,25 @@ do_cell_temperature_interaction::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map){
 	}else if ca.temperature <= cb_data.cold_transmute_at_temp && cb_data.cold_transmute_at_temp != .Room{
 		new_cb_id = cb_data.cold_transmute_into_id
 	}
-	if (ca.id ==.water && cb.id == .lava)||(cb.id ==.water && ca.id == .lava){
-		fmt.print(
-			"\n__________________________\n",
-			"CELL A:",ca.id,ca.temperature,"\n",
-			"NEW_ID:",new_ca_id,
-			"HOT_TT:",ca_data.hot_transmute_at_temp,
-			"HOT_TID:",ca_data.hot_transmute_into_id,
-			"COL_TT:",ca_data.cold_transmute_at_temp,
-			"COL_TID:",ca_data.cold_transmute_into_id,
-			"\n__\n",
-			"CELL B:",cb.id,cb.temperature,"\n",
-			"NEW_ID:",new_cb_id,
-			"HOT_TT:",cb_data.hot_transmute_at_temp,
-			"HOT_TID:",cb_data.hot_transmute_into_id,
-			"COL_TT:",cb_data.cold_transmute_at_temp,
-			"COL_TID:",cb_data.cold_transmute_into_id,
-			"\n__________________________\n",
-		)
-	}
+	// if (ca.id ==.water && cb.id == .lava)||(cb.id ==.water && ca.id == .lava){
+		// fmt.print(
+		// 	"\n__________________________\n",
+		// 	"CELL A:",ca.id,ca.temperature,"\n",
+		// 	"NEW_ID:",new_ca_id,
+		// 	"HOT_TT:",ca_data.hot_transmute_at_temp,
+		// 	"HOT_TID:",ca_data.hot_transmute_into_id,
+		// 	"COL_TT:",ca_data.cold_transmute_at_temp,
+		// 	"COL_TID:",ca_data.cold_transmute_into_id,
+		// 	"\n__\n",
+		// 	"CELL B:",cb.id,cb.temperature,"\n",
+		// 	"NEW_ID:",new_cb_id,
+		// 	"HOT_TT:",cb_data.hot_transmute_at_temp,
+		// 	"HOT_TID:",cb_data.hot_transmute_into_id,
+		// 	"COL_TT:",cb_data.cold_transmute_at_temp,
+		// 	"COL_TID:",cb_data.cold_transmute_into_id,
+		// 	"\n__________________________\n",
+		// )
+	// }
 
 	if new_ca_id != .out_of_bounds{
 		set_cell_by_id(cell_a,new_ca_id,w_map)
@@ -1101,7 +1097,7 @@ resv_set_cell_cmds::proc(server_cmd:^tg.Server_CMD,w_map:^Map){
 
 draw_chunck::proc(
 	mesh: ^tg.Mesh_CPU,
-	tex_id:tg.Texture_ID_Types, 
+	tex:^tg.Texture, 
 	$vert_t:typeid, 
 	pos:[3]f32,
 	// $w_h:[2]int,
@@ -1113,7 +1109,7 @@ draw_chunck::proc(
 	uv:[4]f32 = tg.DEFALT_QUAD_UV, 
 	mat:matrix[4, 4]f32 = tg.Mat4(1),
 ){
-	tex:=tg.get_texture(tex_id)
+	// tex:=tg.get_texture(tex_hd)
 	verts:[4]vert_t
 	// mat:Mat4=mat
 	translate_m4: tg.Mat4 = lin.matrix4_translate_f32(pos)

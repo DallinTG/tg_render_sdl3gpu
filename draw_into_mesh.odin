@@ -207,8 +207,8 @@ Cube::struct{
 	pos:[3]f32,
 	w_h_l:[3]f32,
 }
-draw_cube::proc(mesh: ^Mesh_CPU,tex_id:Texture_ID_Types, $vert_t:typeid, col:[4]f32={1,1,1,1}, cube:Cube, origin: Vec3 = {}, rot:[3]f32 = {}, mat:matrix[4, 4]f32 = Mat4(1)){
-	tex:=get_texture(tex_id)
+draw_cube::proc(mesh: ^Mesh_CPU, tex:^Texture, $vert_t:typeid, col:[4]f32={1,1,1,1}, cube:Cube, origin: Vec3 = {}, rot:[3]f32 = {}, mat:matrix[4, 4]f32 = Mat4(1)){
+	// tex:=get_texture(tex_id)
 	verts:[24]vert_t
 	// mat:Mat4=mat
 	translate_m4: Mat4 = lin.matrix4_translate_f32(cube.pos)
@@ -336,7 +336,7 @@ DEFALT_QUAD_UV:[4]f32={
 }
 draw_rect::proc(
 	mesh: ^Mesh_CPU,
-	tex_id:Texture_ID_Types, 
+	tex:^Texture, 
 	$vert_t:typeid, 
 	col:[4]f32={1,1,1,1}, 
 	rect:Rect, 
@@ -346,7 +346,7 @@ draw_rect::proc(
 	scissor_rect:Vec4 = {},
 	mat:matrix[4, 4]f32 = Mat4(1),
 ){
-	tex:=get_texture(tex_id)
+	// tex:=get_texture(tex_hd)
 	verts:[4]vert_t
 	// mat:Mat4=mat
 	translate_m4: Mat4 = lin.matrix4_translate_f32(rect.pos)
@@ -420,7 +420,7 @@ draw_rect::proc(
 
 draw_ring::proc(
 	mesh: ^Mesh_CPU,
-	tex_id:Texture_ID_Types, 
+	tex:^Texture, 
 	$vert_t:typeid, 
 	center:Vec3,
 	$segments:i32,
@@ -437,7 +437,7 @@ draw_ring::proc(
     innerRadius:=innerRadius
     startAngle:= startAngle
     endAngle:= endAngle
-    tex:=get_texture(tex_id)
+    // tex:=get_texture(tex_hd)
 
     // Function expects (outerRadius > innerRadius)
     if (outerRadius < innerRadius){
@@ -546,7 +546,7 @@ Plane_Cell::struct{
 
 draw_plane::proc(
 	mesh: ^Mesh_CPU,
-	tex_id:Texture_ID_Types, 
+	tex:^Texture, 
 	$vert_t:typeid, 
 	pos:[3]f32,
 	plane:[$w][$h]Plane_Cell,
@@ -556,7 +556,7 @@ draw_plane::proc(
 	uv:[4]f32=DEFALT_QUAD_UV, 
 	mat:matrix[4, 4]f32 = Mat4(1),
 ){
-	tex:=get_texture(tex_id)
+	// tex:=get_texture(tex_id)
 	verts:[4]vert_t
 	// mat:Mat4=mat
 	translate_m4: Mat4 = lin.matrix4_translate_f32(pos)
@@ -625,7 +625,7 @@ draw_plane::proc(
 
 draw_rect_rounded::proc(
 	mesh: ^Mesh_CPU,
-	tex_id:Texture_ID_Types,
+	tex:^Texture,
 	$vert_t:typeid,
 	rec: Rect,
 	roundness: f32 = .25,
@@ -671,8 +671,9 @@ draw_rect_rounded::proc(
 		verts[3].uv =  uvs.w
 	}
 	
-	tex:=get_texture(tex_id)
+	// tex:=get_texture(tex_hd)
 	when intrinsics.type_has_field(vert_t, "img_index"){
+		
 		for &vert in &verts{
 			vert.img_index = cast(u32)tex.groop_index
 		}
@@ -685,7 +686,7 @@ draw_rect_rounded::proc(
 	
 	
 	if roundness <= 0 { // if not a rounded rectangle will just draw a regular rect
-		draw_rect(mesh=mesh,tex_id=tex_id, rect=rec, vert_t=vert_t, origin=origin, rot= rot, col=col)
+		draw_rect(mesh=mesh,tex=tex, rect=rec, vert_t=vert_t, origin=origin, rot= rot, col=col)
 		return
 	}
 	if roundness >= 1 {roundness = 1 }// clamps the roundness value to 1

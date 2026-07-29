@@ -151,7 +151,7 @@ draw_p_cells::proc(w_map:^Map){
 
 
 		mesh:=tg.get_mesh(w_map.overlay_mesh)
-		tg.draw_rect(&mesh.cpu,1,tg.Vertex_Data,Cell_Info[cell.cell.id].color+color_offset,{{cell.pos.x,cell.pos.y,0},{CELL_SIZE,CELL_SIZE}},{-CELL_SIZE/2,-CELL_SIZE,0})
+		tg.draw_rect(&mesh.cpu,tg.get_texture(s.white_texture_hd),tg.Vertex_Data,Cell_Info[cell.cell.id].color+color_offset,{{cell.pos.x,cell.pos.y,0},{CELL_SIZE,CELL_SIZE}},{-CELL_SIZE/2,-CELL_SIZE,0})
 	}
 }
 

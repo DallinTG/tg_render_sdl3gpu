@@ -29,6 +29,7 @@ Font :: struct {
 	handle:Font_Handle,
 	char_data: [char_count]tt.bakedchar,
 	sg_image: Texture_ID_Types,
+	texture_hd:Texture_HD,
 	info:tt.fontinfo,
 	height:f32,
 	
@@ -64,9 +65,10 @@ load_font_from_data :: proc(font_id:string ,height:f32, ttf_data:[]u8 = DEFALT_F
 		new_bitmap[i].a = bit.x
 	}
 	img ,ok:= image.pixels_to_image(pixels = new_bitmap[:],width = font_bitmap_w, height = font_bitmap_h,)
-	id :=[2]string{"font_id","font"}
-	reg_texture_from_bits(&img,id, format = .R8G8B8A8_UNORM)
+	id :=[2]string{"font",font_id}
+	hd,new_id:=reg_texture_from_bits(&img,id, format = .R8G8B8A8_UNORM)
 	font.sg_image = id
+	font.texture_hd = hd
 	font_hd = hm.add(&s.fonts, font)
 
 	return
@@ -137,10 +139,10 @@ draw_text :: proc(
 		
 		if debug_text {
 			// draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{.01,.01}}, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
-			draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = {pos,{1,1}}, origin = {}, rot = rot,uv = uv, vert_t = vert_t,scissor_rect= scissor_rect)
+			draw_rect(mesh = mesh, tex= get_texture(s.white_texture_hd), rect = {pos,{1,1}}, origin = {}, rot = rot,uv = uv, vert_t = vert_t,scissor_rect= scissor_rect)
 			// draw_rect(mesh = mesh, tex_id = [2]u32{0,0}, rect = rect, origin = origin, rot = rot,uv = uv, vert_t = vert_t,)
 		}
-		draw_rect(mesh = mesh, tex_id = font.sg_image, rect = rect, origin = origin, rot = rot,uv = uv, col = col, vert_t = vert_t, scissor_rect= scissor_rect)
+		draw_rect(mesh = mesh, tex = get_texture(font.texture_hd), rect = rect, origin = origin, rot = rot,uv = uv, col = col, vert_t = vert_t, scissor_rect= scissor_rect)
 		x += advance_x
 		y += -advance_y	
 	}

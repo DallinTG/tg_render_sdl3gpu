@@ -13,6 +13,7 @@ import lin"core:math/linalg"
 import "base:runtime"
 // import hm "handle_map_static_virtual"
 import hm "core:container/handle_map"
+import reg "/registry"
 import steam "steamworks"
 import "core:os"
 
@@ -39,7 +40,11 @@ State :: struct{
 	swap_chain_texture_format:	sdl.GPUTextureFormat,
 	depth_texture_format:		sdl.GPUTextureFormat,
 	
-	texture_arr_map:map[[2]u32]Texture,
+	textures_reg:reg.Registry(Texture, Texture_HD),
+	white_texture_hd:Texture_HD,
+	bad_texture_hd:Texture_HD,
+	// textures:hm.Dynamic_Handle_Map(Texture, Texture_HD),
+	// texture_arr_map:map[u64]Texture_HD,
 	texture_arr_groop:[Texture_Arr_Groop]Texture_Arr_Data,
 	
 	texture_groop: Texture_Groop,
@@ -48,11 +53,12 @@ State :: struct{
 	// meshes:         hm.Handle_Map(Mesh, Mesh_Handle, 1024*10),
 	// fonts:          hm.Handle_Map(Font, Font_Handle, 200),
 	// clay_instances: hm.Handle_Map(Clay_Instance, Clay_I_Handle, 50),
-	shaders:        hm.Dynamic_Handle_Map(Shader, Shader_Handle),
-	windows:        hm.Dynamic_Handle_Map(Window, Window_Handle),
-	meshes:         hm.Dynamic_Handle_Map(Mesh, Mesh_Handle),
-	fonts:          hm.Dynamic_Handle_Map(Font, Font_Handle),
+	shaders:		hm.Dynamic_Handle_Map(Shader, Shader_Handle),
+	windows:		hm.Dynamic_Handle_Map(Window, Window_Handle),
+	meshes:		 	hm.Dynamic_Handle_Map(Mesh, Mesh_Handle),
+	fonts:		 	hm.Dynamic_Handle_Map(Font, Font_Handle),
 	clay_instances: hm.Dynamic_Handle_Map(Clay_Instance, Clay_I_Handle),
+	// ui_boxes:		hm.Dynamic_Handle_Map(UI_Box_Data, UI_Box_Handle),
 	
 	defalt_font:Font_Handle,
 
@@ -62,24 +68,18 @@ State :: struct{
 
 
 	time:Time_Info,
+
 	events:[dynamic]sdl.Event,
+	input_events:event_data,
 	
-	// input:Input_Data,
 
-	ui_style:UI_Style,
-	// ui_settings:UI_Settings,
-	
-	// lobby:Lobby,
-	// key_down: #sparse[sdl.Scancode]bool,
-	// mouse_button_down: #sparse[sdl.MouseButtonFlag]bool,
-	// mouse_move: Vec2,
-	// mouse_wheel:sdl.MouseWheelEvent,
+	ui: UI_Info,
+	is_ui_l_click:proc()->(bool),//TODO This needs to be removed
+	is_ui_r_click:proc()->(bool),//TODO This needs to be removed
 
-	notifications:Notification_Buffer, 
-	is_ui_l_click:proc()->(bool),
-	is_ui_r_click:proc()->(bool),
 
 }
+
 Window_Handle :: distinct Handle
 Window::struct{
 	handle:Window_Handle,
@@ -209,10 +209,7 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	s.defalt_font = load_font_from_data(font_id = "font_1",height = 16)
 	s.defalt_context = context
 	reg_defalt_assets()
-
-	set_ui_style()
-
-	
+	init_all_themes()
 	return
 }
 
@@ -714,13 +711,15 @@ get_render_target::proc(render_target:Render_Targets)->(texture:^Render_Target){
 cleane_up_app::proc(){
 	cleane_up_steam()
 	delete(s.events)
-	delete(s.texture_arr_map)
+	// delete(s.texture_arr_map)
+	reg.destroy(&s.textures_reg)
 	hm.dynamic_destroy(&s.meshes)
 	hm.dynamic_destroy(&s.texture_groop)
 	hm.dynamic_destroy(&s.windows)
 	hm.dynamic_destroy(&s.shaders)
 	hm.dynamic_destroy(&s.clay_instances)
 	hm.dynamic_destroy(&s.fonts)
+	hm.dynamic_destroy(&s.ui.boxes)
 	free(s)
 }
 delete_r_pass::proc(pass:^R_Pass){

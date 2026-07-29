@@ -51,12 +51,13 @@ Game::struct{
 
 	render_thread:^thread.Thread,
 	server:tg.Networking_Instance,
-	input_events:event_data,
+	// input_events:event_data,
 	// game_should_close:bool,
 
 	clay_render_comands:cl.ClayArray(cl.RenderCommand),
-	
+	ui_boxes:Defalt_UI_Boxes,
 
+	player:Player_Info,
 
 }
 
@@ -66,6 +67,10 @@ Game_Mode::enum{
 	loby,
 }
 
+Player_Info::struct{
+	curent_cell:Cell_ids,
+}
+
 
 
 init::proc(){
@@ -73,23 +78,18 @@ init::proc(){
 	
 	init_map(&g.w_map)
 	wh:=tg.get_window_size(g.window)
-	fmt.print(wh)
+	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.ui_vert_shader, g.ui_frag_shader, gbl_font_size = .1)
+	// fmt.print(g.ui_clay_inst,"\n\n\n")
 	// init_net_thread()
 	init_tg_inputs()
 	tg.init_networking_instance(&g.server,pros_server_cmd,start_server)
-	reg_input_events()
+	tg.reg_input_events()
 	init_entitys_mesh()
-	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.ui_vert_shader, g.ui_frag_shader, gbl_font_size = .1)
+	init_defalt_ui_boxes()
 	init_rendering_thread()
 	tg.update_steam_friend_info()
-	// tg.load_ui_theme_by_file("themes/tokyo-night.json",&s.ui_style)
-	// tg.load_ui_theme_by_file("themes/catppuccin-mauve.json",&s.ui_style,0)
-	// tg.load_ui_theme_by_file("themes/dracula.json",&s.ui_style,1)
-	// tg.load_ui_theme_by_file("themes/snazzy.json",&s.ui_style,0)
-	// tg.load_ui_theme_by_file("themes/nvim-nightfox.json",&s.ui_style,13)
-	// tg.load_ui_theme_by_file("themes/zed_material_theme.json",&s.ui_style,0)
-	tg.load_ui_theme_by_file("themes/everforest-regular.json",&s.ui_style,2)
-	
+
+
 	// spawn_entity(&g.entitys)
 
 }
@@ -129,9 +129,9 @@ main :: proc(){
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
 		tg.update_time_info()
-		gather_input_info()
+		tg.gather_input_info()
 		tg.run_steam_callbacks()
-		tg.update_notification_buffer(&s.notifications,s.time.tick_time)
+		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
 		for ev in &tg.s.events {
 		}
 
@@ -140,6 +140,7 @@ main :: proc(){
 
 			g.clay_render_comands=create_layout()
 			wh:=tg.get_window_size(g.window)
+			
 			mouse_pos:[2]f32 
 			flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
 			tg.update_clay_instance(
@@ -148,7 +149,7 @@ main :: proc(){
 				wh=wh, 
 				mouse_pos=mouse_pos, 
 				mouse_down=.LEFT in flag,
-				scroll_dt={cast(f32)g.input_events.mouse_wheel.x,cast(f32)g.input_events.mouse_wheel.y,},
+				scroll_dt={cast(f32)s.input_events.mouse_wheel.x,cast(f32)s.input_events.mouse_wheel.y,},
 				dt_time=cast(f32)s.time.dt_60_hz,
 				// enable_drag_scrolling=.
 			)
@@ -169,7 +170,7 @@ main :: proc(){
 				case .in_game:
 				do_mode_game()
 			} 
-			maintain_input_info()
+			tg.maintain_input_info()
 		}
 
 		
@@ -200,7 +201,7 @@ cleane_up_game::proc(){
 	thread.destroy(g.render_thread)
 	thread.join(g.server.net_thread)
 	thread.destroy(g.server.net_thread)
-
+	tg.cleane_up_input_handling(&s.input_events)
 	tg.delete_r_pass(&g.pass)
 	tg.delete_r_pass(&g.ui_pass)
 	tg.delete_mesh(g.entitys_mesh)
@@ -233,7 +234,7 @@ do_mode_game::proc(){
 		server_set_cell_by_id({150,20}, .gravel,g.w_map)
 		server_set_cell_by_id({350,20}, .water,g.w_map)
 	}
-	if is_input_event(.ui_shift){
+	if tg.is_input_event(.ui_shift){
 		if g.server.status == .hosting{
 			server_set_cell_by_id({10,10}, .sand,g.w_map)
 			server_set_cell_by_id({20,20}, .water,g.w_map)
@@ -257,7 +258,7 @@ do_mode_game::proc(){
 	update_map(g.w_map)
 	mesh_map(g.w_map)
 
-	if is_input_event(.ui_esc){
+	if tg.is_input_event(.ui_esc){
 		tg.leave_shutdown_server(&g.server)
 	}
 
@@ -299,7 +300,7 @@ do_rendering::proc(){
 	rendering_loop:for !s.app_should_close {
 
 		// mesh_map(g.w_map)
-	
+
 		tg.start_frame(&g.frame_data)
 
 		// do gameplay pass
@@ -311,17 +312,13 @@ do_rendering::proc(){
 		render_entitys(&g.entitys)
 		render_map_debug_overlay(g.w_map)
 		tg.submit_render(&g.pass)
-
 		//do render pass
 		tg.start_render(&g.ui_pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
 		tg.render_clay_instance(g.ui_clay_inst,&g.ui_pass,&g.cam_ui)
 		tg.submit_render(&g.ui_pass)
 
-
 		tg.update_time_fps_info()
-		
 		tg.submit_frame(&g.frame_data)
-
 
 	}
 	log.logf(.Info,"closeing Render Thread",)
@@ -333,16 +330,16 @@ init_tg_inputs::proc(){
 	s.is_ui_r_click = is_ui_r_click
 }
 is_ui_l_click::proc()->(bool){
-	return is_input_event(.ui_l_c)
+	return tg.is_input_event(.ui_l_c,always_consume_p = false, always_consume_d = false)
 }
 is_ui_r_click::proc()->(bool){
-	return is_input_event(.ui_r_c)
+	return tg.is_input_event(.ui_r_c,always_consume_p = false, always_consume_d = false)
 }
 update_camera_2d_pan::proc(cam:^tg.Camera, dt:f32=1, speed:f32=1,){
 	move_input:tg.Vec3
-	if is_input_event(.ui_r_c){
-		move_input.x = g.input_events.mouse_move.x * -1
-		move_input.y = g.input_events.mouse_move.y
+	if tg.is_input_event(.ui_r_c,always_consume_p = false, always_consume_d = false){
+		move_input.x = s.input_events.mouse_move.x * -1
+		move_input.y = s.input_events.mouse_move.y
 		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
 		motion := move_input * (speed*cam.zoom) * dt
 		cam.pos += motion
@@ -350,7 +347,7 @@ update_camera_2d_pan::proc(cam:^tg.Camera, dt:f32=1, speed:f32=1,){
 }
 
 update_camera_zoom::proc(cam:^tg.Camera, speed:f32=1, min_zoom:f32= .1,max_zoom:f32=5){
-	cam.zoom += cast(f32)(g.input_events.mouse_wheel.y)*.100 * speed
+	cam.zoom += cast(f32)(s.input_events.mouse_wheel.y)*.100 * speed
 	
 	if cam.zoom < min_zoom {
 		cam.zoom = min_zoom

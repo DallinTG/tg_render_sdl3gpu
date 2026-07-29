@@ -85,7 +85,7 @@ draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	mesh:=tg.get_mesh(g.entitys_mesh)
 	tg.clear_mesh_cpu(&mesh.cpu)
 	for ent,hd in hm.iterate(&ent_iter) {
-		tg.draw_rect(&mesh.cpu,"",tg.Vertex_Data,{1,1,1,1},{ent.pos,{ent.collider.x,ent.collider.y},},origin = {-ent.collider.x/2, ent.collider.y,0},)
+		tg.draw_rect(&mesh.cpu,tg.get_texture(s.white_texture_hd),tg.Vertex_Data,{1,1,1,1},{ent.pos,{ent.collider.x,ent.collider.y},},origin = {-ent.collider.x/2, ent.collider.y,0},)
 		// tg.draw_rect_rounded(&mesh.cpu,"",tg.Vertex_Data,col={1,1,1,1},rec={ent.pos+{20,20,0},{100,100}},roundness = .2)
 
 		// tg.draw_ring(&mesh.cpu,.Hats_Balloon_Party,tg.Vertex_Data,ent.pos,10,10,20,col={1,1,1,1})
@@ -124,6 +124,8 @@ Player_CMD::struct{
 	l_click_p:bool,
 	r_click_d:bool,
 	r_click_p:bool,
+
+	curent_cell_id:Cell_ids,
 }
 send_player_cmd::proc(net_inst:^tg.Networking_Instance, cmd:Player_CMD){
 	temp_data:=transmute([size_of(Player_CMD)]u8)cmd
@@ -140,6 +142,10 @@ add_player_by_id::proc(id:u64){
 	ent_hd:=spawn_entity(&g.entitys,player)
 	g.all_player_data.players[id] = ent_hd
 }
+// get_player::proc(net_inst:^tg.Networking_Instance)->(ent:Entity){
+// 	ent=get_entity(g.all_player_data.players[net_inst.id])
+// 	return
+// }
 remove_player_by_id::proc(id:u64){
 	hm.remove(&g.entitys,g.all_player_data.players[id])
 	delete_key(&g.all_player_data.players, id)
@@ -302,27 +308,28 @@ colide_whith_cells::proc(ent:^Entity,w_map:^Map){
 do_player_inputs::proc(){
 
 	cmd:Player_CMD
-	mouse_pos:=get_cell_pos_by_pos(g.input_events.mouse_pos)
+	mouse_pos:=get_cell_pos_by_pos(s.input_events.mouse_pos)
 	cmd.mouse_pos = mouse_pos
-	if is_input_event(.move_l){
+	cmd.curent_cell_id = g.player.curent_cell
+	if tg.is_input_event(.move_l){
 		cmd.move_vec+={-1,0}
 	}
-	if is_input_event(.move_r){
+	if tg.is_input_event(.move_r){
 		cmd.move_vec+={1,0}
 	}
-	if is_input_event(.jump){
+	if tg.is_input_event(.jump){
 		cmd.jump = true
 	}
-	if is_input_event(.fire){
+	if tg.is_input_event(.fire){
 		cmd.l_click_d = true
 	}
-	if is_input_event(.fire_p){
+	if tg.is_input_event(.fire_p){
 		cmd.l_click_p = true
 	}
-	if is_input_event(.alt_fire){
+	if tg.is_input_event(.alt_fire){
 		cmd.r_click_d = true
 	}
-	if is_input_event(.alt_fire_p){
+	if tg.is_input_event(.alt_fire_p){
 		cmd.r_click_p = true
 	}
 	send_player_cmd(&g.server, cmd)
@@ -344,7 +351,8 @@ do_player_cmd::proc(cmd:^tg.Server_CMD){
 		player.velocity.y += 10
 	}
 	player.velocity +=player_cmd.move_vec * move_speed
+
 	if player_cmd.l_click_d {
-		server_set_cell_by_id(player_cmd.mouse_pos,.water,g.w_map)
+		server_set_cell_by_id(player_cmd.mouse_pos,player_cmd.curent_cell_id,g.w_map)
 	}
 }
