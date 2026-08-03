@@ -264,4 +264,6 @@ Defalt_UI_Boxes::struct{
 init_defalt_ui_boxes::proc(){
 	g.ui_boxes.test = tg.create_ui_box({name="theme_picker_ui_box",update_proc=tg.theme_picker_ui_box,is_visible = true},g.ui_clay_inst)
 	tg.create_ui_box({name="sand_sim_cell_id_picker_ui_box",update_proc=sand_sim_cell_id_picker_ui_box,is_visible = true},g.ui_clay_inst)
+	tg.create_ui_box(tg.UI_Box_Data{name="inspector_ui_box",update_proc=tg.inspector_ui_box,is_visible = true,inspector={parent = s,do_depth = false}},g.ui_clay_inst)
+	
 }

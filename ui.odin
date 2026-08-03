@@ -8,6 +8,7 @@ import "core:mem"
 import "core:hash"
 import "core:c"
 import "core:fmt"
+import "core:reflect"
 // import hm "handle_map_static_virtual"
 import hm "core:container/handle_map"
 import "core:time"
@@ -1105,8 +1106,8 @@ defalt_box_dec::proc(
 	
 	
 	border_size_id: UI_Size  = .normal,
-	
 	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
 	roundnes_id:UI_Roundnes = .sharp,
 	
 
@@ -1128,7 +1129,7 @@ defalt_box_dec::proc(
 	// background_huv_col:=get_color(background_huv_col_id)
 
 	border_size:= get_ui_border(border_size_id,style_overide)
-
+	child_gap:= get_ui_child_gap(child_gap_id)
 	padding_size:= get_ui_pading(padding_size_id,style_overide)
 	roundnes_id:= get_ui_roundnes(roundnes_id,style_overide)
 
@@ -1144,7 +1145,7 @@ defalt_box_dec::proc(
 			sizing = { cl.SizingGrow(), cl.SizingFit() },
 			childAlignment = child_alignment,
 			padding = {padding_size,padding_size,padding_size,padding_size},
-			childGap = {},
+			childGap = child_gap,
 		},
 		// cornerRadius =cl.CornerRadius{5,5,5,5,},
 		backgroundColor = background_col,
@@ -1247,7 +1248,8 @@ button_dec::proc(
 	border_size_id:UI_Size = .normal,
 	padding_size_id:UI_Size = .normal,
 	roundnes_id:UI_Roundnes = .sharp,
-	
+	child_gap_id:UI_Size = .small,
+	layout_direction:cl.LayoutDirection = .LeftToRight,
 	style_overide:^UI_Style = nil,
 
 )->(button:cl.ElementDeclaration){
@@ -1259,9 +1261,65 @@ button_dec::proc(
 	border_size:= get_ui_border(border_size_id,style_overide)
 	padding_size:= get_ui_pading(padding_size_id,style_overide)
 	roundnes_id:= get_ui_roundnes(roundnes_id,style_overide)
+	child_gap:= get_ui_child_gap(child_gap_id,style_overide)
 
 	
 	button_hov:=cl.Hovered()
+	button = cl.ElementDeclaration{
+		layout = {
+				layoutDirection = layout_direction,
+				sizing = { cl.SizingGrow(), cl.SizingFit() },
+				childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
+				padding = {padding_size,padding_size,padding_size,padding_size},
+				childGap = child_gap,
+			},
+		// cornerRadius = {20,20,20,20},
+		backgroundColor = background_col if !button_hov else background_huv_col,
+		border = cl.BorderElementConfig{
+			color = border_col,
+			width = cl.BorderWidth{border_size,border_size,border_size,border_size,0}
+		},
+	}
+	return button
+}
+
+toggle_button_dec::proc(
+	tf:^bool,
+	border_col_id:Color_Types = .border,
+	background_col_off_id:Color_Types = .element_background,
+	background_col_on_id:Color_Types = .element_active,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+	
+	style_overide:^UI_Style = nil,
+
+)->(button:cl.ElementDeclaration){
+
+	border_col:=get_color(border_col_id,style_overide)
+	background_col_on:=get_color(background_col_on_id,style_overide)
+	background_col_off:=get_color(background_col_off_id,style_overide)
+	background_huv_col:=get_color(background_huv_col_id,style_overide)
+
+	border_size:= get_ui_border(border_size_id,style_overide)
+	padding_size:= get_ui_pading(padding_size_id,style_overide)
+	roundnes_id:= get_ui_roundnes(roundnes_id,style_overide)
+	child_gap:= get_ui_child_gap(child_gap_id,style_overide)
+
+	button_hov:=cl.Hovered()
+
+	background_col:=background_col_on
+	if tf^{
+		background_col = background_col_on
+	}else{
+		background_col = background_col_off
+	}	
+	if button_hov{
+		background_col = background_huv_col
+	}
 	button = cl.ElementDeclaration{
 		layout = {
 				layoutDirection = .TopToBottom,
@@ -1271,7 +1329,7 @@ button_dec::proc(
 				childGap = {},
 			},
 		// cornerRadius = {20,20,20,20},
-		backgroundColor = background_col if !button_hov else background_huv_col,
+		backgroundColor = background_col,
 		border = cl.BorderElementConfig{
 			color = border_col,
 			width = cl.BorderWidth{border_size,border_size,border_size,border_size,0}
@@ -1982,5 +2040,182 @@ draw_debug_info::proc(){
 			defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_id: ",s.steam.steam_lobby.loby_owner_id))	
 			defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_Name: ",s.steam.steam_lobby.loby_owner_name))	
 		}
+	}
+}
+
+true_false_button::proc(
+	tf:^bool,
+	id:u32,
+
+	border_col_id:Color_Types = .border,
+	background_col_on_id:Color_Types = .element_active,
+	background_col_off_id:Color_Types = .element_background,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+
+	text_size_id:UI_Size = .small,
+	text_col_id:Color_Types = .text,
+
+	style_overide:^UI_Style = nil,
+	){
+	
+
+	if cl.UI(cl.ID("true_false_button",id))(
+		toggle_button_dec(
+			tf=tf,
+			
+			border_col_id=border_col_id,
+			background_col_on_id  = background_col_on_id,
+			background_col_off_id = background_col_off_id,
+			border_size_id = border_size_id,
+			padding_size_id = padding_size_id,
+			child_gap_id = child_gap_id,
+			roundnes_id = roundnes_id,
+			
+			style_overide = style_overide,
+		)
+	) {
+		is_huvered:=cl.Hovered()
+		if is_huvered{
+			if is_input_event(.ui_l_c,always_consume_d = true){
+				tf^ = !tf^
+			}
+		}
+		if tf^{
+			cl.Text("True",text_dec(text_size_id = text_size_id,text_col_id = text_col_id,style_overide=style_overide))
+		}else{
+			cl.Text("False",text_dec(text_size_id = text_size_id,text_col_id = text_col_id,style_overide=style_overide))
+		}
+		
+	}
+}
+
+enum_drop_down_menu::proc(
+	enum_any:any,
+	// enum_v:rawptr,
+	// enum_t:typeid,
+	
+	id:u32,
+
+	border_col_id:Color_Types = .border,
+	background_col_id:Color_Types = .element_background,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+
+	text_size_id:UI_Size = .small,
+	text_col_id:Color_Types = .text,
+
+	style_overide:^UI_Style = nil,
+	){
+	text_size:=get_ui_text_size(text_size_id)
+	huv:bool
+	// fmt.print(cl.GetPointerOverIds(),"\n\n\n")
+	el_id_enum_drop_down_menu:=cl.ID("enum_drop_down_menu",id)
+	el_id_enum_drop_down_menu_options_container:=cl.ID("enum_drop_down_menu_options_container",id)
+	if cl.UI(el_id_enum_drop_down_menu)(
+		button_dec(
+			
+			
+			border_col_id=border_col_id,
+			background_col_id  = background_col_id,
+			border_size_id = border_size_id,
+			padding_size_id = .small,
+			child_gap_id = child_gap_id,
+			roundnes_id = roundnes_id,
+
+			layout_direction = .LeftToRight,
+			style_overide = style_overide,
+
+		)
+	) {
+
+		hovering:=cl.Hovered()
+		if hovering {huv = hovering}
+		if cl.PointerOver(el_id_enum_drop_down_menu_options_container) {
+			huv = true
+		}
+		type_info:=type_info_of(enum_any.id)
+		if reflect.is_enum(type_info){
+// reflect.enum_field_names()
+			enum_index,ok:=reflect.as_i64(enum_any)
+			if ok{
+				cl.Text(reflect.enum_field_names(enum_any.id)[enum_index],text_dec(text_size_id = text_size_id,text_col_id = text_col_id,style_overide=style_overide))
+				texture:=get_texture_by_id(.Arrows_Pointer_Down_South)
+				if huv{texture=get_texture_by_id(.Arrows_Media_Controls_Stop)}
+				if cl.UI(cl.ID("enum_drop_down_menu_options_box",id))(defalt_img_box_dec(texture,border_size_id = .non,img_color = .element_selected,padding_size_id = .non,size = .big)){}
+			}
+		}
+		if huv{
+			// el_id_drop_contaner:=cl.ID("enum_drop_down_menu_options_container",id)
+			data:=cl.GetElementData(el_id_enum_drop_down_menu)
+			fmt.print(data.boundingBox.width,"\n")
+			if cl.UI(el_id_enum_drop_down_menu_options_container)({
+				layout={
+					sizing ={
+						cl.SizingFit({0,cast(f32)(data.boundingBox.width*3)}),
+						cl.SizingFit({0,cast(f32)(data.boundingBox.height*10)}),
+					},
+					layoutDirection= .TopToBottom
+				},
+				floating ={
+					attachTo = .Parent,
+					attachment={.RightTop,.RightBottom}
+				}
+			}){
+				if cl.UI(cl.ID("enum_drop_down_menu_options_box",id))(defalt_box_dec(
+					border_col_id=border_col_id,
+					background_col_id  = background_col_id,
+					border_size_id = border_size_id,
+					padding_size_id = padding_size_id,
+					child_gap_id = child_gap_id,
+					roundnes_id = roundnes_id,
+					
+					style_overide = style_overide,
+					clip = {
+						vertical = true,
+						childOffset = cl.GetScrollOffset(),
+					},
+				)){
+
+				
+					enum_fields:=reflect.enum_fields_zipped(enum_any.id)
+					for field, field_index in enum_fields{
+	
+						if cl.UI(cl.ID("enum_drop_down_menu_row",cast(u32)field_index))(
+							button_dec(
+								
+								
+								border_col_id=border_col_id,
+								background_col_id  = background_col_id,
+								border_size_id = border_size_id,
+								padding_size_id = padding_size_id,
+								child_gap_id = child_gap_id,
+								roundnes_id = roundnes_id,
+								
+								style_overide = style_overide,
+							)
+						) {
+							cl.Text(field.name,text_dec(text_size_id = text_size_id,text_col_id = text_col_id,style_overide=style_overide))
+							if cl.Hovered(){
+								if is_input_event(.ui_l_c,always_consume_d = true){
+									enum_v:=enum_fields[field_index].value
+									raw_ptr,e_id:=reflect.any_data(enum_any)
+									mem.copy(raw_ptr,cast(rawptr)(&enum_v),type_info.size)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		
 	}
 }

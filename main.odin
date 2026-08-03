@@ -29,6 +29,7 @@ Handle :: hm.Handle32
 s:^State
 State :: struct{
 	app_should_close:bool,
+
 	steam:Steam_Info,
 
 	defalt_context: runtime.Context,
@@ -194,7 +195,8 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	s.gpu_device = sdl.CreateGPUDevice({.SPIRV ,.DXIL ,.MSL} ,true, nil)
 	assert(s.gpu_device != nil,"SDL CreateGPUDevice failed")
 	
-	
+
+
 	try_depth_format::proc(format: sdl.GPUTextureFormat){
 		if sdl.GPUTextureSupportsFormat(s.gpu_device, format, .D2, {.DEPTH_STENCIL_TARGET}){
 			s.depth_texture_format = format

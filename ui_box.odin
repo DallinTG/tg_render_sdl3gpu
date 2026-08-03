@@ -31,10 +31,19 @@ UI_Box_Data::struct{
 	is_visible:bool,
 	// sizing_type:cl.SizingType,
 	last_interact:f64,
+	inspector:Inspector,
 	update_proc:proc(ui_box_handle:UI_Box_Handle),
+	
 }
 
+
 delete_ui_box::proc(hd:UI_Box_Handle)->(found:bool){
+	box,ok:=get_ui_box(hd)
+	if ok{
+		if inspector.fields != nil{
+			delete(inspector.fields)
+		}
+	}
 	found, _ = hm.remove(&s.ui.boxes,hd)
 	return
 }
