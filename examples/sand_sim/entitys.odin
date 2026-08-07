@@ -16,7 +16,7 @@ import cl"../../clay-odin"
 
 Entity_Handle :: distinct Handle
 // Entity_Handle_Map :: hm.Handle_Map(Entity, Entity_Handle, 1000)
-Entity_Handle_Map :: hm.Static_Handle_Map(500, Entity, Entity_Handle)
+Entity_Handle_Map :: hm.Static_Handle_Map(MAX_PLAYERS * 2, Entity, Entity_Handle)
 
 
 Entity_Types::enum{
@@ -130,7 +130,7 @@ damage_entity::proc(ent:^Entity,damage:f32,dam_type:Damage_types){
 }
 
 sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
-	items:=mem.slice_data_cast([]u8,g.entitys.items[:])
+	items:=mem.slice_data_cast([]u8,g.entitys.items[:len(g.entitys.items)])
 	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
 	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items)
 }
