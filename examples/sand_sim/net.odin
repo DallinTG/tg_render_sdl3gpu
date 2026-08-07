@@ -92,9 +92,8 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		case .sink_all_entity_data:
 									//TODO BROKE THIS WHEN CHANGING HANDLE MAPS ENTITYS WILL NO LONGER WORK
 			items:=mem.slice_data_cast([]Entity,server_cmd.buf)
-			fmt.print("test 1\n")
+			fmt.print(items,"\n")
 			copy( g.entitys.items[:],items[:])
-			fmt.print("test 2\n")
 			// resize_dynamic_array(&g.entitys.items,len(items))
 			// reserve_dynamic_array(&g.entitys.items,len(items))
 			// copy( g.entitys.items[:],items[:])
@@ -113,10 +112,8 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 }
 resv_game_info::proc(server_cmd:^tg.Server_CMD,g_info:^Game_Info){
 	g_info^ = mem.slice_data_cast([]Game_Info,server_cmd.buf[:])[0]
-	fmt.print(g.info.player_list[:],"\n")
 }
 sink_game_info::proc(net_inst:^tg.Networking_Instance,g_info:^Game_Info){
 	temp_buf:=transmute([size_of(Game_Info)]u8)g_info^
 	tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_game_info},buf = temp_buf[:])
-	// fmt.print(temp_buf,"\n")
 }

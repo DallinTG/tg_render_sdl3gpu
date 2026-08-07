@@ -135,28 +135,19 @@ main :: proc(){
 	init()
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
-		fmt.print("testing 1\n")
 		tg.update_time_info()
-		fmt.print("testing 2\n")
 		tg.gather_input_info()
-		fmt.print("testing 3\n")
 		tg.run_steam_callbacks()
-		fmt.print("testing 4\n")
 		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
-		fmt.print("testing 5\n")
 		
 		for ev in &tg.s.events {
 		}
 
-		fmt.print("testing 6\n")
 		if s.time.is_60_hz{
 
-		fmt.print("testing 7\n")
 			sink_game_info(&g.server,&g.info)
-			fmt.print("testing 8\n")
 			g.clay_render_comands=create_layout()
 			wh:=tg.get_window_size(g.window)
-			
 			mouse_pos:[2]f32 
 			flag:=sdl.GetMouseState(&mouse_pos.x,&mouse_pos.y)
 			tg.update_clay_instance(
@@ -175,7 +166,6 @@ main :: proc(){
 			// 	tg.update_steam_friend_info()
 			// 	tg.join_server(server_endpoint = s.steam.steam_lobby.loby_owner_net_id, net_inst=&g.server)
 			// }
-			
 			tg.pros_server_cmd_q(&g.server)
 			manage_gmae_mode_state()
 			switch g.info.curent_game_mode{
@@ -194,7 +184,7 @@ main :: proc(){
 		// do_rendering()
 	}
 	tg.leave_shutdown_server(&g.server)
-	
+
 	cleane_up_game()
 
 	when USE_TRACKING_ALLOCATOR {
@@ -277,7 +267,6 @@ do_mode_game::proc(){
 	if tg.is_input_event(.ui_esc){
 		tg.leave_shutdown_server(&g.server)
 	}
-
 	update_camera_2d_pan(&g.cam,  )
 	// tg.update_camera_2d_wasd(&g.cam, cast(f32)s.time.tick_time, )
 	update_camera_zoom(&g.cam)

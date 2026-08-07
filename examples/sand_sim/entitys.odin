@@ -233,13 +233,15 @@ remove_player_by_id::proc(id:u64)->(suc:bool){
 get_player_by_id::proc(id:u64)->(new_player_hd:Entity_Handle,player_list_index:int,suc:bool){
 	for player_hd,index in g.info.player_list{
 		player:=get_entity(player_hd)
-		#partial switch player_data in player.type_data{
-		case Player_Entitys:
-			if player_data.id == id{
-				return player_hd,index,true
-			}
-		case:
-		} 
+		if player != nil{
+			#partial switch player_data in player.type_data{
+			case Player_Entitys:
+				if player_data.id == id{
+					return player_hd,index,true
+				}
+			case:
+			} 
+		}
 	}
 	return {},0,false
 }
@@ -408,6 +410,7 @@ colide_whith_cells::proc(ent:^Entity,w_map:^Map){
 do_player_inputs::proc(){
 
 	cmd:Player_CMD
+
 	mouse_pos:=get_cell_pos_by_pos(s.input_events.mouse_pos)
 	cmd.player_hd,_,_ = get_this_player_hd()
 	cmd.mouse_pos = mouse_pos
