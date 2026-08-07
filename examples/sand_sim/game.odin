@@ -135,19 +135,25 @@ main :: proc(){
 	init()
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
+		fmt.print("testing 1\n")
 		tg.update_time_info()
+		fmt.print("testing 2\n")
 		tg.gather_input_info()
+		fmt.print("testing 3\n")
 		tg.run_steam_callbacks()
+		fmt.print("testing 4\n")
 		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
-		fmt.print(g.info.player_list[:],"\n")
-		sink_game_info(&g.server,&g.info)
+		fmt.print("testing 5\n")
 		
 		for ev in &tg.s.events {
 		}
 
-
+		fmt.print("testing 6\n")
 		if s.time.is_60_hz{
 
+		fmt.print("testing 7\n")
+			sink_game_info(&g.server,&g.info)
+			fmt.print("testing 8\n")
 			g.clay_render_comands=create_layout()
 			wh:=tg.get_window_size(g.window)
 			

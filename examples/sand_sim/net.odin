@@ -92,7 +92,9 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		case .sink_all_entity_data:
 									//TODO BROKE THIS WHEN CHANGING HANDLE MAPS ENTITYS WILL NO LONGER WORK
 			items:=mem.slice_data_cast([]Entity,server_cmd.buf)
+			fmt.print("test 1\n")
 			copy( g.entitys.items[:],items[:])
+			fmt.print("test 2\n")
 			// resize_dynamic_array(&g.entitys.items,len(items))
 			// reserve_dynamic_array(&g.entitys.items,len(items))
 			// copy( g.entitys.items[:],items[:])
