@@ -64,7 +64,7 @@ remove_p_cell_by_index::proc(index:int,w_map:^Map){
 
 	// }
 }
-update_p_cells::proc(w_map:^Map){
+update_p_cells::proc(w_map:^Map,entitys:^Entity_Handle_Map){
 	p_cells:=&w_map.physics_cells.cells
 	#reverse p_cell_loop: for &cell , index in p_cells{
 		cell.velocity +=GRAV
@@ -74,6 +74,30 @@ update_p_cells::proc(w_map:^Map){
 		steps_x := max(1,cast(int)math.ceil(math.abs(cell.velocity.x) / CELL_SIZE),)
 		step_x := cell.velocity.x / cast(f32)steps_x
 		step_up_hight_incriment:f32=CELL_SIZE * 3
+		
+
+		ent_iter := hm.iterator_make(entitys)
+		for ent,hd in hm.iterate(&ent_iter) {
+			rect_a:tg.Rect_Shape={
+				x = ent.pos.x,
+				y = ent.pos.y,
+				z = ent.pos.z,
+				w = ent.collider.x,
+				h = ent.collider.y,
+			}
+			rect_b:tg.Rect_Shape={
+				x = cell.pos.x,
+				y = cell.pos.y,
+				z = 0,
+				w = CELL_SIZE,
+				h = CELL_SIZE,
+			}
+			shape,overlap:=tg.rect_overlap(rect_a,rect_b)
+			if overlap{
+				entity_in_contact_whith_cell(ent,&cell.cell)
+			}
+		}
+
 		x_step_loop:for i := 0; i < steps_x; i += 1 { 
 	
 			cell.pos.x += step_x

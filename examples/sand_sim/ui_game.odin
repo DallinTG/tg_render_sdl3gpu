@@ -18,10 +18,10 @@ import cl"../../clay-odin"
 create_layout :: proc(dt:=cast(f32)s.time.dt_60_hz) -> cl.ClayArray(cl.RenderCommand) {
 	cl.BeginLayout()
 	tg.do_ui_boxes()
-	if g.curent_game_mode == .start {start_menu()}
-	if g.curent_game_mode == .loby &&  g.server.status == .joining	{loby_joining()}
-	if g.curent_game_mode == .loby && (g.server.status == .joined || g.server.status == .hosting)	{loby_menu()}
-	if g.curent_game_mode == .loby &&  g.server.status == .regected	{loby_joining_regected()}
+	if g.info.curent_game_mode == .start {start_menu()}
+	if g.info.curent_game_mode == .loby &&  g.server.status == .joining	{loby_joining()}
+	if g.info.curent_game_mode == .loby && (g.server.status == .joined || g.server.status == .hosting)	{loby_menu()}
+	if g.info.curent_game_mode == .loby &&  g.server.status == .regected	{loby_joining_regected()}
 	// sand_sim_cell_id_picker_ui_box(g.ui_boxes.test)
 	// tg.theme_picker_ui_box(g.ui_boxes.test)
 	tg.draw_notification_buffer(&s.ui.notifications)
@@ -54,7 +54,7 @@ start_menu::proc(){
 				tg.button_txt("Host")
 
 				if cl.Hovered() && tg.is_input_event(.ui_l_c){
-					g.next_game_mode = .loby
+					g.info.next_game_mode = .loby
 					fmt.print("Button--Host\n")
 					string_ep:=tg.endpoint_from_string_endpoint()
 					tg.start_server(server_endpoint = s.steam.networking_identity, net_inst=&g.server)
@@ -66,7 +66,7 @@ start_menu::proc(){
 				tg.button_txt("Join")
 				
 				if cl.Hovered() && tg.is_input_event(.ui_l_c){
-					g.next_game_mode = .loby
+					g.info.next_game_mode = .loby
 					fmt.print("Button--Join\n")
 					string_ep:=tg.endpoint_from_string_endpoint()
 					temp_endpoint:tg.Endpoint = s.steam.steam_lobby.loby_owner_net_id
@@ -105,7 +105,7 @@ loby_menu::proc(){
 				tg.button_txt("Start")
 
 				if cl.Hovered() && tg.is_input_event(.ui_l_c){
-					g.next_game_mode = .in_game
+					g.info.next_game_mode = .in_game
 					fmt.print("Button--in_game\n")
 				}
 			}
@@ -171,7 +171,7 @@ loby_joining_regected::proc(){
 			}
 			if cl.UI(cl.ID("Button--Back-to-Start"))(tg.button_dec()) {
 				tg.button_txt("Back to Start")
-				g.next_game_mode = .start
+				g.info.next_game_mode = .start
 			}
 		}
 	}

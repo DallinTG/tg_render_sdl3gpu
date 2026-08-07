@@ -16,6 +16,7 @@ import lin"core:math/linalg"
 
 Inspector::struct{
 	fields:[dynamic]Field,
+	parent_history:[dynamic]any,
 	parent: any,
 	do_depth:bool,
 }
@@ -183,9 +184,9 @@ inspector_ui_box::proc(ui_box_handle:UI_Box_Handle){
 		if cl.UI(cl.ID("drag_box_inspector_ui_box",index))(
 			ui_drag_box_dec(ui_box_handle,s.input_events.mouse_move)
 		){
-		
 			cl.Text("Inspector",text_dec())
 		}
+		inspector_go_back_button(&ui_box.inspector,cast(u32)ui_box_handle.idx)
 
 	
 		pading:=get_ui_pading(.small)
@@ -216,13 +217,13 @@ inspector_ui_box::proc(ui_box_handle:UI_Box_Handle){
 							if reflect.is_enum(type_info){
 
 								enum_drop_down_menu(fild.value,cast(u32)fild_index)
+							}else if reflect.is_struct(type_info){
+								change_inspector_parent_button(&ui_box.inspector,fild.value,cast(u32)fild_index)
 							}else{
 
 								cl.TextDynamic(value_text(fild.value),text_dec(text_size_id = .small))
 							}
-
 						}
-						
 					}
 				}
 			}
@@ -253,4 +254,114 @@ value_text :: proc(value: any) -> string {
 		return "Fixed Cap Array:{}"
 	}
 	return fmt.tprint(value)
+}
+
+change_inspector_parent::proc(insp:^Inspector,new_parent:any){
+	type_info:=type_info_of(new_parent.id)
+	if reflect.is_struct(type_info) {
+		append(&insp.parent_history,insp.parent)
+		insp.parent = new_parent
+	}
+}
+inspector_go_back::proc(insp:^Inspector){
+	if len(insp.parent_history) > 0{
+		insp.parent = insp.parent_history[len(insp.parent_history)-1]
+		pop(&insp.parent_history)
+	}
+}
+inspector_go_back_button::proc(
+	insp:^Inspector,
+	id:u32,
+
+	border_col_id:Color_Types = .border,
+	background_col_id:Color_Types = .element_background,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+
+	text_size_id:UI_Size = .small,
+	text_col_id:Color_Types = .text,
+
+	style_overide:^UI_Style = nil,
+){
+	// fmt.print( len(insp.parent_history),"\n")
+	if len(insp.parent_history) <= 0{return}
+	new_p:=insp.parent_history[len(insp.parent_history)-1]
+	type_info:=type_info_of(new_p.id)
+
+	if cl.UI(cl.ID("inspector_go_back_button",id))(
+		button_dec(
+			border_col_id=border_col_id,
+			background_col_id  = background_col_id,
+			border_size_id = border_size_id,
+			padding_size_id = .small,
+			child_gap_id = child_gap_id,
+			roundnes_id = roundnes_id,
+
+			layout_direction = .LeftToRight,
+			
+			do_sizing = true,
+			sizing={ cl.SizingFit(), cl.SizingFit() },
+			
+			style_overide = style_overide,
+		)
+	){
+		cl.Text("Back",text_dec(text_size_id=text_size_id,text_col_id=text_col_id,style_overide=style_overide))
+		texture:=get_texture_by_id(.Arrows_Go_Back_Return_Previous)
+		if cl.UI(cl.ID("inspector_go_back_button_img",id))(defalt_img_box_dec(texture,border_size_id = .non,img_color = .element_selected,padding_size_id = .non,size = .normal)){}
+		if cl.Hovered(){
+			if is_input_event(.ui_l_c,always_consume_d = true){
+				inspector_go_back(insp)
+			}
+		}
+	}
+	
+}
+
+change_inspector_parent_button::proc(
+	insp:^Inspector,
+	new_parent:any,
+
+	id:u32,
+
+	border_col_id:Color_Types = .border,
+	background_col_id:Color_Types = .element_background,
+	background_huv_col_id:Color_Types = .element_hover,
+	
+	border_size_id:UI_Size = .normal,
+	padding_size_id:UI_Size = .normal,
+	child_gap_id:UI_Size = .small,
+	roundnes_id:UI_Roundnes = .sharp,
+
+	text_size_id:UI_Size = .small,
+	text_col_id:Color_Types = .text,
+
+	style_overide:^UI_Style = nil,
+){
+	type_info:=type_info_of(new_parent.id)
+	if reflect.is_struct(type_info) {
+		if cl.UI(cl.ID("change_inspector_parent_button",id))(
+			button_dec(
+				border_col_id=border_col_id,
+				background_col_id  = background_col_id,
+				border_size_id = border_size_id,
+				padding_size_id = .small,
+				child_gap_id = child_gap_id,
+				roundnes_id = roundnes_id,
+	
+				layout_direction = .LeftToRight,
+				style_overide = style_overide,
+			)
+		){
+			cl.Text("Jump TO",text_dec(text_size_id=text_size_id,text_col_id=text_col_id,style_overide=style_overide))
+			if cl.Hovered(){
+				if is_input_event(.ui_l_c,always_consume_d = true){
+					change_inspector_parent(insp,new_parent)
+				}
+			}
+		}
+	}
 }

@@ -16,22 +16,43 @@ import cl"../../clay-odin"
 
 Entity_Handle :: distinct Handle
 // Entity_Handle_Map :: hm.Handle_Map(Entity, Entity_Handle, 1000)
-Entity_Handle_Map :: hm.Dynamic_Handle_Map(Entity, Entity_Handle)
+Entity_Handle_Map :: hm.Static_Handle_Map(500, Entity, Entity_Handle)
 
 
 Entity_Types::enum{
 	player,
 	mob,
 }
+DEFALT_STATS:Stats:{
+	hp = 100,
+	max_hp = 100,
+	max_speed = 1,
+	acceleration = 1,
+}
+Stats::struct{
+	hp:f32,
+	max_hp:f32,
+	
+	max_speed:f32,
+	acceleration:f32,
+	
+}
+Damage_types::enum{
+	flat,
+	hot,
+	cold,
 
+}
 
 Entity::struct{
+	is_dead:bool,
 	handle:Entity_Handle,
 	pos:[3]f32,
 	velocity:[2]f32,
 	collider:[2]f32,
 	type:Entity_Types,
 	type_data:Entitys_Union,
+	stats:Stats,
 }
 
 Entitys_Union::union{
@@ -40,7 +61,7 @@ Entitys_Union::union{
 }
 
 Player_Entitys::struct{
-
+	id:u64,
 }
 
 Mob_Entitys::struct{
@@ -54,7 +75,8 @@ init_entitys_mesh::proc(){
 }
 
 spawn_entity::proc(entitys:^Entity_Handle_Map,ent:Entity={})->(hd:Entity_Handle){
-	hd = hm.add(entitys,Entity{type_data = Player_Entitys{},collider = {20,30}})
+	new_ent:=ent
+	hd = hm.add(entitys,new_ent)
 	return
 }
 
@@ -64,6 +86,8 @@ do_entitys::proc(entitys:^Entity_Handle_Map,){
 	// for ent in hm.iter(&ent_iter) {
 	for ent,hd in hm.iterate(&ent_iter) {
 		do_entity_physics(ent)
+		do_entity_environment_check(ent)
+		do_entity_management(ent)
 		switch &e in &ent.type_data{
 			case Player_Entitys:
 			
@@ -74,9 +98,40 @@ do_entitys::proc(entitys:^Entity_Handle_Map,){
 	}
 	sink_all_entity_data(&g.server)
 }
+
+//this is for doing calculations that a entity needs every frame like checking whether or not it is alive
+do_entity_management::proc(ent:^Entity){
+	fmt.print(ent.stats.hp,"\n")
+	if ent.stats.hp <= 0{
+		ent.is_dead = true
+	}else{
+		ent.is_dead = false
+	}
+}
+
+do_entity_environment_check::proc(ent:^Entity){
+	if ent.is_dead{return}
+	cell:=get_cell({cast(int)ent.pos.x/ CELL_SIZE, cast(int)-ent.pos.y/ CELL_SIZE}, g.w_map)
+	entity_in_contact_whith_cell(ent,cell)
+
+}
+entity_in_contact_whith_cell::proc(ent:^Entity,cell:^Cell){
+	fmt.print(cell.temperature,cell.id,"\n")
+	if cell.temperature <=.Freezing{
+		damage_entity(ent,1,.cold)
+	}
+	if cell.temperature >=.Melting{
+		damage_entity(ent,1,.hot)
+	}
+}
+
+damage_entity::proc(ent:^Entity,damage:f32,dam_type:Damage_types){
+	ent.stats.hp -= damage
+}
+
 sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
-	// items:=mem.slice_data_cast([]u8,g.entitys.items[:])
-	items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
+	items:=mem.slice_data_cast([]u8,g.entitys.items[:])
+	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
 	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items)
 }
 draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
@@ -117,6 +172,7 @@ All_Player_data::struct{
 	players:map[u64]Entity_Handle,
 }
 Player_CMD::struct{
+	player_hd:Entity_Handle,
 	move_vec:[2]f32,
 	mouse_pos:[2]int,
 	jump:bool,
@@ -131,31 +187,60 @@ send_player_cmd::proc(net_inst:^tg.Networking_Instance, cmd:Player_CMD){
 	temp_data:=transmute([size_of(Player_CMD)]u8)cmd
 	tg.send_net_command_to_server(net_inst,{type = cast(u32)Game_Net_Commands_Type.player_cmd}, temp_data[:])
 }
-add_player_by_id::proc(id:u64){
+add_player_by_id::proc(id:u64)->(player_hd:Entity_Handle){
 	player:Entity={
 		pos= {},
 		handle = {},
 		type = .player,
-		collider = {10,10},
-		type_data = Player_Entitys{},
+		collider = {20,30},
+		type_data = Player_Entitys{id = id},
+		stats = DEFALT_STATS,
 	}
-	ent_hd:=spawn_entity(&g.entitys,player)
-	g.all_player_data.players[id] = ent_hd
+	player_hd=spawn_entity(&g.entitys,player)
+	append(&g.info.player_list,player_hd)
+	// g.all_player_data.players[id] = ent_hd
+	return
 }
 // get_player::proc(net_inst:^tg.Networking_Instance)->(ent:Entity){
 // 	ent=get_entity(g.all_player_data.players[net_inst.id])
 // 	return
 // }
-remove_player_by_id::proc(id:u64){
-	hm.remove(&g.entitys,g.all_player_data.players[id])
-	delete_key(&g.all_player_data.players, id)
+remove_player_by_id::proc(id:u64)->(suc:bool){
+
+	player_hd,player_list_index,ok:=get_player_by_id(id)
+	if ok{
+		hm.remove(&g.entitys,player_hd)
+		unordered_remove(&g.info.player_list,player_list_index)
+		return true
+	}
+	return false
 }
+get_player_by_id::proc(id:u64)->(new_player_hd:Entity_Handle,player_list_index:int,suc:bool){
+	for player_hd,index in g.info.player_list{
+		player:=get_entity(player_hd)
+		#partial switch player_data in player.type_data{
+		case Player_Entitys:
+			if player_data.id == id{
+				return player_hd,index,true
+			}
+		case:
+		} 
+	}
+	return {},0,false
+}
+
+get_this_player_hd::proc()->(new_player_hd:Entity_Handle,player_list_index:int,suc:bool){
+	return get_player_by_id(g.server.id)
+}
+
 do_players::proc(ent:^Entity,player:^Player_Entitys){
 
 }
+
 GRAV:[2]f32:{0,-.3}
 AIR_RESIST: f32 : 0.98
 do_entity_physics::proc(ent:^Entity){
+	if ent.is_dead{return}
 	ent.velocity +=GRAV
 	ent.velocity *= AIR_RESIST
 	colide_whith_cells(ent,g.w_map)
@@ -309,6 +394,7 @@ do_player_inputs::proc(){
 
 	cmd:Player_CMD
 	mouse_pos:=get_cell_pos_by_pos(s.input_events.mouse_pos)
+	cmd.player_hd,_,_ = get_this_player_hd()
 	cmd.mouse_pos = mouse_pos
 	cmd.curent_cell_id = g.player.curent_cell
 	if tg.is_input_event(.move_l){
@@ -337,15 +423,15 @@ do_player_inputs::proc(){
 
 do_player_cmd::proc(cmd:^tg.Server_CMD){
 
-	player_e_hd:=g.all_player_data.players[cmd.net_command.id]
-	player:=get_entity(player_e_hd)
-	if player == nil {
-		log.logf(.Warning, "invalid player sent: ",player_e_hd,)
-		return
-	}
+	// player_e_hd:=g.all_player_data.players[cmd.net_command.id]
 	temp:[size_of(Player_CMD)]u8
 	copy(temp[:],cmd.buf[:size_of(Player_CMD)])
 	player_cmd:=transmute(Player_CMD)temp
+	player:=get_entity(player_cmd.player_hd)
+	if player == nil {
+		log.logf(.Warning, "invalid player sent: ",player_cmd.player_hd,)
+		return
+	}
 	move_speed:f32=.4
 	if player_cmd.jump{
 		player.velocity.y += 10

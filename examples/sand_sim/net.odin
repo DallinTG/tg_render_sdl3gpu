@@ -63,8 +63,8 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		case .regect_join:
 			// net_inst.status = .regected
 		case .server_shutdown:
-			g.curent_game_mode = .start
-			g.next_game_mode = .start
+			g.info.curent_game_mode = .start
+			g.info.next_game_mode = .start
 		case .join,.leave:
 
 			log.logf(.Warning, "Client Received Client Commands",cmd.type,)

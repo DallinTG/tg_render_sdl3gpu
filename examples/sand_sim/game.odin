@@ -18,6 +18,7 @@ import st"core:strings"
 import steam "../../steamworks"
 
 USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
+MAX_PLAYERS::20
 
 Handle :: hm.Handle32
 s:^tg.State
@@ -30,12 +31,11 @@ Game::struct{
 	w_map:^Map,
 	entitys:Entity_Handle_Map,
 	entitys_mesh:tg.Mesh_Handle,
-	all_player_data:All_Player_data,
+	// all_player_data:All_Player_data,
 	// world_mesh:tg.Mesh_Handle,
 	frame_data:tg.Frame_Data,
 	window:tg.Window_Handle, 
-	curent_game_mode:Game_Mode,
-	next_game_mode:Game_Mode,
+	info:Game_Info,
 
 	pass:tg.R_Pass,
 	ui_pass:tg.R_Pass,
@@ -59,6 +59,13 @@ Game::struct{
 
 	player:Player_Info,
 
+}
+
+Game_Info::struct{
+	curent_game_mode:Game_Mode,
+	next_game_mode:Game_Mode,
+	round_number:int,
+	player_list:[dynamic;MAX_PLAYERS]Entity_Handle,
 }
 
 Game_Mode::enum{
@@ -162,7 +169,7 @@ main :: proc(){
 			
 			tg.pros_server_cmd_q(&g.server)
 			manage_gmae_mode_state()
-			switch g.curent_game_mode{
+			switch g.info.curent_game_mode{
 				case .start:
 				do_mode_start()
 				case .loby:
@@ -208,9 +215,9 @@ cleane_up_game::proc(){
 	delete_w_map(g.w_map)
 	tg.delete_camera(&g.cam)
 	// hm.delete(&g.entitys)
-	hm.dynamic_destroy(&g.entitys)
+	// hm.dynamic_destroy(&g.entitys)
 	delete(g.server.clients)
-	delete(g.all_player_data.players)
+	// delete(g.all_player_data.players)
 	tg.delete_clay_instance(g.ui_clay_inst)
 	tg.cleane_up_app()
 }
@@ -252,7 +259,7 @@ do_mode_game::proc(){
 		// tg.update_steam_friend_info()
 	}
 	do_entitys(&g.entitys)
-	update_p_cells(g.w_map)
+	update_p_cells(g.w_map,&g.entitys)
 	draw_update_entitys_mesh(&g.entitys)
 	draw_p_cells(g.w_map)
 	update_map(g.w_map)
@@ -270,9 +277,10 @@ do_mode_game::proc(){
 
 
 reset_game_state::proc(){
-	g.all_player_data.players = {}
+	// g.all_player_data.players = {}
+	clear(&g.info.player_list)
 	hm.clear(&g.entitys)
-	g.next_game_mode = .start
+	g.info.next_game_mode = .start
 	for &x in &g.w_map.chuncks{
 		for &chunck in &x{
 			mesh:=tg.get_mesh(chunck.mesh)
@@ -289,7 +297,7 @@ reset_game_state::proc(){
 
 
 manage_gmae_mode_state::proc(){
-	g.curent_game_mode = g.next_game_mode
+	g.info.curent_game_mode = g.info.next_game_mode
 }
 
 init_rendering_thread::proc(){

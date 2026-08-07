@@ -305,6 +305,35 @@ get_ui_text_size::proc(size:union{UI_Size,f32},style:^UI_Style = nil) -> (new_si
 	return
 }
 
+get_ui_icon_size::proc(size:union{UI_Size,f32},style:^UI_Style = nil) -> (new_size:u16){
+	style:=style
+	if style == nil{
+		style = &s.ui.style
+	}
+	switch siz in size{
+	case UI_Size:
+		switch siz{
+		case.normal:
+		new_size = cast(u16)(32 * style.siz.text_multiplyer )
+		case.tiny:
+		new_size = cast(u16)(8 * style.siz.text_multiplyer )
+		case.small:
+		new_size = cast(u16)(16 * style.siz.text_multiplyer) 
+		case.big:
+		new_size = cast(u16)(64 * style.siz.text_multiplyer )
+		case.large:
+		new_size = cast(u16)(128 * style.siz.text_multiplyer )
+		case.huge:
+		new_size = cast(u16)(256 * style.siz.text_multiplyer )
+		case.non:
+		new_size = 0 
+		}
+	case f32:
+		new_size = cast(u16)siz
+	}
+	return
+}
+
 get_ui_border::proc(size:union{UI_Size,f32}, style:^UI_Style = nil) -> (new_size:u16){
 	style:=style
 	if style == nil{
@@ -1216,7 +1245,7 @@ defalt_img_box_dec::proc(
 	padding_size:= get_ui_pading(padding_size_id,style_overide)
 	roundnes_id:= get_ui_roundnes(roundnes_id,style_overide)
 
-	img_size:=get_ui_text_size(size,style_overide)
+	img_size:=get_ui_icon_size(size,style_overide)
 
 	
 	button_hov:=cl.Hovered()
@@ -1250,9 +1279,17 @@ button_dec::proc(
 	roundnes_id:UI_Roundnes = .sharp,
 	child_gap_id:UI_Size = .small,
 	layout_direction:cl.LayoutDirection = .LeftToRight,
+
+	do_sizing:bool = false,
+	sizing :cl.Sizing = {},
+
 	style_overide:^UI_Style = nil,
 
 )->(button:cl.ElementDeclaration){
+	new_sizing:cl.Sizing= { cl.SizingGrow(), cl.SizingFit() }
+	if do_sizing{
+		new_sizing = sizing
+	}
 
 	border_col:=get_color(border_col_id,style_overide)
 	background_col:=get_color(background_col_id,style_overide)
@@ -1268,7 +1305,7 @@ button_dec::proc(
 	button = cl.ElementDeclaration{
 		layout = {
 				layoutDirection = layout_direction,
-				sizing = { cl.SizingGrow(), cl.SizingFit() },
+				sizing = new_sizing,
 				childAlignment = cl.ChildAlignment{x=.Center,y=.Center},
 				padding = {padding_size,padding_size,padding_size,padding_size},
 				childGap = child_gap,
@@ -1768,7 +1805,7 @@ draw_steam_friends::proc(location:cl.LayoutAlignmentX = .Right){
 			img:=get_texture_by_id(.Travel_Person_People_Three)
 			//TODO this needs to use a textur handle insted
 			// img:=get_texture(.Travel_Person_People_Three)
-			if cl.UI(cl.ID("Player_friends_icon",))(defalt_img_box_dec(cast(rawptr)&img.handle,border_size_id=.non,padding_size_id=.non,size = .big,img_color = .info)) {
+			if cl.UI(cl.ID("Player_friends_icon",))(defalt_img_box_dec(cast(rawptr)&img.handle,border_size_id=.non,padding_size_id=.non,size = .normal,img_color = .info)) {
 			}
 		}
 		temp_list_iner_box_proc:=cl.UI(cl.ID("steam_friends_List_iner_box", ))
@@ -1853,7 +1890,7 @@ draw_steam_lobby_ui::proc(location:cl.LayoutAlignmentX = .Right){
 			img:=get_texture_by_id(.Travel_Person_People_Three)
 			//TODO this part needs to be fixed
 			// img:=get_texture(.Travel_Person_People_Three)
-			if cl.UI(cl.ID("Player_lobby_icon",))(defalt_img_box_dec(cast(rawptr)&img.handle,border_size_id=.non,padding_size_id=.non,size = .big,img_color = .info)) {
+			if cl.UI(cl.ID("Player_lobby_icon",))(defalt_img_box_dec(cast(rawptr)&img.handle,border_size_id=.non,padding_size_id=.non,size = .normal,img_color = .info)) {
 			}
 		}
 	}
@@ -1873,7 +1910,7 @@ draw_steam_player::proc(
 	player:^Steam_Player,
 	index:u32=0,
 	text_size:UI_Size = .small,
-	player_icon_size:UI_Size = .large,
+	player_icon_size:UI_Size = .big,
 	border_size:UI_Size = .small,
 ){
 	if s.steam.is_using_steam != true {return}
@@ -2150,13 +2187,12 @@ enum_drop_down_menu::proc(
 				cl.Text(reflect.enum_field_names(enum_any.id)[enum_index],text_dec(text_size_id = text_size_id,text_col_id = text_col_id,style_overide=style_overide))
 				texture:=get_texture_by_id(.Arrows_Pointer_Down_South)
 				if huv{texture=get_texture_by_id(.Arrows_Media_Controls_Stop)}
-				if cl.UI(cl.ID("enum_drop_down_menu_options_box",id))(defalt_img_box_dec(texture,border_size_id = .non,img_color = .element_selected,padding_size_id = .non,size = .big)){}
+				if cl.UI(cl.ID("enum_drop_down_menu_options_box",id))(defalt_img_box_dec(texture,border_size_id = .non,img_color = .element_selected,padding_size_id = .non,size = .normal)){}
 			}
 		}
 		if huv{
 			// el_id_drop_contaner:=cl.ID("enum_drop_down_menu_options_container",id)
 			data:=cl.GetElementData(el_id_enum_drop_down_menu)
-			fmt.print(data.boundingBox.width,"\n")
 			if cl.UI(el_id_enum_drop_down_menu_options_container)({
 				layout={
 					sizing ={
