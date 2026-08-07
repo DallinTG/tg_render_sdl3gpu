@@ -20,8 +20,8 @@ import "base:intrinsics"
 
 // MAP_SIZE:[2]int:{32,16}
 // CHUNCK_SIZE::16
-MAP_SIZE:[2]int:{16,8}
-CHUNCK_SIZE::32
+MAP_SIZE:[2]int:{16*2,8*2}
+CHUNCK_SIZE::16
 CELL_SIZE::10
 FULL_MAP_SIZE:[2]int:{ MAP_SIZE.x * CHUNCK_SIZE *CELL_SIZE, (MAP_SIZE.y * CHUNCK_SIZE *CELL_SIZE)}
 // MAP_SIZE:[2]int:{8,4}

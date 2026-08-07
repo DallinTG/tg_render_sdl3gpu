@@ -18,7 +18,7 @@ import st"core:strings"
 import steam "../../steamworks"
 
 USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
-MAX_PLAYERS::2
+MAX_PLAYERS::20
 
 Handle :: hm.Handle32
 s:^tg.State
