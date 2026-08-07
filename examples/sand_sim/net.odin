@@ -6,7 +6,7 @@ import "core:log"
 import "core:mem"
 // import "core:hash"
 // import "core:c"
-// import "core:fmt"
+import "core:fmt"
 // import hm "../../handle_map_static_virtual"
 // import hm "core:container/handle_map"
 // import an"../../ansi"
@@ -114,4 +114,5 @@ resv_game_info::proc(server_cmd:^tg.Server_CMD){
 sink_game_info::proc(net_inst:^tg.Networking_Instance,g_info:^Game_Info){
 	temp_buf:=transmute([size_of(Game_Info)]u8)g_info^
 	tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_game_info},buf = temp_buf[:])
+	fmt.print(temp_buf[:],"\n")
 }
