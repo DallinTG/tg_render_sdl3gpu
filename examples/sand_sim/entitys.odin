@@ -130,9 +130,10 @@ damage_entity::proc(ent:^Entity,damage:f32,dam_type:Damage_types){
 }
 
 sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
-	items:=mem.slice_data_cast([]u8,g.entitys.items[:len(g.entitys.items)])
+items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys
+	// items:=mem.slice_data_cast([]u8,g.entitys.items[:len(g.entitys.items)])
 	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
-	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items)
+	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
 }
 draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	// ent_iter := hm.make_iter(entitys)
