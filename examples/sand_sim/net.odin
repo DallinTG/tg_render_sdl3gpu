@@ -91,9 +91,10 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 
 		case .sink_all_entity_data:
 									//TODO BROKE THIS WHEN CHANGING HANDLE MAPS ENTITYS WILL NO LONGER WORK
-			items:=mem.slice_data_cast([]Entity,server_cmd.buf)
-			fmt.print(items,"\n")
-			copy( g.entitys.items[:],items[:])
+			// items:=mem.slice_data_cast([]Entity,server_cmd.buf)
+			// fmt.print(items,"\n\n\n\n")
+			mem.copy(&g.entitys,raw_data(server_cmd.buf),size_of(Entity_Handle_Map))
+			// copy( g.entitys.items[:],items[:])
 			// resize_dynamic_array(&g.entitys.items,len(items))
 			// reserve_dynamic_array(&g.entitys.items,len(items))
 			// copy( g.entitys.items[:],items[:])

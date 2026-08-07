@@ -143,8 +143,9 @@ sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
 		unused_len =g.entitys.unused_len,
 		next_unused =g.entitys.next_unused,
 	}
-
-	items:=mem.slice_data_cast([]u8,g.entitys.items[:len(g.entitys.items)])
+	items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys
+	// items:=mem.slice_data_cast([]u8,g.entitys.items[:])
+	// fmt.print("true\n",items,"\n\n\n")
 	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
 	// tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
 	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
