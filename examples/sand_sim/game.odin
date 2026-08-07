@@ -139,6 +139,9 @@ main :: proc(){
 		tg.gather_input_info()
 		tg.run_steam_callbacks()
 		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
+
+		sink_game_info(&g.server,&g.info)
+		
 		for ev in &tg.s.events {
 		}
 

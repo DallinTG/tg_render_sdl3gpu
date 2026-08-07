@@ -26,6 +26,7 @@ Game_Net_Commands_Type::enum u32{
 	sink_chunck,
 	sink_cell_cmds,
 	sink_w_map_info,
+	sink_game_info,
 }
 
 start_server::proc(net_inst:^tg.Networking_Instance){
@@ -81,7 +82,7 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 	
 		case .player_cmd:
 			do_player_cmd(server_cmd)
-		case .sink_all_entity_data,.sink_chunck,.sink_cell_cmds,.sink_w_map_info:
+		case .sink_all_entity_data,.sink_chunck,.sink_cell_cmds,.sink_w_map_info,.sink_game_info:
 			log.logf(.Warning, "Server Received Server Commands")
 		}
 			
@@ -102,6 +103,15 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 			resv_w_map_info(server_cmd,g.w_map)
 		case .player_cmd:
 			log.logf(.Warning, "Client Received Client Commands",cmd.type,)
+		case .sink_game_info:
+			
 		}
 	}
+}
+resv_game_info::proc(server_cmd:^tg.Server_CMD){
+	g.info = mem.slice_data_cast([]Game_Info,server_cmd.buf[:])[0]
+}
+sink_game_info::proc(net_inst:^tg.Networking_Instance,g_info:^Game_Info){
+	temp_buf:=transmute([size_of(Game_Info)]u8)g_info^
+	tg.send_net_command_to_all_clients(net_inst,cmd = {type=cast(u32)Game_Net_Commands_Type.sink_game_info},buf = temp_buf[:])
 }

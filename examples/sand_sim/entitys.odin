@@ -129,10 +129,24 @@ damage_entity::proc(ent:^Entity,damage:f32,dam_type:Damage_types){
 	ent.stats.hp -= damage
 }
 
+Handle_Map_Book_Keeping::struct{
+	used_len:     u32, // How many of the items are in use
+	unused_len:   u32, // Use to calculate the number of valid items
+	next_unused:  u32,
+}
+
 sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
-items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys
-	// items:=mem.slice_data_cast([]u8,g.entitys.items[:len(g.entitys.items)])
+	// items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys.items[:]
+
+	book_keeping:Handle_Map_Book_Keeping={
+		used_len = g.entitys.used_len,
+		unused_len =g.entitys.unused_len,
+		next_unused =g.entitys.next_unused,
+	}
+
+	items:=mem.slice_data_cast([]u8,g.entitys.items[:len(g.entitys.items)])
 	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
+	// tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
 	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
 }
 draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
