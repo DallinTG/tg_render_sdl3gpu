@@ -209,6 +209,11 @@ Player_CMD::struct{
 	curent_cell_id:Cell_ids,
 }
 send_player_cmd::proc(net_inst:^tg.Networking_Instance, cmd:Player_CMD){
+	if cmd.player_hd.idx == 0 || cmd.player_hd.gen == 0 {
+		log.log(.Warning,"send_player_cmd() tryed to send a invalid player ent")
+		return
+	}
+	
 	temp_data:=transmute([size_of(Player_CMD)]u8)cmd
 	tg.send_net_command_to_server(net_inst,{type = cast(u32)Game_Net_Commands_Type.player_cmd}, temp_data[:])
 }
