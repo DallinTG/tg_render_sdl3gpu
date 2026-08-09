@@ -227,7 +227,7 @@ add_player_by_id::proc(id:u64)->(player_hd:Entity_Handle){
 		stats = DEFALT_STATS,
 	}
 	player_hd=spawn_entity(&g.entitys,player)
-	append(&g.info.player_list,player_hd)
+	// append(&g.info.player_list,player_hd)
 	// g.all_player_data.players[id] = ent_hd
 	return
 }
@@ -237,31 +237,29 @@ add_player_by_id::proc(id:u64)->(player_hd:Entity_Handle){
 // }
 remove_player_by_id::proc(id:u64)->(suc:bool){
 
-	player_hd,player_list_index,ok:=get_player_by_id(id)
+	player_hd,ok:=get_player_by_id(id)
 	if ok{
 		hm.remove(&g.entitys,player_hd)
-		unordered_remove(&g.info.player_list,player_list_index)
 		return true
 	}
 	return false
 }
-get_player_by_id::proc(id:u64)->(new_player_hd:Entity_Handle,player_list_index:int,suc:bool){
-	for player_hd,index in g.info.player_list{
-		player:=get_entity(player_hd)
-		if player != nil{
-			#partial switch player_data in player.type_data{
-			case Player_Entitys:
-				if player_data.id == id{
-					return player_hd,index,true
-				}
-			case:
-			} 
-		}
+get_player_by_id::proc(id:u64)->(new_player_hd:Entity_Handle,suc:bool){
+	ent_iter := hm.iterator_make(&g.entitys)
+	for ent,hd in hm.iterate(&ent_iter) {
+		#partial switch player_data in ent.type_data{
+		case Player_Entitys:
+			if player_data.id == id{
+				return ent.handle,true
+			}
+		case:
+		} 
 	}
-	return {},0,false
+
+	return {},false
 }
 
-get_this_player_hd::proc()->(new_player_hd:Entity_Handle,player_list_index:int,suc:bool){
+get_this_player_hd::proc()->(new_player_hd:Entity_Handle,suc:bool){
 	return get_player_by_id(g.server.id)
 }
 
@@ -427,7 +425,9 @@ do_player_inputs::proc(){
 	cmd:Player_CMD
 
 	mouse_pos:=get_cell_pos_by_pos(s.input_events.mouse_pos)
-	cmd.player_hd,_,_ = get_this_player_hd()
+	ok:bool
+	cmd.player_hd,ok = get_this_player_hd()
+	if !ok {return}
 	cmd.mouse_pos = mouse_pos
 	cmd.curent_cell_id = g.player.curent_cell
 	if tg.is_input_event(.move_l){

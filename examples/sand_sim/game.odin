@@ -65,7 +65,7 @@ Game_Info::struct{
 	curent_game_mode:Game_Mode,
 	next_game_mode:Game_Mode,
 	round_number:int,
-	player_list:[dynamic;MAX_PLAYERS]Entity_Handle,
+	// player_list:[dynamic;MAX_PLAYERS]Entity_Handle,
 }
 
 Game_Mode::enum{
@@ -276,7 +276,7 @@ do_mode_game::proc(){
 
 reset_game_state::proc(){
 	// g.all_player_data.players = {}
-	clear(&g.info.player_list)
+	// clear(&g.info.player_list)
 	hm.clear(&g.entitys)
 	g.info.next_game_mode = .start
 	for &x in &g.w_map.chuncks{
