@@ -85,6 +85,7 @@ do_entitys::proc(entitys:^Entity_Handle_Map,){
 	ent_iter := hm.iterator_make(entitys)
 	// for ent in hm.iter(&ent_iter) {
 	for ent,hd in hm.iterate(&ent_iter) {
+		fmt.print(ent,"\n")
 		do_entity_physics(ent)
 		do_entity_environment_check(ent)
 		do_entity_management(ent)
