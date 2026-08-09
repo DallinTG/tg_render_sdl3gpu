@@ -162,7 +162,9 @@ draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	ent_iter := hm.iterator_make(entitys)
 	mesh:=tg.get_mesh(g.entitys_mesh)
 	tg.clear_mesh_cpu(&mesh.cpu)
+
 	for ent,hd in hm.iterate(&ent_iter) {
+
 		tg.draw_rect(&mesh.cpu,tg.get_texture(s.white_texture_hd),tg.Vertex_Data,{1,1,1,1},{ent.pos,{ent.collider.x,ent.collider.y},},origin = {-ent.collider.x/2, ent.collider.y,0},)
 		// tg.draw_rect_rounded(&mesh.cpu,"",tg.Vertex_Data,col={1,1,1,1},rec={ent.pos+{20,20,0},{100,100}},roundness = .2)
 

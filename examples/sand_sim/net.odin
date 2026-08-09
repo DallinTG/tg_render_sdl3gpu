@@ -95,13 +95,10 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 			
 			g.entitys.unused_len = 0
 			for ent in entitys{
-				fmt.print(ent,"\n")
-				if cast(u32)ent.handle.idx > g.entitys.unused_len{
-					g.entitys.unused_len = cast(u32)ent.handle.idx
+				if cast(u32)ent.handle.idx > g.entitys.used_len{
+					g.entitys.used_len = cast(u32)ent.handle.idx
 				}
 				g.entitys.items[ent.handle.idx] = ent
-				
-				fmt.print(g.entitys.items[ent.handle.idx],"\n\n")
 			}
 			// copy( g.entitys.items[:],items[:])
 			// items:=mem.slice_data_cast([]Entity,server_cmd.buf)
