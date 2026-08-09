@@ -23,6 +23,7 @@ import "core:fmt"
 Game_Net_Commands_Type::enum u32{
 	player_cmd = len(tg.Net_Commands_Type),
 	sink_all_entity_data,
+	// sink_changed_entity_data,
 	sink_chunck,
 	sink_cell_cmds,
 	sink_w_map_info,
@@ -90,10 +91,14 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		switch cmd_type_game{
 
 		case .sink_all_entity_data:
-									//TODO BROKE THIS WHEN CHANGING HANDLE MAPS ENTITYS WILL NO LONGER WORK
+			entitys:=mem.slice_data_cast([]Entity,server_cmd.buf[:])
+			for ent in entitys{
+				g.entitys.items[ent.handle.idx] = ent
+			}
+			// copy( g.entitys.items[:],items[:])
 			// items:=mem.slice_data_cast([]Entity,server_cmd.buf)
 			// fmt.print(items,"\n\n\n\n")
-			mem.copy(&g.entitys,raw_data(server_cmd.buf),size_of(Entity_Handle_Map))
+			// mem.copy(&g.entitys,raw_data(server_cmd.buf),size_of(Entity_Handle_Map))
 			// copy( g.entitys.items[:],items[:])
 			// resize_dynamic_array(&g.entitys.items,len(items))
 			// reserve_dynamic_array(&g.entitys.items,len(items))

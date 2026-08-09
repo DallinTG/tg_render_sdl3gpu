@@ -129,26 +129,32 @@ damage_entity::proc(ent:^Entity,damage:f32,dam_type:Damage_types){
 	ent.stats.hp -= damage
 }
 
-Handle_Map_Book_Keeping::struct{
-	used_len:     u32, // How many of the items are in use
-	unused_len:   u32, // Use to calculate the number of valid items
-	next_unused:  u32,
-}
+// sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
+// 	// items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys.items[:]
 
+// 	items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys
+// 	// items:=mem.slice_data_cast([]u8,g.entitys.items[:])
+// 	// fmt.print("true\n",items,"\n\n\n")
+// 	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
+// 	// tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
+// 	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
+// }
 sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
-	// items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys.items[:]
-
-	book_keeping:Handle_Map_Book_Keeping={
-		used_len = g.entitys.used_len,
-		unused_len =g.entitys.unused_len,
-		next_unused =g.entitys.next_unused,
+	temp_ent:[dynamic;MAX_PLAYERS *2]Entity
+	
+	ent_iter := hm.iterator_make(&g.entitys)
+	for ent,hd in hm.iterate(&ent_iter) {
+		append(&temp_ent,ent^)
 	}
-	items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys
+	items:=mem.slice_data_cast([]u8,temp_ent[:])//TODO THIS MAY NOT WORK 
+	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
+	
+	// items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys
 	// items:=mem.slice_data_cast([]u8,g.entitys.items[:])
 	// fmt.print("true\n",items,"\n\n\n")
 	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
 	// tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
-	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
+	// tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
 }
 draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	// ent_iter := hm.make_iter(entitys)
