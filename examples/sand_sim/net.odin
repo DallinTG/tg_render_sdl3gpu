@@ -93,16 +93,13 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 		case .sink_all_entity_data:
 			entitys:=mem.slice_data_cast([]Entity,server_cmd.buf[:])
 			
-			g.entitys.unused_len = 0
+			g.entitys.used_len = 0
 			for ent in entitys{
-				if cast(u32)ent.handle.idx > g.entitys.used_len{
-					g.entitys.used_len = cast(u32)ent.handle.idx
-				}
+				g.entitys.used_len += 1
 				g.entitys.items[ent.handle.idx] = ent
 			}
 			// copy( g.entitys.items[:],items[:])
 			// items:=mem.slice_data_cast([]Entity,server_cmd.buf)
-			// fmt.print(items,"\n\n\n\n")
 			// mem.copy(&g.entitys,raw_data(server_cmd.buf),size_of(Entity_Handle_Map))
 			// copy( g.entitys.items[:],items[:])
 			// resize_dynamic_array(&g.entitys.items,len(items))

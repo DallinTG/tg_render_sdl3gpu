@@ -871,11 +871,16 @@ get_color::proc(col:Color_Types, style:^UI_Style = nil)->(new_col:Vec4){
 	}
 	return
 }
-
 init_all_themes::proc(){
+	delete_all_themes()
 	init_themes_from_dir("themes")
 	set_ui_style(s.ui.themes[0][0])
 
+}
+delete_all_themes::proc(){
+	for &them_groop in &s.ui.themes{
+		delete(them_groop)
+	}
 }
 init_themes_from_dir::proc(path:string){
 	files,err:=os.read_directory_by_path(path,100,context.temp_allocator)
@@ -2154,7 +2159,6 @@ enum_drop_down_menu::proc(
 	){
 	text_size:=get_ui_text_size(text_size_id)
 	huv:bool
-	// fmt.print(cl.GetPointerOverIds(),"\n\n\n")
 	el_id_enum_drop_down_menu:=cl.ID("enum_drop_down_menu",id)
 	el_id_enum_drop_down_menu_options_container:=cl.ID("enum_drop_down_menu_options_container",id)
 	if cl.UI(el_id_enum_drop_down_menu)(

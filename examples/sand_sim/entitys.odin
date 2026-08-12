@@ -85,7 +85,6 @@ do_entitys::proc(entitys:^Entity_Handle_Map,){
 	ent_iter := hm.iterator_make(entitys)
 	// for ent in hm.iter(&ent_iter) {
 	for ent,hd in hm.iterate(&ent_iter) {
-		fmt.print(ent,"\n")
 		do_entity_physics(ent)
 		do_entity_environment_check(ent)
 		do_entity_management(ent)
@@ -102,7 +101,6 @@ do_entitys::proc(entitys:^Entity_Handle_Map,){
 
 //this is for doing calculations that a entity needs every frame like checking whether or not it is alive
 do_entity_management::proc(ent:^Entity){
-	fmt.print(ent.stats.hp,"\n")
 	if ent.stats.hp <= 0{
 		ent.is_dead = true
 	}else{
@@ -117,7 +115,6 @@ do_entity_environment_check::proc(ent:^Entity){
 
 }
 entity_in_contact_whith_cell::proc(ent:^Entity,cell:^Cell){
-	fmt.print(cell.temperature,cell.id,"\n")
 	if cell.temperature <=.Freezing{
 		damage_entity(ent,1,.cold)
 	}
@@ -135,7 +132,6 @@ damage_entity::proc(ent:^Entity,damage:f32,dam_type:Damage_types){
 
 // 	items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys
 // 	// items:=mem.slice_data_cast([]u8,g.entitys.items[:])
-// 	// fmt.print("true\n",items,"\n\n\n")
 // 	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
 // 	// tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
 // 	tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
@@ -152,7 +148,7 @@ sink_all_entity_data::proc(net_inst:^tg.Networking_Instance){
 	
 	// items:=transmute([size_of(Entity_Handle_Map)]u8)g.entitys
 	// items:=mem.slice_data_cast([]u8,g.entitys.items[:])
-	// fmt.print("true\n",items,"\n\n\n")
+
 	// items:=mem.slice_data_cast([]u8,g.entitys.items.chunks[:])//TODO THIS MAY NOT WORK 
 	// tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
 	// tg.send_net_command_to_all_clients(net_inst, cmd={type = cast(u32)Game_Net_Commands_Type.sink_all_entity_data},buf = items[:])
@@ -178,7 +174,7 @@ draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	}
 	// pos:[3]f32
 	// for fri in s.steam.friends.player{
-	// // fmt.print([2]u32{fri.l_player_icon_gpu_id.idx,fri.l_player_icon_gpu_id.gen})
+
 	// 	pos+={100,0,0}
 	// 	tg.draw_rect(&mesh.cpu,fri.l_player_icon_gpu_id,tg.Vertex_Data,{1,1,1,1},{pos,{50,50}})
 	// }

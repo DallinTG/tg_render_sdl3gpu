@@ -42,6 +42,7 @@ delete_ui_box::proc(hd:UI_Box_Handle)->(found:bool){
 	if ok{
 		if inspector.fields != nil{
 			delete(inspector.fields)
+			delete(inspector.parent_history)
 		}
 	}
 	found, _ = hm.remove(&s.ui.boxes,hd)

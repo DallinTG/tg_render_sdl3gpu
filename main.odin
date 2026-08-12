@@ -722,6 +722,7 @@ cleane_up_app::proc(){
 	hm.dynamic_destroy(&s.clay_instances)
 	hm.dynamic_destroy(&s.fonts)
 	hm.dynamic_destroy(&s.ui.boxes)
+	delete_all_themes()
 	free(s)
 }
 delete_r_pass::proc(pass:^R_Pass){
