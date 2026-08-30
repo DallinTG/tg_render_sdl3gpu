@@ -69,7 +69,8 @@ start_menu::proc(){
 					g.info.next_game_mode = .loby
 					fmt.print("Button--Join\n")
 					string_ep:=tg.endpoint_from_string_endpoint()
-					temp_endpoint:tg.Endpoint = s.steam.steam_lobby.loby_owner_net_id
+					lobby:=tg.get_steam_lobby()
+					temp_endpoint:tg.Endpoint = lobby.groop_endpoint
 					tg.join_server(server_endpoint = &temp_endpoint, net_inst=&g.server)
 					// tg.join_server(server_endpoint = string_ep, net_inst=&g.server)
 				}
@@ -266,4 +267,33 @@ init_defalt_ui_boxes::proc(){
 	tg.create_ui_box({name="sand_sim_cell_id_picker_ui_box",update_proc=sand_sim_cell_id_picker_ui_box,is_visible = false},g.ui_clay_inst)
 	tg.create_ui_box(tg.UI_Box_Data{name="inspector_ui_box",update_proc=tg.inspector_ui_box,is_visible = false,inspector={parent = s,do_depth = false}},g.ui_clay_inst)
 	
+}
+
+
+draw_player_starting_info_box::proc(
+	player:^tg.Player,
+	index:u32=0,
+	text_size:tg.UI_Size = .small,
+	player_icon_size:tg.UI_Size = .big,
+	border_size:tg.UI_Size = .small,
+){
+	// if s.steam.is_using_steam != true {return}
+	if player == nil {return}
+
+	if cl.UI(cl.ID("Player_Card", cast(u32)player.info.l_player_icon_id+index))(tg.defalt_box_dec(border_size_id=border_size,layout_direction = .LeftToRight,child_alignment = {.Left,.Top})) {
+		if cl.UI(cl.ID("Player_larg_icon", cast(u32)player.info.l_player_icon_id+index))(tg.defalt_img_box_dec(cast(rawptr)&player.info.l_player_icon_gpu_hd,size = player_icon_size)) {
+		}
+		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.info.l_player_icon_id+index))(tg.defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
+			tg.defalt_txt_dynamic(player.info.name)
+			switch plat in player.platform{
+			case tg.Player_Platform_Steam:
+				tg.defalt_txt_dynamic(player.info.status_string,text_col_id=plat.status,text_size_id = text_size)
+				tg.defalt_txt_dynamic(fmt.tprint(" Lobby_ID: ",plat.game.steamIDLobby),)	
+			case tg.Player_Platform_Raw_IP:
+			}
+			// tg.button_invite_to_lobby(player,index)
+			// tg.button_join_game(player,index)
+			
+		}
+	}
 }

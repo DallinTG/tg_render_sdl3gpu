@@ -1,5 +1,6 @@
 package tg_render
 
+import "core:flags"
 import sdl "vendor:sdl3"
 import "core:log"
 import "core:c"
@@ -42,38 +43,22 @@ Steam_Info::struct{
 	i_matchmaking:^steam.IMatchmaking,
 	i_friends:^steam.IFriends,
 	user_name:string,
-	friends:Steam_Player_Groop,
-	steam_lobby:Steam_Lobby,
+	friends:Player_Groop,
+	steam_lobby:Player_Groop,
 	networking_identity:steam.SteamNetworkingIdentity,
 	i_networking_messages:^steam.INetworkingMessages,
 }
 MAX_PLAYERS_IN_LOBBY::10
-Steam_Lobby::struct{
-	lobby_id:u64,
-	loby_owner_id:u64,
-	loby_owner_name:string,
-	loby_owner_net_id:steam.SteamNetworkingIdentity,
-	groop:Steam_Player_Groop,
-}
 
-Steam_Player::struct{
-	name:string,
+
+Player_Platform_Steam::struct{
 	status:steam.EPersonaState,
-	status_string:string,
-	steame_lev:int,
 	cs_id:steam.CSteamID,
 	net_id:steam.SteamNetworkingIdentity,
 	game:steam.FriendGameInfo,
-	l_player_icon_id:i32,
-	l_player_icon_gpu_id:[2]u32,
-	l_player_icon_gpu_hd:Texture_HD,
 }
-Steam_Player_Groop::struct{
-	filter:union{steam.EFriendFlags,steam.CSteamID},// CSteamID is for lobbys
-	count:i32,
-	player:[dynamic]Steam_Player,
-	updated_count:u32,//this is incumented by 1 per update so that other systems know when things have changed
-}
+
+
 
 init_steam::proc(){
 	err_msg: steam.SteamErrMsg
@@ -114,70 +99,119 @@ init_steam::proc(){
 	
 }
 cleane_up_steam::proc(){
+	if s.steam.is_using_steam != true {return}
 	delete_player_groop(&s.steam.friends)
-	delete_player_groop(&s.steam.steam_lobby.groop)
-	if s.steam.steam_lobby.loby_owner_name != ""{
-		delete(s.steam.steam_lobby.loby_owner_name)
-	}
+	delete_player_groop(&s.steam.steam_lobby)
 	steam.Shutdown()
 }
 update_steam_friend_info::proc(){
 	if s.steam.is_using_steam != true {return}
-	s.steam.friends.filter = .Immediate
 	s.steam.i_friends=steam.SteamFriends_v017()
 	i_frd:=s.steam.i_friends
 	s.steam.user_name=cast(string)steam.Friends_GetPersonaName(i_frd) //→ your Steam display name
-	update_steame_player_groop(&s.steam.friends,i_frd)
+	s.steam.friends.flags =cast(u64)steam.EFriendFlags.Immediate
+	update_player_groop(&s.steam.friends)
 }
-update_lobby_data::proc(lobby_id:u64){
-	s.steam.steam_lobby.lobby_id = lobby_id
-	fmt.print(s.steam.steam_lobby.lobby_id,"\n")
-	s.steam.steam_lobby.groop.filter = cast(steam.CSteamID)s.steam.steam_lobby.lobby_id
-	update_steame_player_groop(&s.steam.steam_lobby.groop, s.steam.i_friends)
-	s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,lobby_id)
-	// if s.steam.steam_lobby.loby_owner_name != ""{
-		delete(s.steam.steam_lobby.loby_owner_name)
-	// }
-	temp_name:=steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id)
-	s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(temp_name)
-
-	steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
-}
-update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends){
+update_steam_lobby_data::proc(lobby_id:u64){
 	if s.steam.is_using_steam != true {return}
-	clear_player_groop(groop)
-
-	switch typ in groop.filter{
-	case steam.EFriendFlags:
-		groop.count = steam.Friends_GetFriendCount(i_frd,cast(i32)typ) //→ number of friends
-	case steam.CSteamID:
-		groop.count = steam.Matchmaking_GetNumLobbyMembers(s.steam.i_matchmaking,typ)
+	groop := get_steam_lobby()
+	
+	groop.groop_id = lobby_id
+	groop.type = .lobby_list
+	groop.groop_endpoint = steam.SteamNetworkingIdentity{}
+	fmt.print(lobby_id,"\n")
+	#partial switch &ep in &groop.groop_endpoint {
+		case steam.SteamNetworkingIdentity:
+		steam.NetworkingIdentity_SetSteamID(&ep,groop.groop_owner_id)	
 	}
-	resize_dynamic_array(&groop.player,groop.count)
+	update_player_groop(groop)
+
+}
+
+
+get_steam_lobby::proc()->(groop:^Player_Groop){
+	groop = &s.steam.steam_lobby
+	return
+}
+
+update_player_groop::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	// if s.steam.is_using_steam != true {return}
+	clear_player_groop(groop)
+	update_player_groop_count(groop)
+	// resize_dynamic_array(&groop.player,groop.count)
+	clear(&groop.player)
+	_update_steam_player_groop(groop)
+	groop.count+=1
+}
+
+// usily called by update_player_groop()
+update_player_groop_count::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	groop.count = 0
+	_update_steam_player_groop_count(groop)
+
+}
+_update_steam_player_groop_count::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	switch groop.type{
+		case .friends_list:
+			groop.count += steam.Friends_GetFriendCount(s.steam.i_friends ,cast(i32)groop.flags) //→ number of friends
+		case .lobby_list:
+			groop.count += steam.Matchmaking_GetNumLobbyMembers(s.steam.i_matchmaking ,groop.groop_id)
+		case .server_list:
+	}
+}
+
+// this must be called by update_player_groop()
+_update_steam_player_groop::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	if s.steam.is_using_steam != true {return}
+	i_friends:=s.steam.i_friends
+	
+	switch groop.type{
+		case .friends_list:
+		case .lobby_list:
+			groop.groop_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,groop.groop_id)
+			temp_name:=steam.Friends_GetFriendPersonaName(s.steam.i_friends,groop.groop_owner_id)
+			groop.groop_owner_name=str.clone_from_cstring(temp_name)
+		case .server_list:
+	}
+
 	for i in 0..<groop.count{
-		// fmt.print(i,"\n")
-		switch typ in groop.filter{
-		case steam.EFriendFlags:
-			groop.player[i].cs_id = steam.Friends_GetFriendByIndex(i_frd,i,cast(i32)typ) //→ get each friend's SteamID
-		case steam.CSteamID:
-			groop.player[i].cs_id = steam.Matchmaking_GetLobbyMemberByIndex(s.steam.i_matchmaking,typ,i)
+	
+		plat:Player_Platform_Steam
+		info:Player_Info
+		endpoint:Endpoint
+
+		switch groop.type{
+			case .friends_list:
+				fmt.print(i,"\n")
+				plat.cs_id = steam.Friends_GetFriendByIndex(i_friends, i, cast(i32)groop.flags)
+			case .lobby_list:
+				plat.cs_id = steam.Matchmaking_GetLobbyMemberByIndex(s.steam.i_matchmaking, groop.groop_id, i)
+			case .server_list:
 		}
-		// fmt.print(groop.player[i].cs_id,"\n")
-		groop.player[i].name = str.clone_from_cstring(steam.Friends_GetFriendPersonaName(i_frd,groop.player[i].cs_id))
-		// fmt.print(groop.player[i].name,"\n")
-		steam.Friends_GetFriendGamePlayed(i_frd,groop.player[i].cs_id,&groop.player[i].game)
-		// fmt.print(groop.player[i].game,"\n")
-		groop.player[i].status = steam.Friends_GetFriendPersonaState(i_frd,groop.player[i].cs_id) //→ online/offline/busy/etc
-		groop.player[i].status_string = status_to_string(groop.player[i].status)
-		
-		groop.player[i].steame_lev = cast(int)steam.Friends_GetFriendSteamLevel(i_frd,groop.player[i].cs_id)
-		// fmt.print(groop.player[i].status,"\n")
+
+		info.name = str.clone_from_cstring(steam.Friends_GetFriendPersonaName(i_friends,plat.cs_id))
+		fmt.print(info.name,"\n")
+		steam.Friends_GetFriendGamePlayed(i_friends,plat.cs_id,&plat.game)
+		plat.status = steam.Friends_GetFriendPersonaState(i_friends,plat.cs_id) //→ online/offline/busy/etc
+		info.status_string = status_to_string(plat.status)
+		info.lev = cast(int)steam.Friends_GetFriendSteamLevel(i_friends,plat.cs_id)
+		update_steam_prof_pic(i_friends,&info, &plat)
+	
+		append(&groop.player,Player{platform = plat, info = info, endpoint = endpoint})
+	}
+}
+
+update_steam_prof_pic::proc(i_friends: ^steam.IFriends,info: ^Player_Info, plat:^Player_Platform_Steam){
 		if s.gpu_device != nil{
-			groop.player[i].l_player_icon_id = steam.Friends_GetLargeFriendAvatar(i_frd, groop.player[i].cs_id)
+			info.l_player_icon_id = steam.Friends_GetLargeFriendAvatar(i_friends, plat.cs_id)
 			w,h:u32
 			steam.Utils_GetImageSize(
 				s.steam.i_utils,
-				groop.player[i].l_player_icon_id,
+				info.l_player_icon_id,
 				&w,
 				&h,
 			)
@@ -185,38 +219,39 @@ update_steame_player_groop::proc(groop:^Steam_Player_Groop,i_frd:^steam.IFriends
 				buffer := make([]u8, w * h * 4)
 				ok:=steam.Utils_GetImageRGBA(
 					s.steam.i_utils,
-					groop.player[i].l_player_icon_id,
+					info.l_player_icon_id,
 					raw_data(buffer),
 					cast(i32)len(buffer),
 				)
 				// fmt.print("team.Utils_GetImageRGBA ok",ok,"\n")
 				if ok{
 					raw_buff:=mem.slice_data_cast([][4]u8,buffer)
-					// groop.player[i].l_player_icon_gpu_id = load_texture_from_bytes_raw(buffer,cast(int)w,cast(int)h,.R8G8B8A8_UNORM)
+					// player.l_player_icon_gpu_id = load_texture_from_bytes_raw(buffer,cast(int)w,cast(int)h,.R8G8B8A8_UNORM)
 					img,image_ok:=image.pixels_to_image(raw_buff,cast(int)w,cast(int)h)
 					if image_ok{
-						// fmt.print("wewoo\n\n")
-						groop.player[i].l_player_icon_gpu_hd,groop.player[i].l_player_icon_gpu_id = reg_texture_from_bits(&img,[2]string{"steam_player_icon_l",groop.player[i].name})
+
+						info.l_player_icon_gpu_hd,info.l_player_icon_gpu_id = reg_texture_from_bits(&img,[2]string{"steam_player_icon_l",info.name})
 					}
 				}
 				delete(buffer)
 			}
 		}
-	}
-	groop.count+=1
 }
 
-clear_player_groop::proc(groop:^Steam_Player_Groop){
-	if s.steam.is_using_steam != true {return}
+clear_player_groop::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	if groop.groop_owner_name != ""{delete(groop.groop_owner_name)}
+	if groop.groop_name != ""{delete(groop.groop_name)}
 	for &player in groop.player{
-		delete(player.name)
+		if player.info.name != ""{
+			delete(player.info.name)
+		}
 	}
 	groop.count = 0
-	// groop.filter = {}
 	clear(&groop.player)
 }
-delete_player_groop::proc(groop:^Steam_Player_Groop){
-	if s.steam.is_using_steam != true {return}
+delete_player_groop::proc(groop:^Player_Groop){
+	if groop == nil {return}
 	clear_player_groop(groop)
 	if groop.player != nil{
 		delete(groop.player)
@@ -259,7 +294,6 @@ run_steam_callbacks :: proc() {
                     // call identified by call_completed->m_hAsyncCall
                     // fmt.println("call_completed", call_completed)
                     // if call_completed.iCallback == .NumberOfCurrentPlayers {
-                    // 	fmt.print("waffles 5\n")
                     //     onGetNumberOfCurrentPlayers(transmute(^steam.NumberOfCurrentPlayers)temp_call_res, bFailed)
                     // }
                     #partial switch call_completed.iCallback{
@@ -297,6 +331,8 @@ run_steam_callbacks :: proc() {
             // and dispatch to appropriate handler(s)
             // fmt.println("Callback: ", callback)
             // fmt.print("waffles\n")
+
+			
             #partial switch callback.iCallback{
             case .GameOverlayActivated:
                 fmt.println("GameOverlayActivated")
@@ -307,7 +343,11 @@ run_steam_callbacks :: proc() {
 				temp:=transmute(^steam.LobbyCreated)callback.pubParam
 				fmt.print(temp,"\n")
 				if temp.eResult == .OK{
-					// s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
+					fmt.print("1 \n")
+					s.steam.steam_lobby.groop_id = temp.ulSteamIDLobby
+					fmt.print("2 \n")
+					update_steam_lobby_data(temp.ulSteamIDLobby)
+					fmt.print("3 \n")
 				}else{
 					fmt.print("Lobby Creation failed",temp.eResult,"\n"  )
 					send_simp_error_notification(&s.ui.notifications, "Lobby Creation failed")
@@ -327,18 +367,18 @@ run_steam_callbacks :: proc() {
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
 				fmt.print("LobbyEnter_fin",err,"\n")
 				if err == .Success {
-					if s.steam.steam_lobby.lobby_id != temp.ulSteamIDLobby{
-						fmt.print("leaving lobby ",s.steam.steam_lobby.lobby_id,"\n")
-						steam.Matchmaking_LeaveLobby(s.steam.i_matchmaking,s.steam.steam_lobby.lobby_id)
+					groop:=get_steam_lobby()
+					// update_steam_lobby_data(temp.ulSteamIDLobby)
+					if groop.groop_id != temp.ulSteamIDLobby{
+						fmt.print("leaving lobby ",groop.groop_id,"\n")
+						steam.Matchmaking_LeaveLobby(s.steam.i_matchmaking,groop.groop_id)
 					}
-
-					update_lobby_data(temp.ulSteamIDLobby)
+					update_steam_lobby_data(temp.ulSteamIDLobby)
 					update_steam_friend_info()
 					// s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
 					// s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
 					// s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
 					// fmt.print(temp,"\n")
-					
 				}else{
 					fmt.print("Lobby Enter failed",err,"\n"  )
 					send_simp_error_notification(&s.ui.notifications, "Lobby Enter failed")
@@ -346,13 +386,13 @@ run_steam_callbacks :: proc() {
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
 				fmt.print("LobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
-				update_lobby_data(temp.ulSteamIDLobby)
+				update_steam_lobby_data(temp.ulSteamIDLobby)
 				update_steam_friend_info()
 
 			case .LobbyChatUpdate:
 				fmt.print("LobbyChatUpdatee_fin\n")
 				temp:=transmute(^steam.LobbyChatUpdate)callback.pubParam
-				update_lobby_data(temp.ulSteamIDLobby)
+				update_steam_lobby_data(temp.ulSteamIDLobby)
 				update_steam_friend_info()
 			case .LobbyChatMsg:
 				fmt.print("LobbyChatMsg_fin\n")
@@ -471,10 +511,8 @@ create_steame_lobby::proc(){
 
 steam_invite_player_to_lobby::proc(player_id:steam.CSteamID){
 	if s.steam.is_using_steam != true {return}
-	// if s.steam.steam_lobby.lobby_id == 0{
-	// 	create_steame_lobby()
-	// }
-	steam.Matchmaking_InviteUserToLobby(s.steam.i_matchmaking,s.steam.steam_lobby.lobby_id,player_id)
+	groop:=get_steam_lobby()
+	steam.Matchmaking_InviteUserToLobby(s.steam.i_matchmaking,groop.groop_id,player_id)
 }
 
 steam_join_lobby::proc(lobby_id:steam.CSteamID){

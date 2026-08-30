@@ -36,6 +36,31 @@ Endpoint::union{
 	net.Endpoint,
 	steam.SteamNetworkingIdentity,
 }
+
+Player_Info::struct{
+	name:string,
+	status_string:string,
+	lev:int,//eqivlent to steame lev if there is no alternitiver it will be 0
+	l_player_icon_id:i32,
+	l_player_icon_gpu_id:[2]u32,
+	l_player_icon_gpu_hd:Texture_HD,
+}
+
+
+Player::struct{
+	platform:Player_Platform,// Platform spisific info
+	info:Player_Info, // platform agnostic player info
+	endpoint:Endpoint, // if nil means thay are not in your server or you are not the server host
+}
+
+Player_Platform::union{
+	Player_Platform_Steam,
+	Player_Platform_Raw_IP,
+}
+Player_Platform_Raw_IP::struct{
+	ip:u64
+}
+
 // init_udp_echo_server :: proc(ip: string, port: int) ->(server:Networking_State){
 init_udp_echo_server :: proc(server_endpoint:Endpoint) ->(server:Networking_State){
 	// resize(&server.buffer,1000 )
@@ -81,23 +106,6 @@ init_udp_echo_server :: proc(server_endpoint:Endpoint) ->(server:Networking_Stat
 	
 	return
 }
-
-// do_udp_echo_server:: proc(server:^Networking_State) {
-// 	bytes_recv, remote_endpoint, err_recv := recv_udp(server)
-// 	received := server.buffer[:bytes_recv]
-
-// 	if len(received) == 0 {return}
-// 	bytes_sent, err_send := send_udp(server,remote_endpoint,received)
-// 	sent := received[:bytes_sent]
-
-// 	free_all(context.temp_allocator)
-// }
-
-// stop_udp_echo_server:: proc(server:^Networking_State) {
-// 	net.close(server.sock)
-
-// }
-
 
 is_lf :: proc(bytes : []u8) -> bool {
 	return len(bytes) == 1 && bytes[0] == '\n'
@@ -302,6 +310,7 @@ Networking_Instance::struct{
 	status:Server_Status,
 	id:u64, //this is this game inst id
 	clients:map[u64]Client,//This is only used if you are the server
+	// players:Player,
 	last_time_steam_updated_lobby:u32,//this is just some book keeping for whether or not to recheck steam lobby data
 	server:Server,//This is only used if you are a Client
 	lobby:Lobby,//this is data about other players everyone should have
@@ -348,6 +357,35 @@ Server_Status::enum{
 	hosting,
 }
 
+
+Server_Groop_Filter::enum{
+	all,
+	all_players,
+	true_players,
+	cpu_players,
+}
+
+Groop_Types::enum{
+	friends_list,
+	lobby_list,
+	server_list,
+}
+
+Player_Groop::struct{
+	player:[dynamic]Player,
+	type:Groop_Types,
+	count:i32,
+	updated_count:u32,//this is incumented by 1 per update so that other systems know when things have changed
+	net_inst:^Networking_Instance,
+
+	flags:u64,//steam.EFriendFlags
+
+	groop_endpoint:Endpoint, // this is the endpoint to joing this groop only is valid if groop is joinible like a lobby whith a ongoing game
+	groop_name:string,
+	groop_owner_name:string,
+	groop_id:u64,
+	groop_owner_id:u64,
+}
 
 
 start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
@@ -420,14 +458,19 @@ do_networking::proc(net_inst_pt:rawptr){
 }
 
 update_network_clients_in_steam_lobby::proc(net_inst:^Networking_Instance){
+	groop:=get_steam_lobby()
 	if s.steam.is_using_steam != true {return}
 	if net_inst.networking_type != .steam {return}
-	if s.steam.steam_lobby.groop.updated_count > net_inst.last_time_steam_updated_lobby {
-		for &player in s.steam.steam_lobby.groop.player{
-			temp_endpoint:Endpoint = player.net_id
-			join_client(net_inst,player.cs_id,&temp_endpoint)
+	if groop.updated_count > net_inst.last_time_steam_updated_lobby {
+		for &player in groop.player{
+			switch plat in player.platform{
+			case Player_Platform_Steam:
+				temp_endpoint:Endpoint = plat.net_id
+				join_client(net_inst, plat.cs_id,&temp_endpoint)
+			case Player_Platform_Raw_IP:
+			}
 		}
-		net_inst.last_time_steam_updated_lobby = s.steam.steam_lobby.groop.updated_count
+		net_inst.last_time_steam_updated_lobby = groop.updated_count
 	}
 
 }

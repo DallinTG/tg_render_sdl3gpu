@@ -1885,7 +1885,7 @@ draw_steam_lobby_ui::proc(location:cl.LayoutAlignmentX = .Right){
 		list_box_dec:=defalt_box_dec(clip = {vertical = true},padding_size_id = .non)
 		list_box_dec.border.width.betweenChildren = list_box_dec.border.width.bottom
 		if temp_list_iner_box_proc(list_box_dec,) {
-			draw_steam_player_groop(&s.steam.steam_lobby.groop, 534121265)
+			draw_steam_player_groop(&s.steam.steam_lobby, 534121265)
 		}
 		}
 		icon_box_dec:=defalt_box_dec(border_size_id=.normal,layout_direction = .LeftToRight,child_alignment = {.Left,.Top},padding_size_id=.small)
@@ -1901,18 +1901,18 @@ draw_steam_lobby_ui::proc(location:cl.LayoutAlignmentX = .Right){
 	}
 }
 
-draw_steam_player_groop::proc(groop:^Steam_Player_Groop,index:u32=0){
+draw_steam_player_groop::proc(groop:^Player_Groop,index:u32=0){
 	if s.steam.is_using_steam != true {return}
 	if groop == nil {return}
 	for &player in &groop.player{
 
-		draw_steam_player(&player,index)
+		draw_player_panel(&player,index)
 	}
 }
 
 
-draw_steam_player::proc(
-	player:^Steam_Player,
+draw_player_panel::proc(
+	player:^Player,
 	index:u32=0,
 	text_size:UI_Size = .small,
 	player_icon_size:UI_Size = .big,
@@ -1920,33 +1920,46 @@ draw_steam_player::proc(
 ){
 	if s.steam.is_using_steam != true {return}
 	if player == nil {return}
-	if cl.UI(cl.ID("Player_Card", cast(u32)player.l_player_icon_id+index))(defalt_box_dec(border_size_id=border_size,layout_direction = .LeftToRight,child_alignment = {.Left,.Top})) {
-		if cl.UI(cl.ID("Player_larg_icon", cast(u32)player.l_player_icon_id+index))(defalt_img_box_dec(cast(rawptr)&player.l_player_icon_gpu_hd,size = player_icon_size)) {
+	if cl.UI(cl.ID("Player_Card", cast(u32)player.info.l_player_icon_id+index))(defalt_box_dec(border_size_id=border_size,layout_direction = .LeftToRight,child_alignment = {.Left,.Top})) {
+		if cl.UI(cl.ID("Player_larg_icon", cast(u32)player.info.l_player_icon_id+index))(defalt_img_box_dec(cast(rawptr)&player.info.l_player_icon_gpu_hd,size = player_icon_size)) {
 		}
-		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.l_player_icon_id+index))(defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
-			defalt_txt_dynamic(player.name)
-			defalt_txt_dynamic(player.status_string,text_col_id=player.status,text_size_id = text_size)
-			defalt_txt_dynamic(fmt.tprint(" Lobby_ID: ",player.game.steamIDLobby),)	
+		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.info.l_player_icon_id+index))(defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
+			defalt_txt_dynamic(player.info.name)
+			switch plat in player.platform{
+			case Player_Platform_Steam:
+				defalt_txt_dynamic(player.info.status_string,text_col_id=plat.status,text_size_id = text_size)
+				defalt_txt_dynamic(fmt.tprint(" Lobby_ID: ",plat.game.steamIDLobby),)
+			case Player_Platform_Raw_IP:
+			}
 			button_invite_to_lobby(player,index)
 			button_join_game(player,index)
 			
 		}
 	}
 }
-button_invite_to_lobby::proc(player:^Steam_Player,index:u32=0){
-	if cl.UI(cl.ID("button_invite_to_lobby",cast(u32)player.cs_id+index))(button_dec()) {
-		button_txt("Invite")
-		if cl.Hovered() && s.is_ui_l_click(){
-			steam_invite_player_to_lobby(player.cs_id)
+button_invite_to_lobby::proc(player:^Player,index:u32=0){
+	switch plat in player.platform{
+	case Player_Platform_Steam:
+		if cl.UI(cl.ID("button_invite_to_lobby",cast(u32)plat.cs_id+index))(button_dec()) {
+			button_txt("Invite")
+			if cl.Hovered() && s.is_ui_l_click(){
+				steam_invite_player_to_lobby(plat.cs_id)
+			}
 		}
+	case Player_Platform_Raw_IP:
 	}
 }
 
-button_join_game::proc(player:^Steam_Player,index:u32=0){
-	if player.game.steamIDLobby != 0{
-		button_join_lobby_by_id(player.game.steamIDLobby,index)
+button_join_game::proc(player:^Player,index:u32=0){
+	switch plat in player.platform{
+	case Player_Platform_Steam:
+		if plat.game.steamIDLobby != 0{
+			button_join_lobby_by_id(plat.game.steamIDLobby,index)
+		}
+	case Player_Platform_Raw_IP:
 	}
 }
+
 button_join_lobby_by_id::proc(lobby_id:u64,index:u32=0){
 	if cl.UI(cl.ID("button_join_game_by_id",cast(u32)lobby_id+index))(button_dec()) {
 		button_txt("Join")
@@ -2077,10 +2090,10 @@ draw_debug_info::proc(){
 		if s.steam.is_using_steam == true {
 			defalt_txt_dynamic("Steam Info __________")
 			// defalt_txt_dynamic(fmt.tprint(" Steam_ID: ",s.steam.))
-			defalt_txt_dynamic(fmt.tprint(" Lobby_ID: ",s.steam.steam_lobby.lobby_id))	
-			defalt_txt_dynamic(fmt.tprint(" Lobby_Size: ",s.steam.steam_lobby.groop.count))	
-			defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_id: ",s.steam.steam_lobby.loby_owner_id))	
-			defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_Name: ",s.steam.steam_lobby.loby_owner_name))	
+			// defalt_txt_dynamic(fmt.tprint(" Lobby_ID: ",s.steam.steam_lobby.lobby_id))	
+			// defalt_txt_dynamic(fmt.tprint(" Lobby_Size: ",s.steam.steam_lobby.groop.count))	
+			// defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_id: ",s.steam.steam_lobby.loby_owner_id))	
+			// defalt_txt_dynamic(fmt.tprint(" Lobby_Owner_Name: ",s.steam.steam_lobby.loby_owner_name))	
 		}
 	}
 }
