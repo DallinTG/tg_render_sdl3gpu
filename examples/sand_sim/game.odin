@@ -90,6 +90,7 @@ init::proc(){
 	// init_net_thread()
 	init_tg_inputs()
 	tg.init_networking_instance(&g.server,pros_server_cmd,start_server)
+	tg.set_defalt_networking_instance(&g.server)
 	tg.reg_input_events()
 	init_entitys_mesh()
 	init_defalt_ui_boxes()

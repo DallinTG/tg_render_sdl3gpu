@@ -264,6 +264,15 @@ Server_Status::enum{
 	hosting,
 }
 
+// if you set this it will be used for things like automaticly joining a steam server when you join its lobby
+set_defalt_networking_instance::proc(net_inst:^Networking_Instance){
+	s.defalt_networking_instance = net_inst
+}
+get_defalt_networking_instance::proc()->(net_inst:^Networking_Instance){
+	net_inst = s.defalt_networking_instance
+	return
+}
+
 start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 // start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
 	if net_inst.type == .nil{

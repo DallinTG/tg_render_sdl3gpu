@@ -69,7 +69,7 @@ State :: struct{
 
 
 	time:Time_Info,
-
+	defalt_networking_instance:^Networking_Instance,
 	events:[dynamic]sdl.Event,
 	input_events:event_data,
 	

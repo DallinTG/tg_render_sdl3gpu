@@ -95,6 +95,7 @@ init_steam::proc(){
 	s.steam.is_using_steam = true
 	
 }
+
 cleane_up_steam::proc(){
 	if s.steam.is_using_steam != true {return}
 	delete_player_groop(&s.steam.friends)
@@ -104,6 +105,7 @@ cleane_up_steam::proc(){
 	}
 	steam.Shutdown()
 }
+
 update_steam_friend_info::proc(){
 	if s.steam.is_using_steam != true {return}
 	s.steam.i_friends=steam.SteamFriends_v017()
@@ -112,6 +114,7 @@ update_steam_friend_info::proc(){
 	s.steam.friends.flags =cast(u64)steam.EFriendFlags.Immediate
 	update_player_groop(&s.steam.friends)
 }
+
 update_steam_lobby_data::proc(lobby_id:u64){
 	if s.steam.is_using_steam != true {return}
 	groop := get_steam_lobby()
@@ -126,6 +129,11 @@ update_steam_lobby_data::proc(lobby_id:u64){
 		steam.NetworkingIdentity_SetSteamID(&ep,groop.groop_owner_id)	
 	}
 	update_player_groop(groop)
+	dnwi:=get_defalt_networking_instance()
+	if dnwi != nil{
+		join_server(server_endpoint = &groop.groop_endpoint, net_inst=dnwi)
+	}
+
 }
 
 
