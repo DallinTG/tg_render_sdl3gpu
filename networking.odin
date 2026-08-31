@@ -387,6 +387,46 @@ Player_Groop::struct{
 	groop_owner_id:u64,
 }
 
+update_player_groop::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	// if s.steam.is_using_steam != true {return}
+	clear_player_groop(groop)
+	update_player_groop_count(groop)
+	// resize_dynamic_array(&groop.player,groop.count)
+	clear(&groop.player)
+	_update_steam_player_groop(groop)
+	groop.count+=1
+}
+
+// usily called by update_player_groop()
+update_player_groop_count::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	groop.count = 0
+	_update_steam_player_groop_count(groop)
+
+}
+
+clear_player_groop::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	if groop.groop_owner_name != ""{delete(groop.groop_owner_name)}
+	if groop.groop_name != ""{delete(groop.groop_name)}
+	for &player in groop.player{
+		if player.info.name != ""{
+			delete(player.info.name)
+		}
+	}
+	groop.count = 0
+	clear(&groop.player)
+}
+delete_player_groop::proc(groop:^Player_Groop){
+	if groop == nil {return}
+	clear_player_groop(groop)
+	if groop.player != nil{
+		delete(groop.player)
+	}
+}
+
+
 
 start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 // start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){

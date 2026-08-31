@@ -27,9 +27,6 @@ import "core:image/png"
 import "core:image/tga"
 
 
-// import "core:sys/posix"
-// import "core:fmt"
-
 
 Steam_Info::struct{
 	steam_id:u64,
@@ -65,11 +62,11 @@ init_steam::proc(){
 	// if err := steam.InitEx(&err_msg); err != .OK {
 
 	if steam.RestartAppIfNecessary(steam.uAppIdInvalid) {
-		fmt.println("Launching app through steam...","\n")
+		log.log(.Info,"Launching app through steam...","\n")
 		return
 	}
 	if err := steam.InitFlat(&err_msg); err != .OK {
-		fmt.printfln("steam.InitFlat failed with code '{}' and message \"{}\"", err, transmute(cstring)&err_msg[0],"\n")
+		log.log(.Info,"steam.InitFlat failed with code '{}' and message \"{}\"", err, transmute(cstring)&err_msg[0],"\n")
 		return
 	}
 
@@ -86,7 +83,7 @@ init_steam::proc(){
 	if !steam.User_BLoggedOn(steam.User()) {
 		panic("User isn't logged in.")
 	} else {
-		fmt.println("USER IS LOGGED IN")
+		log.log(.Info,"USER IS LOGGED IN")
 	}
 	s.steam.i_utils= steam.SteamUtils_v010()
 	s.steam.steam_id = steam.User_GetSteamID(s.steam.user)
@@ -101,7 +98,10 @@ init_steam::proc(){
 cleane_up_steam::proc(){
 	if s.steam.is_using_steam != true {return}
 	delete_player_groop(&s.steam.friends)
-	delete_player_groop(&s.steam.steam_lobby)
+	lobby:=get_steam_lobby()
+	if lobby != nil{
+		delete_player_groop(&s.steam.steam_lobby)
+	}
 	steam.Shutdown()
 }
 update_steam_friend_info::proc(){
@@ -115,43 +115,26 @@ update_steam_friend_info::proc(){
 update_steam_lobby_data::proc(lobby_id:u64){
 	if s.steam.is_using_steam != true {return}
 	groop := get_steam_lobby()
+	if groop == nil{return}
 	
 	groop.groop_id = lobby_id
 	groop.type = .lobby_list
 	groop.groop_endpoint = steam.SteamNetworkingIdentity{}
-	fmt.print(lobby_id,"\n")
+	log.log(.Info,"updateing ",lobby_id,"\n")
 	#partial switch &ep in &groop.groop_endpoint {
 		case steam.SteamNetworkingIdentity:
 		steam.NetworkingIdentity_SetSteamID(&ep,groop.groop_owner_id)	
 	}
 	update_player_groop(groop)
-
 }
 
 
 get_steam_lobby::proc()->(groop:^Player_Groop){
+	if s.steam.is_using_steam != true {return}
 	groop = &s.steam.steam_lobby
 	return
 }
 
-update_player_groop::proc(groop:^Player_Groop){
-	if groop == nil {return}
-	// if s.steam.is_using_steam != true {return}
-	clear_player_groop(groop)
-	update_player_groop_count(groop)
-	// resize_dynamic_array(&groop.player,groop.count)
-	clear(&groop.player)
-	_update_steam_player_groop(groop)
-	groop.count+=1
-}
-
-// usily called by update_player_groop()
-update_player_groop_count::proc(groop:^Player_Groop){
-	if groop == nil {return}
-	groop.count = 0
-	_update_steam_player_groop_count(groop)
-
-}
 _update_steam_player_groop_count::proc(groop:^Player_Groop){
 	if groop == nil {return}
 	switch groop.type{
@@ -186,7 +169,6 @@ _update_steam_player_groop::proc(groop:^Player_Groop){
 
 		switch groop.type{
 			case .friends_list:
-				fmt.print(i,"\n")
 				plat.cs_id = steam.Friends_GetFriendByIndex(i_friends, i, cast(i32)groop.flags)
 			case .lobby_list:
 				plat.cs_id = steam.Matchmaking_GetLobbyMemberByIndex(s.steam.i_matchmaking, groop.groop_id, i)
@@ -194,7 +176,6 @@ _update_steam_player_groop::proc(groop:^Player_Groop){
 		}
 
 		info.name = str.clone_from_cstring(steam.Friends_GetFriendPersonaName(i_friends,plat.cs_id))
-		fmt.print(info.name,"\n")
 		steam.Friends_GetFriendGamePlayed(i_friends,plat.cs_id,&plat.game)
 		plat.status = steam.Friends_GetFriendPersonaState(i_friends,plat.cs_id) //→ online/offline/busy/etc
 		info.status_string = status_to_string(plat.status)
@@ -223,7 +204,6 @@ update_steam_prof_pic::proc(i_friends: ^steam.IFriends,info: ^Player_Info, plat:
 					raw_data(buffer),
 					cast(i32)len(buffer),
 				)
-				// fmt.print("team.Utils_GetImageRGBA ok",ok,"\n")
 				if ok{
 					raw_buff:=mem.slice_data_cast([][4]u8,buffer)
 					// player.l_player_icon_gpu_id = load_texture_from_bytes_raw(buffer,cast(int)w,cast(int)h,.R8G8B8A8_UNORM)
@@ -236,26 +216,6 @@ update_steam_prof_pic::proc(i_friends: ^steam.IFriends,info: ^Player_Info, plat:
 				delete(buffer)
 			}
 		}
-}
-
-clear_player_groop::proc(groop:^Player_Groop){
-	if groop == nil {return}
-	if groop.groop_owner_name != ""{delete(groop.groop_owner_name)}
-	if groop.groop_name != ""{delete(groop.groop_name)}
-	for &player in groop.player{
-		if player.info.name != ""{
-			delete(player.info.name)
-		}
-	}
-	groop.count = 0
-	clear(&groop.player)
-}
-delete_player_groop::proc(groop:^Player_Groop){
-	if groop == nil {return}
-	clear_player_groop(groop)
-	if groop.player != nil{
-		delete(groop.player)
-	}
 }
 
 
@@ -281,10 +241,7 @@ run_steam_callbacks :: proc() {
     // enabled := steam.SteamUtils().IsOverlayEnabled()
     for steam.ManualDispatch_GetNextCallback(steam_pipe, &callback) {
         // Check for dispatching API call results
-        // fmt.print("Callback: ",callback,callback.iCallback,"\n")
         if callback.iCallback == .SteamAPICallCompleted {
-            // fmt.println("CallResult: ", callback)
-
             call_completed := transmute(^steam.SteamAPICallCompleted)callback.pubParam
             resize(&temp_mem, int(callback.cubParam))
             if temp_call_res, ok := mem.alloc(int(callback.cubParam), allocator = context.temp_allocator); ok == nil {
@@ -292,34 +249,33 @@ run_steam_callbacks :: proc() {
                 if steam.ManualDispatch_GetAPICallResult(steam_pipe, call_completed.hAsyncCall, temp_call_res, callback.cubParam, callback.iCallback, &bFailed) {
                     // Dispatch the call result to the registered handler(s) for the
                     // call identified by call_completed->m_hAsyncCall
-                    // fmt.println("call_completed", call_completed)
                     // if call_completed.iCallback == .NumberOfCurrentPlayers {
                     //     onGetNumberOfCurrentPlayers(transmute(^steam.NumberOfCurrentPlayers)temp_call_res, bFailed)
                     // }
                     #partial switch call_completed.iCallback{
                     case .NumberOfCurrentPlayers:
-                    	fmt.print("NumberOfCurrentPlayers\n")
-                        onGetNumberOfCurrentPlayers(transmute(^steam.NumberOfCurrentPlayers)temp_call_res, bFailed)
+                	log.log(.Info,"NumberOfCurrentPlayers\n")
+                      onGetNumberOfCurrentPlayers(transmute(^steam.NumberOfCurrentPlayers)temp_call_res, bFailed)
                     case .GameLobbyJoinRequested:
-                    fmt.print("GameLobbyJoinRequested\n")
+                    log.log(.Info,"GameLobbyJoinRequested\n")
                     case .LobbyInvite:
-                    fmt.print("LobbyInvite\n")
+                    log.log(.Info,"LobbyInvite\n")
                     case .LobbyEnter:
-                    fmt.print("LobbyEnter\n")
+                    log.log(.Info,"LobbyEnter\n")
                     case .LobbyDataUpdate:
-                    fmt.print("LobbyDataUpdate\n")
+                    log.log(.Info,"LobbyDataUpdate\n")
                     case .LobbyChatUpdate:
-                    fmt.print("LobbyChatUpdatee\n")
+                    log.log(.Info,"LobbyChatUpdatee\n")
                     case .LobbyChatMsg:
-                    fmt.print("LobbyChatMsg\n")
+                    log.log(.Info,"LobbyChatMsg\n")
                     case .LobbyGameCreated:
-                    fmt.print("LobbyGameCreated\n")
+                    log.log(.Info,"LobbyGameCreated\n")
                     case .LobbyMatchList:
-                    fmt.print("LobbyMatchList\n")
+                    log.log(.Info,"LobbyMatchList\n")
                     case .LobbyKicked:
-                    fmt.print("LobbyKicked\n")
+                    log.log(.Info,"LobbyKicked\n")
                     case .LobbyCreated:
-                    fmt.print("LobbyCreated\n")
+                    log.log(.Info,"LobbyCreated\n")
                    
 	
                     }
@@ -329,31 +285,22 @@ run_steam_callbacks :: proc() {
         } else {
             // Look at callback.m_iCallback to see what kind of callback it is,
             // and dispatch to appropriate handler(s)
-            // fmt.println("Callback: ", callback)
-            // fmt.print("waffles\n")
-
-			
             #partial switch callback.iCallback{
             case .GameOverlayActivated:
-                fmt.println("GameOverlayActivated")
+                log.log(.Info,"GameOverlayActivated")
                 onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
 
 			case .LobbyCreated:
-				fmt.print("LobbyCreated_fin\n")
+				log.log(.Info,"LobbyCreated_fin\n")
 				temp:=transmute(^steam.LobbyCreated)callback.pubParam
-				fmt.print(temp,"\n")
 				if temp.eResult == .OK{
-					fmt.print("1 \n")
-					s.steam.steam_lobby.groop_id = temp.ulSteamIDLobby
-					fmt.print("2 \n")
 					update_steam_lobby_data(temp.ulSteamIDLobby)
-					fmt.print("3 \n")
 				}else{
-					fmt.print("Lobby Creation failed",temp.eResult,"\n"  )
+					log.log(.Info,"Lobby Creation failed",temp.eResult,"\n"  )
 					send_simp_error_notification(&s.ui.notifications, "Lobby Creation failed")
 				}
 			case .GameLobbyJoinRequested:
-				fmt.print("GameLobbyJoinRequested_fin\n")
+				log.log(.Info,"GameLobbyJoinRequested_fin\n")
 				temp:=transmute(^steam.GameLobbyJoinRequested)callback.pubParam
 				steam_join_lobby(temp.steamIDLobby)
 				update_steam_friend_info()
@@ -361,64 +308,62 @@ run_steam_callbacks :: proc() {
 				temp:=transmute(^steam.LobbyInvite)callback.pubParam
 				send_accept_invite_to_game_notification(&s.ui.notifications,"you got invite to a game",lobby_id = temp.ulSteamIDLobby)
 				update_steam_friend_info()
-				fmt.print("LobbyInvite_fin\n")
+				log.log(.Info,"LobbyInvite_fin\n")
 			case .LobbyEnter:
 				temp:=transmute(^steam.LobbyEnter)callback.pubParam
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
-				fmt.print("LobbyEnter_fin",err,"\n")
+				log.log(.Info,"LobbyEnter_fin",err,"\n")
 				if err == .Success {
 					groop:=get_steam_lobby()
-					// update_steam_lobby_data(temp.ulSteamIDLobby)
-					if groop.groop_id != temp.ulSteamIDLobby{
-						fmt.print("leaving lobby ",groop.groop_id,"\n")
-						steam.Matchmaking_LeaveLobby(s.steam.i_matchmaking,groop.groop_id)
+					if groop != nil{
+						// update_steam_lobby_data(temp.ulSteamIDLobby)
+						if groop.groop_id != temp.ulSteamIDLobby{
+							log.log(.Info,"leaving lobby ",groop.groop_id,"\n")
+							steam.Matchmaking_LeaveLobby(s.steam.i_matchmaking,groop.groop_id)
+						}
+						update_steam_lobby_data(temp.ulSteamIDLobby)
+						update_steam_friend_info()
 					}
-					update_steam_lobby_data(temp.ulSteamIDLobby)
-					update_steam_friend_info()
-					// s.steam.steam_lobby.lobby_id = temp.ulSteamIDLobby
-					// s.steam.steam_lobby.loby_owner_id=steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,temp.ulSteamIDLobby)
-					// s.steam.steam_lobby.loby_owner_name=str.clone_from_cstring(steam.Friends_GetFriendPersonaName(s.steam.i_friends,s.steam.steam_lobby.loby_owner_id))
-					// fmt.print(temp,"\n")
 				}else{
-					fmt.print("Lobby Enter failed",err,"\n"  )
+					log.log(.Info,"Lobby Enter failed",err,"\n"  )
 					send_simp_error_notification(&s.ui.notifications, "Lobby Enter failed")
 				}
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
-				fmt.print("LobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
+				log.log(.Info,"LobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
 				update_steam_lobby_data(temp.ulSteamIDLobby)
 				update_steam_friend_info()
 
 			case .LobbyChatUpdate:
-				fmt.print("LobbyChatUpdatee_fin\n")
+				log.log(.Info,"LobbyChatUpdatee_fin\n")
 				temp:=transmute(^steam.LobbyChatUpdate)callback.pubParam
 				update_steam_lobby_data(temp.ulSteamIDLobby)
 				update_steam_friend_info()
 			case .LobbyChatMsg:
-				fmt.print("LobbyChatMsg_fin\n")
+				log.log(.Info,"LobbyChatMsg_fin\n")
 			case .LobbyGameCreated:
-				fmt.print("LobbyGameCreated_fin\n")
+				log.log(.Info,"LobbyGameCreated_fin\n")
 			case .LobbyMatchList:
-				fmt.print("LobbyMatchList_fin\n")
+				log.log(.Info,"LobbyMatchList_fin\n")
 				temp:=transmute(^steam.LobbyMatchList)callback.pubParam
 				for index in  0..<temp.nLobbiesMatching{
 					loby_id:=steam.Matchmaking_GetLobbyByIndex(s.steam.i_matchmaking,cast(i32)index)
-					fmt.print(loby_id,"\n")
+					log.log(.Info,loby_id,"\n")
 					max_members := steam.Matchmaking_GetLobbyMemberLimit(s.steam.i_matchmaking,loby_id,)
-					// fmt.print("max_members",max_members,"\n")
+					// log.log(.Info,"max_members",max_members,"\n")
 					owner := steam.Matchmaking_GetLobbyOwner(s.steam.i_matchmaking,loby_id,)
-					// fmt.print("owner",owner ,"\n")
+					// log.log(.Info,"owner",owner ,"\n")
 					loby_name := steam.Matchmaking_GetLobbyData(s.steam.i_matchmaking,loby_id,"name")
-					// fmt.print("loby_name ",loby_name  ,"\n")
+					// log.log(.Info,"loby_name ",loby_name  ,"\n")
 	
 					num_lobby_members:=steam.Matchmaking_GetNumLobbyMembers(s.steam.i_matchmaking,loby_id)
-					// fmt.print("num_lobby_members",num_lobby_members ,"\n")
+					// log.log(.Info,"num_lobby_members",num_lobby_members ,"\n")
 					for member_index in  0..<num_lobby_members{
 						// steam_user_id:=steam.Matchmaking_GetLobbyMemberByIndex(s.steam.i_matchmaking,loby_id,member_index)
-						// fmt.print("steam_user_id",steam_user_id,"\n")
+						// log.log(.Info,"steam_user_id",steam_user_id,"\n")
 					}
 					lobby_data_count:=steam.Matchmaking_GetLobbyDataCount(s.steam.i_matchmaking,loby_id)
-					// fmt.print("lobby_data_count",lobby_data_count ,"\n")
+					// log.log(.Info,"lobby_data_count",lobby_data_count ,"\n")
 					
 					for data_index in  0..<lobby_data_count{
 						pchKey:[255]u8
@@ -426,54 +371,50 @@ run_steam_callbacks :: proc() {
 						pchValue:[8192]u8
 						cchValueBufferSize: i32=8192
 						steam.Matchmaking_GetLobbyDataByIndex(s.steam.i_matchmaking,loby_id,data_index,raw_data(&pchKey),cchKeyBufferSize,raw_data(&pchValue),cchValueBufferSize)
-						// fmt.print("pchKey",cast(string)pchKey[:],"\n")
-						// fmt.print("pchValue",pchValue,"\n")
 					}
-					fmt.print("\n\n")
 				}
-				fmt.print(temp.nLobbiesMatching,"\n")
+				log.log(.Info,temp.nLobbiesMatching,"\n")
 			case .LobbyKicked:
-				fmt.print("LobbyKicked_fin\n")
+				log.log(.Info,"LobbyKicked_fin\n")
 			case .PersonaStateChange:
 				update_steam_friend_info()
 			case .SteamNetworkingMessagesSessionRequest:
 				temp:=transmute(^steam.SteamNetworkingMessagesSessionRequest)callback.pubParam
-				fmt.print("SteamNetworkingMessagesSessionRequest",temp.identityRemote,"\n")
+				log.log(.Info,"SteamNetworkingMessagesSessionRequest",temp.identityRemote,"\n")
 				steam.NetworkingMessages_AcceptSessionWithUser(s.steam.i_networking_messages,&temp.identityRemote)
 
 			case:
-				fmt.print(callback.iCallback,"\n")
+				log.log(.Info,callback.iCallback,"\n")
 			}
 			
 
 			// if callback.iCallback == .GameOverlayActivated {
-			//     fmt.println("GameOverlayActivated")
+			//     log.log(.Info,"GameOverlayActivated")
 			//     onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
 			// }
 		}
 		// enabled :=steam.Utils_IsOverlayEnabled(steam.Utils() )
-		// fmt.print("steam overlay is enabbled",enabled,"\n")
 		steam.ManualDispatch_FreeLastCallback(steam_pipe)
 	}
 }
 onGameOverlayActivated :: proc(data: ^steam.GameOverlayActivated) {
-    fmt.println("Is overlay active =", data.bActive)
+    log.log(.Info,"Is overlay active =", data.bActive)
 }
 
 onGetNumberOfCurrentPlayers :: proc(data: ^steam.NumberOfCurrentPlayers, ioFailure: bool) {
-    fmt.println("[get_number_of_current_players] success:", data.bSuccess)
+    log.log(.Info,"[get_number_of_current_players] success:", data.bSuccess)
     if ioFailure || !bool(data.bSuccess) {
-        fmt.println("get_number_of_current_players failed.")
+        log.log(.Info,"get_number_of_current_players failed.")
         return
     }
 
-    fmt.println("[get_number_of_current_players] Number of players currently playing:", data.cPlayers)
+    log.log(.Info,"[get_number_of_current_players] Number of players currently playing:", data.cPlayers)
     s.steam.number_of_current_players = int(data.cPlayers)
 }
 
 get_number_of_current_players :: proc() {
 	if s.steam.is_using_steam != true {return}
-	fmt.println("[get_number_of_current_players] Getting number of current players.")
+	log.log(.Info,"[get_number_of_current_players] Getting number of current players.")
 	hSteamApiCall := steam.UserStats_GetNumberOfCurrentPlayers(steam.UserStats())
 }
 
@@ -512,7 +453,9 @@ create_steame_lobby::proc(){
 steam_invite_player_to_lobby::proc(player_id:steam.CSteamID){
 	if s.steam.is_using_steam != true {return}
 	groop:=get_steam_lobby()
+	if groop == nil{return}
 	steam.Matchmaking_InviteUserToLobby(s.steam.i_matchmaking,groop.groop_id,player_id)
+	
 }
 
 steam_join_lobby::proc(lobby_id:steam.CSteamID){
