@@ -23,7 +23,7 @@ import stb"vendor:stb/image"
 
 // import hm "handle_map_static_virtual"
 import hm "core:container/handle_map"
-import reg "/registry"
+import reg "registry"
 
 
 Texture_GPU_Handle :: distinct Handle

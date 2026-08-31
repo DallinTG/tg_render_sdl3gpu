@@ -13,7 +13,7 @@ import lin"core:math/linalg"
 import "base:runtime"
 // import hm "handle_map_static_virtual"
 import hm "core:container/handle_map"
-import reg "/registry"
+import reg "registry"
 import steam "steamworks"
 import "core:os"
 
