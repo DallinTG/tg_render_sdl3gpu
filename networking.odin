@@ -14,19 +14,21 @@ import hm "core:container/handle_map"
 import "core:math/rand"
 import "core:time"
 
-Networking_State::struct{
-	is_up:bool,
-	type:Server_Types,
-	ip: string,
-	port: int,
-	endpoint: Endpoint,
-	sock: net.UDP_Socket,
-	buffer:[256]u8,
+// Networking_State::struct{
+// 	is_up:bool,
+// 	type:Server_Types,
 
-	// st_sock:^steam.INetworkingMessages,
-	// st_endpoint:^steam.SteamNetworkingIdentity,
-	// buffer:[256]u8,
-}
+// 	endpoint: Endpoint,
+// 	sock: net.UDP_Socket,
+
+// 	// ip: string,
+// 	// port: int,
+// 	// buffer:[256]u8,
+
+// 	// st_sock:^steam.INetworkingMessages,
+// 	// st_endpoint:^steam.SteamNetworkingIdentity,
+// 	// buffer:[256]u8,
+// }
 Server_Types::enum{
 	nil,
 	host,
@@ -61,20 +63,11 @@ Player_Platform_Raw_IP::struct{
 	ip:u64
 }
 
-// init_udp_echo_server :: proc(ip: string, port: int) ->(server:Networking_State){
-init_udp_echo_server :: proc(server_endpoint:Endpoint) ->(server:Networking_State){
-	// resize(&server.buffer,1000 )
-	// local_addr, ok := net.parse_ip4_address(ip)
-	// if !ok {
+init_udp_server :: proc(net_inst:^Networking_Instance,server_endpoint:Endpoint){
 
-	// 	return
-	// }
-	// endpoint := net.Endpoint {
-	// 	address = local_addr,
-	// 	port    = port,
-	// }
-	// for the server, we create a *bound* UDP socket,
-	// because we want to start listen the port immediately
+	net_inst.type = .host
+	net_inst.server_endpoint = server_endpoint
+
 	switch ep in server_endpoint{
 	case net.Endpoint:
 		sock, err := net.make_bound_udp_socket(ep.address, ep.port)
@@ -84,24 +77,9 @@ init_udp_echo_server :: proc(server_endpoint:Endpoint) ->(server:Networking_Stat
 		}
 		log.logf(.Info,"Listening on UDP: %s", net.endpoint_to_string(ep))
 		net.set_blocking(sock, false)
-	
-		server.is_up = true
-		// server.ip = ip
-		// server.port = port
-		server.endpoint = ep
-		server.sock = sock
-		// buffer: [256]u8
-		
-		server.type = .host
+		net_inst.sock = sock
 	case steam.SteamNetworkingIdentity:
-		server.is_up = true
-		// server.ip = ip
-		// server.port = port
-		server.endpoint = ep
-		// server.sock = sock
-		// buffer: [256]u8
-		
-		server.type = .host
+
 	}
 	
 	return
@@ -119,18 +97,11 @@ is_eol :: proc(bytes : []u8) -> bool {
 	return is_lf(bytes) || is_crlf(bytes)
 }
 
-// init_udp_echo_client :: proc(ip: string, port: int) ->(client:Networking_State){
-init_udp_echo_client :: proc(server_endpoint:Endpoint) ->(client:Networking_State){
-	// resize(&client.buffer,1000 )
-	// local_addr, ok := net.parse_ip4_address(ip)
-	// if !ok {
+init_udp_client :: proc(net_inst:^Networking_Instance, server_endpoint:Endpoint){
 
-	// 	return
-	// }
-	// server_endpoint := net.Endpoint {
-	// 	address = local_addr,
-	// 	port    = port,
-	// }
+	net_inst.server_endpoint = server_endpoint
+	net_inst.type = .client
+
 	switch ep in server_endpoint{
 	case net.Endpoint:
 		sock, err := net.make_unbound_udp_socket(net.family_from_address(ep.address))
@@ -138,80 +109,29 @@ init_udp_echo_client :: proc(server_endpoint:Endpoint) ->(client:Networking_Stat
 			log.logf(.Warning,"Failed to make unbound UDP socket ", err)
 			return
 		}
-	
 		log.logf(.Info,"Client is ready ")
-		
 		net.set_blocking(sock, false)
-		client.is_up = true
-		// client.ip = ip
-		// client.port = port
-		client.sock = sock
-		client.endpoint = server_endpoint
+
+		net_inst.sock = sock
 	
-		client.type = .client
+	
 	case steam.SteamNetworkingIdentity:
-		client.is_up = true
-		// client.ip = ip
-		// client.port = port
-		// client.sock = sock
-		client.endpoint = server_endpoint
-	
-		client.type = .client
+
 	}
 	return
 }
 
-// do_udp_echo_client :: proc(client:^Networking_State) {
 
-// 	str_builder:=st.builder_from_bytes(client.buffer[:])
-// 	n :=st.write_string(&str_builder,"waffles")
-
-// 	data := client.buffer[:n]
-// 	if n == 0 || is_eol(data)  {
-// 		return
-// 	}
-
-// 	bytes_sent, err_send :=send_udp(client,client.endpoint, data)
-
-// 	sent := data[:bytes_sent]
-
-// 	bytes_recv, _, err_recv  := recv_udp(client, client.buffer[:])
-// 	if err_recv != nil {
-
-// 		return
-// 	}
-
-// 	received := client.buffer[:bytes_recv]
-
+// do_udp_server::proc(server:^Networking_State){
+	// bytes_recv, remote_endpoint, err_recv := recv_udp(server, server.buffer[:])
+	// received := server.buffer[:bytes_recv]
+	// if len(received) == 0 {return}
 // }
 
-do_udp_print_server::proc(server:^Networking_State){
-	bytes_recv, remote_endpoint, err_recv := recv_udp(server, server.buffer[:])
-	switch ep in remote_endpoint{
-	case  net.Endpoint:
-		received := server.buffer[:bytes_recv]
-		fmt.printfln("Server received from %s", net.endpoint_to_string(ep))
-		fmt.printfln("Received data [ %d bytes ]: %s", len(received), received)
-	
-		if len(received) == 0 {return}
-		// bytes_sent, err_send := send_udp(server,remote_endpoint,received)
-		// sent := received[:bytes_sent]
-
-		free_all(context.temp_allocator)
-	case steam.SteamNetworkingIdentity:
-	}
-}
-
-do_udp_server::proc(server:^Networking_State){
-	bytes_recv, remote_endpoint, err_recv := recv_udp(server, server.buffer[:])
-	received := server.buffer[:bytes_recv]
-	if len(received) == 0 {return}
-	free_all(context.temp_allocator)
-}
-send_udp::proc(net_st:^Networking_State, endpoint:^Endpoint, data:[]u8)->(bytes_sent:int, err_send:net.UDP_Send_Error){
+send_udp::proc(net_inst:^Networking_Instance, endpoint:^Endpoint, data:[]u8)->(bytes_sent:int, err_send:net.UDP_Send_Error){
 	switch &ep in endpoint{
 		case  net.Endpoint:
-			bytes_sent, err_send = net.send_udp(net_st.sock, data[:], ep)
+			bytes_sent, err_send = net.send_udp(net_inst.sock, data[:], ep)
 			if err_send != nil {
 				log.logf(.Warning, "Failed to send data", err_send)
 				return
@@ -219,10 +139,10 @@ send_udp::proc(net_st:^Networking_State, endpoint:^Endpoint, data:[]u8)->(bytes_
 		case  steam.SteamNetworkingIdentity:
 		steam.NetworkingMessages_SendMessageToUser(s.steam.i_networking_messages,&ep,raw_data(data[:]),cast(u32)len(data[:]),5,0)
 	}
-
 	return
 }
-recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_endpoint:Endpoint, err_recv: net.UDP_Recv_Error){
+
+recv_udp::proc(net_inst:^Networking_Instance,buff:[]u8)->(bytes_recv: int, remote_endpoint:Endpoint, err_recv: net.UDP_Recv_Error){
 	steam_msg_data:steam.SteamNetworkingMessage
 	steam_msg_data_p:^steam.SteamNetworkingMessage=&steam_msg_data
 	steam_msg:^^steam.SteamNetworkingMessage = &steam_msg_data_p
@@ -241,7 +161,7 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 		}
 		steam.NetworkingMessage_t_Release(steam_msg^)
 	}else{
-		bytes_recv, remote_endpoint, err_recv = net.recv_udp(net_st.sock, buff)
+		bytes_recv, remote_endpoint, err_recv = net.recv_udp(net_inst.sock, buff)
 		if err_recv != nil {
 			return
 		}
@@ -255,29 +175,14 @@ recv_udp::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_end
 	return
 }
 
-stop_udp_echo_client:: proc(client:^Networking_State) {
-	net.close(client.sock)
-	log.logf(.Info, "Closed socket")
-}
-
-// steam_recv_messag::proc(net_st:^Networking_State, endpoint:net.Endpoint, data:[]u8)->(bytes_sent:int, err_send:net.UDP_Send_Error){
-// 	steam.NetworkingMessages_ReceiveMessagesOnChannel(net_st.st_sock, 0 ,cast(steam.SteamNetworkingMessage)cast(rawptr)raw_data(data),cast(i32)len(data))
+// stop_udp_echo_client:: proc(client:^Networking_State) {
+// 	net.close(client.sock)
+// 	log.logf(.Info, "Closed socket")
 // }
-// steam_send_messag::proc(net_st:^Networking_State,buff:[]u8)->(bytes_recv: int, remote_endpoint: net.Endpoint, err_recv: net.UDP_Recv_Error){
-// 	steam.NetworkingMessages_SendMessageToUser(net_st.st_sock, 0 ,)
-// 	steam.User_GetSteamID(steam_user)
-// }
-
-
-
-
-
 
 // _____________________________________
 // 
 Server_CMD_Handle :: distinct Handle
-// Server_CMD_Handle_Map :: hm.Handle_Map(Server_CMD, Server_CMD_Handle, 1000)
-// Server_CMD_Handle_Map :: hm.Dynamic_Handle_Map(Server_CMD, Server_CMD_Handle)
 Server_CMD_Handle_Map :: hm.Static_Handle_Map(1000,Server_CMD, Server_CMD_Handle)
 
 Net_Commands_Type::enum u32 {
@@ -286,13 +191,11 @@ Net_Commands_Type::enum u32 {
 	regect_join,
 	leave,
 	server_shutdown,
-	
 }
 
 Net_Flags::enum{
 	force_process,
 }
-
 Net_Command::struct{
 	count:u32,
 	data_len:u32,
@@ -304,19 +207,23 @@ Networking_Type::enum{
 	raw,
 	steam,
 }
-
 Networking_Instance::struct{
-	net_state:Networking_State,
+	// net_state:Networking_State,
+	type:Server_Types,
 	status:Server_Status,
+	sock: net.UDP_Socket,
 	id:u64, //this is this game inst id
+
 	clients:map[u64]Client,//This is only used if you are the server
+	server_endpoint: Endpoint,// This is only used if you are client
 	// players:Player,
 	last_time_steam_updated_lobby:u32,//this is just some book keeping for whether or not to recheck steam lobby data
 	server:Server,//This is only used if you are a Client
-	lobby:Lobby,//this is data about other players everyone should have
+	// lobby:Lobby,//this is data about other players everyone should have
 	cmd_q:Server_CMD_Handle_Map,
 	cmd_q_extra_data:vmem.Arena,
 	cmd_q_extra_arena_alloc:mem.Allocator,
+
 	net_thread:^thread.Thread,
 	networking_type:Networking_Type,
 
@@ -356,6 +263,289 @@ Server_Status::enum{
 	regected,
 	hosting,
 }
+
+start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
+// start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
+	if net_inst.type == .nil{
+		log.logf(.Info, "starting server")
+		init_udp_server(net_inst,server_endpoint)
+		net_inst.status = .hosting
+		create_steame_lobby()
+		if net_inst.cb_start_server != nil{
+			net_inst.cb_start_server(net_inst)
+		}
+	}
+}
+join_server::proc(server_endpoint:^Endpoint, net_inst:^Networking_Instance){
+	log.logf(.Info, "conecting to server")
+	init_udp_client(net_inst, server_endpoint^)
+	send_join_request(server_endpoint,net_inst)
+}
+
+leave_shutdown_server::proc(net_inst:^Networking_Instance){
+	if net_inst.status == .joined{
+		send_net_command_to_server(net_inst, cmd={type=cast(u32)Net_Commands_Type.leave,flags={.force_process}})
+		net_inst.status = .nil
+		// curent_game_mode = .start
+	}
+	if net_inst.status == .hosting{
+		send_net_command_to_all_clients(net_inst, cmd={type=cast(u32)Net_Commands_Type.server_shutdown,flags={.force_process}})
+		
+		net_inst.status = .nil
+		// g.curent_game_mode = .start
+	}
+	// reset_game_state()
+}
+
+
+do_networking::proc(net_inst_pt:rawptr){
+	net_inst:=cast(^Networking_Instance)net_inst_pt
+	for !s.app_should_close{
+		switch net_inst.type{
+		case .nil:
+			time.sleep(100000)
+		case .host:
+			cmd,endpoint,buf,ok:=recv_command(net_inst)
+			if ok{
+				update_network_clients_in_steam_lobby(net_inst)
+				add_server_cmd_to_q(net_inst, cmd,endpoint,buf)
+			}
+		case .client:
+			cmd,endpoint,buf,ok:=recv_command(net_inst)
+			if ok{
+				add_server_cmd_to_q(net_inst, cmd,endpoint,buf)
+			}
+		}
+	}
+	log.logf(.Info,"closing networking thread")
+
+}
+
+update_network_clients_in_steam_lobby::proc(net_inst:^Networking_Instance){
+	groop:=get_steam_lobby()
+	if s.steam.is_using_steam != true {return}
+	if net_inst.networking_type != .steam {return}
+	if groop.updated_count > net_inst.last_time_steam_updated_lobby {
+		for &player in groop.player{
+			switch plat in player.platform{
+			case Player_Platform_Steam:
+				temp_endpoint:Endpoint = plat.net_id
+				join_client(net_inst, plat.cs_id,&temp_endpoint)
+			case Player_Platform_Raw_IP:
+			}
+		}
+		net_inst.last_time_steam_updated_lobby = groop.updated_count
+	}
+}
+
+
+Endpoint_String::struct{
+	ip:string,
+	port:int,
+}
+endpoint_from_string_endpoint::proc(endpoint_string:Endpoint_String={ip="10.0.0.155", port=35823})->(new_endpoint:Endpoint){
+	local_addr, ok := net.parse_ip4_address(endpoint_string.ip)
+	if !ok {
+		log.logf(.Warning,"Failed to parse IP address")
+		return
+	}
+	new_endpoint = net.Endpoint {
+		address = local_addr,
+		port    = endpoint_string.port,
+	}
+	return
+}
+
+send_join_request::proc(endpoint:^Endpoint, net_inst:^Networking_Instance){
+	net_inst.status = .joining
+	net_inst.status = .joining
+	cmd:Net_Command
+	cmd.type = cast(u32)Net_Commands_Type.join
+	// if new_endpoint.(^steam.steam.SteamNetworkingIdentity)
+	// steam_join_lobby()
+	send_net_command(net_inst, endpoint, cmd)
+}
+
+send_net_command::proc(net_inst:^Networking_Instance,endpoint:^Endpoint, cmd:Net_Command, buf:[]u8 = {},){
+	cmd:=cmd
+	cmd.id =  net_inst.id
+	cmd.data_len = cast(u32)len(buf)
+	command:=transmute([size_of(Net_Command)]u8)cmd
+	mem.copy(raw_data(&net_inst.temp_buff_s),raw_data(&command),size_of(Net_Command))
+	if len(buf) > 0{
+		// mem.copy(raw_data(&g.server.temp_buff_s),raw_data(buf),size_of(buf))
+		copy(net_inst.temp_buff_s[size_of(Net_Command):],buf[:])
+	} 
+	// cmd_full[:size_of(Net_Command)] = command[:]
+	bsent,err:=send_udp(net_inst, endpoint, net_inst.temp_buff_s[:size_of(Net_Command)+len(buf)])
+	
+}
+
+send_net_command_to_server::proc(net_inst:^Networking_Instance, cmd:Net_Command, buf:[]u8 = {}){
+	cmd:=cmd
+	net_inst.server.last_sent_cmd +=1
+	cmd.count = net_inst.server.last_sent_cmd
+	cmd.id =  net_inst.id
+	
+	if net_inst.status == .hosting{
+		new_buf:[]u8
+		if len(buf) >0{
+			data,err:=vmem.arena_alloc(&net_inst.cmd_q_extra_data,len(buf),16)
+			if err == nil{
+				// mem.copy(raw_data(data),raw_data(buf),len(buf))
+				copy(data[:],buf[:])
+				new_buf = data
+			}
+		}
+		add_server_cmd_to_q(net_inst,cmd,net_inst.server.endpoint,new_buf)
+	}else{
+		send_net_command(net_inst,&net_inst.server.endpoint, cmd, buf)
+	}
+}
+
+send_net_command_to_client::proc(net_inst:^Networking_Instance,client :^Client, cmd:Net_Command, buf:[]u8 = {}){
+	cmd:=cmd
+	client.last_sent_cmd +=1
+	cmd.count = client.last_sent_cmd
+	cmd.id =  net_inst.id
+	// command:=transmute([size_of(Net_Command)]u8)cmd
+	// bsent,err:=tg.send_udp(&g.server.net_state, client.endpoint, command[:])
+	send_net_command(net_inst ,&client.endpoint, cmd, buf)
+}
+
+send_net_command_to_all_clients::proc(net_inst:^Networking_Instance,cmd:Net_Command, buf:[]u8 = {}){
+	for client_id,&client in &net_inst.clients{
+		send_net_command_to_client(net_inst,&client, cmd, buf )
+	}
+}
+
+recv_command::proc(net_inst:^Networking_Instance)->( command:Net_Command, endpoint:Endpoint, buf:[]u8 ,ok:bool){
+	// raw_command:=transmute([size_of(Net_Command)]u8)command
+	// bytes_recv, remote_endpoint, err_recv:=tg.recv_udp(&g.server.net_state ,raw_command[:])
+
+	bytes_recv, remote_endpoint, err_recv:=recv_udp(net_inst, net_inst.temp_buff_r[:])
+
+	endpoint = remote_endpoint
+	if err_recv == nil{
+		if bytes_recv != 0{
+			mem.copy(transmute(rawptr)(&command),raw_data(net_inst.temp_buff_r[:]),size_of(Net_Command))
+			if command.data_len > 0{
+				data,err:=vmem.arena_alloc(&net_inst.cmd_q_extra_data,cast(uint)command.data_len,16)
+				if err == nil{
+					// mem.copy(raw_data(data),raw_data(data[size_of(Net_Command):command.data_len+size_of(Net_Command)]),cast(int)command.data_len)
+					copy(data[:],net_inst.temp_buff_r[size_of(Net_Command):command.data_len + size_of(Net_Command)])
+					buf = data
+				}
+			}
+			ok = true
+		}
+	}
+	return
+}
+
+// this will init the networking instance that is passed and will allso start a new thread to handdle prosesing the server
+init_networking_instance::proc(
+	net_inst:^Networking_Instance,
+	cb_pros_server_cmd:proc(net_inst:^Networking_Instance, server_cmd:^Server_CMD) = nil,
+	cb_start_server:proc(net_inst:^Networking_Instance,) = nil,
+	net_type:Networking_Type = .steam,
+)->(){
+	arena_err := vmem.arena_init_growing(&net_inst.cmd_q_extra_data,2000000)
+	ensure(arena_err == nil)
+	arena_alloc := vmem.arena_allocator(&net_inst.cmd_q_extra_data)
+	net_inst.networking_type = net_type
+	// net_inst.lobby.is_using_steame_lobby = true// TODO this needs to be moved
+	if s.steam.is_using_steam == true && net_inst.networking_type == .steam{
+		net_inst.id = s.steam.steam_id
+		// create_steame_lobby()
+	}else{
+		net_inst.id = cast(u64)rand.uint64_range(0,4294967290)
+	}
+	// net_inst.net_thread = thread.create_and_start(do_networking)
+	net_inst.cb_start_server = cb_start_server
+	net_inst.cb_pros_server_cmd = cb_pros_server_cmd
+	net_inst.net_thread = thread.create_and_start_with_data(net_inst, do_networking)
+}
+
+Server_CMD::struct{
+	handle:Server_CMD_Handle,
+	endpoint:Endpoint,
+	net_command:Net_Command,
+	buf:[]u8,
+}
+add_server_cmd_to_q::proc(net_inst:^Networking_Instance, net_cmd:Net_Command, endpoint:Endpoint, buf:[]u8){
+	server_cmd:Server_CMD={
+		net_command = net_cmd,
+		endpoint = endpoint,
+		buf = buf
+	}
+	cmd:=hm.add(&net_inst.cmd_q,server_cmd)
+
+}
+pros_server_cmd_q::proc(net_inst:^Networking_Instance){
+	cmd_q_iter := hm.iterator_make(&net_inst.cmd_q)
+	for server_cmd, hd in hm.iterate(&cmd_q_iter) {
+		cmd:=server_cmd.net_command
+		endpoint :=server_cmd.endpoint
+		cmd_type:=cast(Net_Commands_Type)cmd.type
+		switch net_inst.type{
+		case .nil:
+		case .host:
+			switch cmd_type{
+			case .join:
+				// has_allredy_joined := cmd.id in net_inst.clients
+				// if !has_allredy_joined {
+				// 	net_inst.clients[cmd.id] = {}
+				// 	client_data:=&net_inst.clients[cmd.id]
+				// 	client_data.id = cmd.id
+				// 	client_data.endpoint = endpoint
+				// 	send_net_command_to_client(net_inst,client_data,Net_Command{type = cast(u32)Net_Commands_Type.accept_join, flags = {.force_process}})
+				// }else{
+				// 	send_net_command(net_inst,endpoint, Net_Command{type = cast(u32)Net_Commands_Type.regect_join, flags = {.force_process}})
+				// }
+				join_client(net_inst,cmd.id,&endpoint)
+			case .leave:
+			case .accept_join,.regect_join,.server_shutdown:
+				log.logf(.Info,"Server Received Server Commands")
+			}
+		case .client:
+			switch cmd_type{
+			case .accept_join:
+				net_inst.status = .joined
+				net_inst.server.endpoint = server_cmd.endpoint
+			case .regect_join:
+				net_inst.status = .regected
+			case .server_shutdown:
+				net_inst.status = .nil
+			case .join,.leave:
+				log.logf(.Info,"Client Received Client Commands",cmd.type,)
+			}
+		}
+		if net_inst.cb_pros_server_cmd != nil{
+			net_inst.cb_pros_server_cmd(net_inst,server_cmd)
+		}
+	}
+	vmem.arena_free_all(&net_inst.cmd_q_extra_data)
+	hm.clear(&net_inst.cmd_q)
+}
+
+join_client::proc(net_inst:^Networking_Instance,client_id:u64,clients_endpoint:^Endpoint){
+	has_allredy_joined := client_id in net_inst.clients
+	if !has_allredy_joined {
+		net_inst.clients[client_id] = {}
+		client_data:=&net_inst.clients[client_id]
+		client_data.id = client_id
+		client_data.endpoint = clients_endpoint^
+		send_net_command_to_client(net_inst,client_data,Net_Command{type = cast(u32)Net_Commands_Type.accept_join, flags = {.force_process}})
+	}else{
+		send_net_command(net_inst,clients_endpoint, Net_Command{type = cast(u32)Net_Commands_Type.regect_join, flags = {.force_process}})
+		log.logf(.Info,"Received multipul join reqwests")
+	}
+}
+
+
+
+
 
 
 Server_Groop_Filter::enum{
@@ -423,312 +613,5 @@ delete_player_groop::proc(groop:^Player_Groop){
 	clear_player_groop(groop)
 	if groop.player != nil{
 		delete(groop.player)
-	}
-}
-
-
-
-start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
-// start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
-	if !net_inst.net_state.is_up{
-		log.logf(.Info, "starting server")
-		net_inst.net_state = init_udp_echo_server(server_endpoint)
-		net_inst.status = .hosting
-		if net_inst.lobby.is_using_steame_lobby == true{
-			create_steame_lobby()
-		}
-		if net_inst.cb_start_server != nil{
-			net_inst.cb_start_server(net_inst)
-		}
-	}
-}
-join_server::proc(server_endpoint:^Endpoint, net_inst:^Networking_Instance){
-// join_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
-	// switch ep in server_endpoint{
-	// case net.Endpoint:
-		log.logf(.Info, "conecting to server")
-		net_inst.net_state = init_udp_echo_client(server_endpoint^)
-		send_join_request(server_endpoint,net_inst)
-// 	case steam.SteamNetworkingIdentity:
-// 		steam.NetworkingIdentity_SetSteamID(&s.steam.steam_lobby.loby_owner_net_id,s.steam.steam_lobby.loby_owner_id)
-// 		net_inst.net_state = init_udp_echo_client(server_endpoint)
-// 		endpoint :Endpoint=s.steam.steam_lobby.loby_owner_net_id
-// 		send_join_request(endpoint =endpoint,net_inst=net_inst)
-// 	}	
-}
-leave_shutdown_server::proc(net_inst:^Networking_Instance){
-	if net_inst.status == .joined{
-		send_net_command_to_server(net_inst, cmd={type=cast(u32)Net_Commands_Type.leave,flags={.force_process}})
-		net_inst.status = .nil
-		// curent_game_mode = .start
-	}
-	if net_inst.status == .hosting{
-		send_net_command_to_all_clients(net_inst, cmd={type=cast(u32)Net_Commands_Type.server_shutdown,flags={.force_process}})
-		
-		net_inst.status = .nil
-		// g.curent_game_mode = .start
-	}
-
-	// reset_game_state()
-	
-}
-
-
-do_networking::proc(net_inst_pt:rawptr){
-	net_inst:=cast(^Networking_Instance)net_inst_pt
-	for !s.app_should_close{
-		switch net_inst.net_state.type{
-		case .nil:
-			time.sleep(100000)
-		case .host:
-			cmd,endpoint,buf,ok:=recv_command(net_inst)
-			if ok{
-				update_network_clients_in_steam_lobby(net_inst)
-				add_server_cmd_to_q(net_inst, cmd,endpoint,buf)
-			}
-		case .client:
-			cmd,endpoint,buf,ok:=recv_command(net_inst)
-			if ok{
-				add_server_cmd_to_q(net_inst, cmd,endpoint,buf)
-			}
-		}
-	}
-	log.logf(.Info,"closing networking thread")
-
-}
-
-update_network_clients_in_steam_lobby::proc(net_inst:^Networking_Instance){
-	groop:=get_steam_lobby()
-	if s.steam.is_using_steam != true {return}
-	if net_inst.networking_type != .steam {return}
-	if groop.updated_count > net_inst.last_time_steam_updated_lobby {
-		for &player in groop.player{
-			switch plat in player.platform{
-			case Player_Platform_Steam:
-				temp_endpoint:Endpoint = plat.net_id
-				join_client(net_inst, plat.cs_id,&temp_endpoint)
-			case Player_Platform_Raw_IP:
-			}
-		}
-		net_inst.last_time_steam_updated_lobby = groop.updated_count
-	}
-
-}
-
-
-Endpoint_String::struct{
-	ip:string,
-	port:int,
-}
-endpoint_from_string_endpoint::proc(endpoint_string:Endpoint_String={ip="10.0.0.155", port=35823})->(new_endpoint:Endpoint){
-	local_addr, ok := net.parse_ip4_address(endpoint_string.ip)
-	if !ok {
-		log.logf(.Warning,"Failed to parse IP address")
-		return
-	}
-	new_endpoint = net.Endpoint {
-		address = local_addr,
-		port    = endpoint_string.port,
-	}
-	return
-}
-
-send_join_request::proc(endpoint:^Endpoint, net_inst:^Networking_Instance){
-	net_inst.status = .joining
-	net_inst.status = .joining
-	cmd:Net_Command
-	cmd.type = cast(u32)Net_Commands_Type.join
-	// if new_endpoint.(^steam.steam.SteamNetworkingIdentity)
-	// steam_join_lobby()
-	send_net_command(net_inst, endpoint, cmd)
-}
-
-send_net_command::proc(net_inst:^Networking_Instance,endpoint:^Endpoint, cmd:Net_Command, buf:[]u8 = {},){
-	cmd:=cmd
-	cmd.id =  net_inst.id
-	cmd.data_len = cast(u32)len(buf)
-	command:=transmute([size_of(Net_Command)]u8)cmd
-	mem.copy(raw_data(&net_inst.temp_buff_s),raw_data(&command),size_of(Net_Command))
-	if len(buf) > 0{
-		// mem.copy(raw_data(&g.server.temp_buff_s),raw_data(buf),size_of(buf))
-		copy(net_inst.temp_buff_s[size_of(Net_Command):],buf[:])
-	} 
-	// cmd_full[:size_of(Net_Command)] = command[:]
-	bsent,err:=send_udp(&net_inst.net_state, endpoint, net_inst.temp_buff_s[:size_of(Net_Command)+len(buf)])
-	
-}
-
-send_net_command_to_server::proc(net_inst:^Networking_Instance, cmd:Net_Command, buf:[]u8 = {}){
-	cmd:=cmd
-	net_inst.server.last_sent_cmd +=1
-	cmd.count = net_inst.server.last_sent_cmd
-	cmd.id =  net_inst.id
-	
-	if net_inst.status == .hosting{
-		new_buf:[]u8
-		if len(buf) >0{
-			data,err:=vmem.arena_alloc(&net_inst.cmd_q_extra_data,len(buf),16)
-			if err == nil{
-				// mem.copy(raw_data(data),raw_data(buf),len(buf))
-				copy(data[:],buf[:])
-				new_buf = data
-			}
-		}
-		add_server_cmd_to_q(net_inst,cmd,net_inst.server.endpoint,new_buf)
-	}else{
-		send_net_command(net_inst,&net_inst.server.endpoint, cmd, buf)
-	}
-}
-
-send_net_command_to_client::proc(net_inst:^Networking_Instance,client :^Client, cmd:Net_Command, buf:[]u8 = {}){
-
-		cmd:=cmd
-		client.last_sent_cmd +=1
-		cmd.count = client.last_sent_cmd
-		cmd.id =  net_inst.id
-		// command:=transmute([size_of(Net_Command)]u8)cmd
-		// bsent,err:=tg.send_udp(&g.server.net_state, client.endpoint, command[:])
-		send_net_command(net_inst ,&client.endpoint, cmd, buf)
-	
-
-}
-
-send_net_command_to_all_clients::proc(net_inst:^Networking_Instance,cmd:Net_Command, buf:[]u8 = {}){
-	for client_id,&client in &net_inst.clients{
-		send_net_command_to_client(net_inst,&client, cmd, buf )
-	}
-}
-
-recv_command::proc(net_inst:^Networking_Instance)->( command:Net_Command, endpoint:Endpoint, buf:[]u8 ,ok:bool){
-	// raw_command:=transmute([size_of(Net_Command)]u8)command
-	// bytes_recv, remote_endpoint, err_recv:=tg.recv_udp(&g.server.net_state ,raw_command[:])
-
-	bytes_recv, remote_endpoint, err_recv:=recv_udp(&net_inst.net_state, net_inst.temp_buff_r[:])
-
-	endpoint = remote_endpoint
-	if err_recv == nil{
-		if bytes_recv != 0{
-			mem.copy(transmute(rawptr)(&command),raw_data(net_inst.temp_buff_r[:]),size_of(Net_Command))
-			if command.data_len > 0{
-				data,err:=vmem.arena_alloc(&net_inst.cmd_q_extra_data,cast(uint)command.data_len,16)
-				if err == nil{
-					// mem.copy(raw_data(data),raw_data(data[size_of(Net_Command):command.data_len+size_of(Net_Command)]),cast(int)command.data_len)
-					copy(data[:],net_inst.temp_buff_r[size_of(Net_Command):command.data_len + size_of(Net_Command)])
-					buf = data
-				}
-			}
-			ok = true
-		}
-	}
-	return
-}
-
-// this will init the networking instance that is passed and will allso start a new thread to handdle prosesing the server
-init_networking_instance::proc(
-	net_inst:^Networking_Instance,
-	cb_pros_server_cmd:proc(net_inst:^Networking_Instance, server_cmd:^Server_CMD) = nil,
-	cb_start_server:proc(net_inst:^Networking_Instance,) = nil,
-	net_type:Networking_Type = .steam,
-)->(){
-	arena_err := vmem.arena_init_growing(&net_inst.cmd_q_extra_data,2000000)
-	ensure(arena_err == nil)
-	arena_alloc := vmem.arena_allocator(&net_inst.cmd_q_extra_data)
-	net_inst.networking_type = net_type
-	net_inst.lobby.is_using_steame_lobby = true// TODO this needs to be moved
-	if s.steam.is_using_steam == true && net_inst.networking_type == .steam{
-		net_inst.id = s.steam.steam_id
-		// create_steame_lobby()
-	}else{
-		net_inst.id = cast(u64)rand.uint64_range(0,4294967290)
-	}
-	// net_inst.net_thread = thread.create_and_start(do_networking)
-	net_inst.cb_start_server = cb_start_server
-	net_inst.cb_pros_server_cmd = cb_pros_server_cmd
-	net_inst.net_thread = thread.create_and_start_with_data(net_inst, do_networking)
-}
-
-// init_net_thread::proc(net_inst:^Networking_Instance,){
-// 	arena_err := vmem.arena_init_growing(&net_inst.cmd_q_extra_data,2000000)
-// 	ensure(arena_err == nil)
-// 	arena_alloc := vmem.arena_allocator(&net_inst.cmd_q_extra_data)
-
-// 	net_inst.id = cast(u16)rand.uint32_range(0,4294967290)
-// 	net_inst.net_thread = thread.create_and_start(do_networking)
-// }
-
-
-Server_CMD::struct{
-	handle:Server_CMD_Handle,
-	endpoint:Endpoint,
-	net_command:Net_Command,
-	buf:[]u8,
-}
-add_server_cmd_to_q::proc(net_inst:^Networking_Instance, net_cmd:Net_Command, endpoint:Endpoint, buf:[]u8){
-	server_cmd:Server_CMD={
-		net_command = net_cmd,
-		endpoint = endpoint,
-		buf = buf
-	}
-	cmd:=hm.add(&net_inst.cmd_q,server_cmd)
-
-}
-pros_server_cmd_q::proc(net_inst:^Networking_Instance){
-	cmd_q_iter := hm.iterator_make(&net_inst.cmd_q)
-	for server_cmd, hd in hm.iterate(&cmd_q_iter) {
-		cmd:=server_cmd.net_command
-		endpoint :=server_cmd.endpoint
-		cmd_type:=cast(Net_Commands_Type)cmd.type
-		switch net_inst.net_state.type{
-		case .nil:
-		case .host:
-			switch cmd_type{
-			case .join:
-				// has_allredy_joined := cmd.id in net_inst.clients
-				// if !has_allredy_joined {
-				// 	net_inst.clients[cmd.id] = {}
-				// 	client_data:=&net_inst.clients[cmd.id]
-				// 	client_data.id = cmd.id
-				// 	client_data.endpoint = endpoint
-				// 	send_net_command_to_client(net_inst,client_data,Net_Command{type = cast(u32)Net_Commands_Type.accept_join, flags = {.force_process}})
-				// }else{
-				// 	send_net_command(net_inst,endpoint, Net_Command{type = cast(u32)Net_Commands_Type.regect_join, flags = {.force_process}})
-				// }
-				join_client(net_inst,cmd.id,&endpoint)
-			case .leave:
-			case .accept_join,.regect_join,.server_shutdown:
-				log.logf(.Info,"Server Received Server Commands")
-			}
-		case .client:
-			switch cmd_type{
-			case .accept_join:
-				net_inst.status = .joined
-				net_inst.server.endpoint = server_cmd.endpoint
-			case .regect_join:
-				net_inst.status = .regected
-			case .server_shutdown:
-				net_inst.status = .nil
-			case .join,.leave:
-				log.logf(.Info,"Client Received Client Commands",cmd.type,)
-			}
-		}
-		if net_inst.cb_pros_server_cmd != nil{
-			net_inst.cb_pros_server_cmd(net_inst,server_cmd)
-		}
-	}
-	vmem.arena_free_all(&net_inst.cmd_q_extra_data)
-	hm.clear(&net_inst.cmd_q)
-}
-
-join_client::proc(net_inst:^Networking_Instance,client_id:u64,clients_endpoint:^Endpoint){
-	has_allredy_joined := client_id in net_inst.clients
-	if !has_allredy_joined {
-		net_inst.clients[client_id] = {}
-		client_data:=&net_inst.clients[client_id]
-		client_data.id = client_id
-		client_data.endpoint = clients_endpoint^
-		send_net_command_to_client(net_inst,client_data,Net_Command{type = cast(u32)Net_Commands_Type.accept_join, flags = {.force_process}})
-	}else{
-		send_net_command(net_inst,clients_endpoint, Net_Command{type = cast(u32)Net_Commands_Type.regect_join, flags = {.force_process}})
-		log.logf(.Info,"Received multipul join reqwests")
 	}
 }

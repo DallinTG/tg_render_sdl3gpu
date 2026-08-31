@@ -39,7 +39,7 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 	cmd:=server_cmd.net_command
 	endpoint :=server_cmd.endpoint
 	cmd_type:=cast(tg.Net_Commands_Type)cmd.type
-	switch net_inst.net_state.type{
+	switch net_inst.type{
 	case .nil:
 
 	case .host:
@@ -75,7 +75,7 @@ pros_server_cmd::proc(net_inst:^tg.Networking_Instance,server_cmd:^tg.Server_CMD
 
 	// spusific to the game __________________________________________________________________
 	cmd_type_game:=cast(Game_Net_Commands_Type)server_cmd.net_command.type
-	switch net_inst.net_state.type{
+	switch net_inst.type{
 	case .nil:
 
 	case .host:

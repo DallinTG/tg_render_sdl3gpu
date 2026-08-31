@@ -144,7 +144,7 @@ main :: proc(){
 		}
 
 		if s.time.is_60_hz{
-
+			fmt.print(g.server.type,"\n")
 			sink_game_info(&g.server,&g.info)
 			g.clay_render_comands=create_layout()
 			wh:=tg.get_window_size(g.window)
@@ -289,8 +289,9 @@ reset_game_state::proc(){
 	g.cam.pos={}
 	g.cam.target={}
 	g.cam.zoom = 1
+
 	g.server.server = {}
-	g.server.net_state.is_up = false
+	g.server.type = .nil
 }
 
 
