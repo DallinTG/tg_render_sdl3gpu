@@ -131,7 +131,9 @@ update_steam_lobby_data::proc(lobby_id:u64){
 	update_player_groop(groop)
 	dnwi:=get_defalt_networking_instance()
 	if dnwi != nil{
-		join_server(server_endpoint = &groop.groop_endpoint, net_inst=dnwi)
+		if dnwi.type == .nil ||dnwi.type == .client{
+			join_server(server_endpoint = &groop.groop_endpoint, net_inst=dnwi)
+		} 
 	}
 
 }
