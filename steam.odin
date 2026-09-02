@@ -123,7 +123,7 @@ update_steam_lobby_data::proc(lobby_id:u64){
 	groop.groop_id = lobby_id
 	groop.type = .lobby_list
 	groop.groop_endpoint = steam.SteamNetworkingIdentity{}
-	log.log(.Info,"updateing ",lobby_id,"\n")
+	log.log(.Info,"\nupdateing ",lobby_id,"\n")
 	#partial switch &ep in &groop.groop_endpoint {
 		case steam.SteamNetworkingIdentity:
 		steam.NetworkingIdentity_SetSteamID(&ep,groop.groop_owner_id)	
@@ -264,28 +264,28 @@ run_steam_callbacks :: proc() {
                     // }
                     #partial switch call_completed.iCallback{
                     case .NumberOfCurrentPlayers:
-                	log.log(.Info,"NumberOfCurrentPlayers\n")
+                	log.log(.Info,"\nNumberOfCurrentPlayers\n")
                       onGetNumberOfCurrentPlayers(transmute(^steam.NumberOfCurrentPlayers)temp_call_res, bFailed)
                     case .GameLobbyJoinRequested:
-                    log.log(.Info,"GameLobbyJoinRequested\n")
+                    log.log(.Info,"\nGameLobbyJoinRequested\n")
                     case .LobbyInvite:
-                    log.log(.Info,"LobbyInvite\n")
+                    log.log(.Info,"\nLobbyInvite\n")
                     case .LobbyEnter:
-                    log.log(.Info,"LobbyEnter\n")
+                    log.log(.Info,"\nLobbyEnter\n")
                     case .LobbyDataUpdate:
-                    log.log(.Info,"LobbyDataUpdate\n")
+                    log.log(.Info,"\nLobbyDataUpdate\n")
                     case .LobbyChatUpdate:
-                    log.log(.Info,"LobbyChatUpdatee\n")
+                    log.log(.Info,"\nLobbyChatUpdatee\n")
                     case .LobbyChatMsg:
-                    log.log(.Info,"LobbyChatMsg\n")
+                    log.log(.Info,"\nLobbyChatMsg\n")
                     case .LobbyGameCreated:
-                    log.log(.Info,"LobbyGameCreated\n")
+                    log.log(.Info,"\nLobbyGameCreated\n")
                     case .LobbyMatchList:
-                    log.log(.Info,"LobbyMatchList\n")
+                    log.log(.Info,"\nLobbyMatchList\n")
                     case .LobbyKicked:
-                    log.log(.Info,"LobbyKicked\n")
+                    log.log(.Info,"\nLobbyKicked\n")
                     case .LobbyCreated:
-                    log.log(.Info,"LobbyCreated\n")
+                    log.log(.Info,"\nLobbyCreated\n")
                    
 	
                     }
@@ -297,20 +297,20 @@ run_steam_callbacks :: proc() {
             // and dispatch to appropriate handler(s)
             #partial switch callback.iCallback{
             case .GameOverlayActivated:
-                log.log(.Info,"GameOverlayActivated")
+                log.log(.Info,"\nGameOverlayActivated")
                 onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
 
 			case .LobbyCreated:
-				log.log(.Info,"LobbyCreated_fin\n")
+				log.log(.Info,"\nLobbyCreated_fin\n")
 				temp:=transmute(^steam.LobbyCreated)callback.pubParam
 				if temp.eResult == .OK{
 					update_steam_lobby_data(temp.ulSteamIDLobby)
 				}else{
-					log.log(.Info,"Lobby Creation failed",temp.eResult,"\n"  )
+					log.log(.Info,"\nLobby Creation failed",temp.eResult,"\n"  )
 					send_simp_error_notification(&s.ui.notifications, "Lobby Creation failed")
 				}
 			case .GameLobbyJoinRequested:
-				log.log(.Info,"GameLobbyJoinRequested_fin\n")
+				log.log(.Info,"\nGameLobbyJoinRequested_fin\n")
 				temp:=transmute(^steam.GameLobbyJoinRequested)callback.pubParam
 				steam_join_lobby(temp.steamIDLobby)
 				update_steam_friend_info()
@@ -318,43 +318,43 @@ run_steam_callbacks :: proc() {
 				temp:=transmute(^steam.LobbyInvite)callback.pubParam
 				send_accept_invite_to_game_notification(&s.ui.notifications,"you got invite to a game",lobby_id = temp.ulSteamIDLobby)
 				update_steam_friend_info()
-				log.log(.Info,"LobbyInvite_fin\n")
+				log.log(.Info,"\nLobbyInvite_fin\n")
 			case .LobbyEnter:
 				temp:=transmute(^steam.LobbyEnter)callback.pubParam
 				err:=cast(steam.EChatRoomEnterResponse)temp.EChatRoomEnterResponse
-				log.log(.Info,"LobbyEnter_fin",err,"\n")
+				log.log(.Info,"\nLobbyEnter_fin",err,"\n")
 				if err == .Success {
 					groop:=get_steam_lobby()
 					if groop != nil{
 						// update_steam_lobby_data(temp.ulSteamIDLobby)
 						if groop.groop_id != temp.ulSteamIDLobby{
-							log.log(.Info,"leaving lobby ",groop.groop_id,"\n")
+							log.log(.Info,"\nleaving lobby ",groop.groop_id,"\n")
 							steam.Matchmaking_LeaveLobby(s.steam.i_matchmaking,groop.groop_id)
 						}
 						update_steam_lobby_data(temp.ulSteamIDLobby)
 						update_steam_friend_info()
 					}
 				}else{
-					log.log(.Info,"Lobby Enter failed",err,"\n"  )
+					log.log(.Info,"\nLobby Enter failed",err,"\n"  )
 					send_simp_error_notification(&s.ui.notifications, "Lobby Enter failed")
 				}
 			case .LobbyDataUpdate:
 				temp:=transmute(^steam.LobbyDataUpdate)callback.pubParam
-				log.log(.Info,"LobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
+				log.log(.Info,"\nLobbyDataUpdate_fin",temp.ulSteamIDLobby,"\n")
 				update_steam_lobby_data(temp.ulSteamIDLobby)
 				update_steam_friend_info()
 
 			case .LobbyChatUpdate:
-				log.log(.Info,"LobbyChatUpdatee_fin\n")
+				log.log(.Info,"\nLobbyChatUpdatee_fin\n")
 				temp:=transmute(^steam.LobbyChatUpdate)callback.pubParam
 				update_steam_lobby_data(temp.ulSteamIDLobby)
 				update_steam_friend_info()
 			case .LobbyChatMsg:
-				log.log(.Info,"LobbyChatMsg_fin\n")
+				log.log(.Info,"\nLobbyChatMsg_fin\n")
 			case .LobbyGameCreated:
-				log.log(.Info,"LobbyGameCreated_fin\n")
+				log.log(.Info,"\nLobbyGameCreated_fin\n")
 			case .LobbyMatchList:
-				log.log(.Info,"LobbyMatchList_fin\n")
+				log.log(.Info,"\nLobbyMatchList_fin\n")
 				temp:=transmute(^steam.LobbyMatchList)callback.pubParam
 				for index in  0..<temp.nLobbiesMatching{
 					loby_id:=steam.Matchmaking_GetLobbyByIndex(s.steam.i_matchmaking,cast(i32)index)
@@ -383,18 +383,18 @@ run_steam_callbacks :: proc() {
 						steam.Matchmaking_GetLobbyDataByIndex(s.steam.i_matchmaking,loby_id,data_index,raw_data(&pchKey),cchKeyBufferSize,raw_data(&pchValue),cchValueBufferSize)
 					}
 				}
-				log.log(.Info,temp.nLobbiesMatching,"\n")
+				log.log(.Info,"\n",temp.nLobbiesMatching,"\n")
 			case .LobbyKicked:
-				log.log(.Info,"LobbyKicked_fin\n")
+				log.log(.Info,"\nLobbyKicked_fin\n")
 			case .PersonaStateChange:
 				update_steam_friend_info()
 			case .SteamNetworkingMessagesSessionRequest:
 				temp:=transmute(^steam.SteamNetworkingMessagesSessionRequest)callback.pubParam
-				log.log(.Info,"SteamNetworkingMessagesSessionRequest",temp.identityRemote,"\n")
+				log.log(.Info,"\nSteamNetworkingMessagesSessionRequest",temp.identityRemote,"\n")
 				steam.NetworkingMessages_AcceptSessionWithUser(s.steam.i_networking_messages,&temp.identityRemote)
 
 			case:
-				log.log(.Info,callback.iCallback,"\n")
+				log.log(.Info,"\n",callback.iCallback,"\n")
 			}
 			
 
@@ -408,23 +408,23 @@ run_steam_callbacks :: proc() {
 	}
 }
 onGameOverlayActivated :: proc(data: ^steam.GameOverlayActivated) {
-    log.log(.Info,"Is overlay active =", data.bActive)
+    log.log(.Info,"\nIs overlay active =", data.bActive)
 }
 
 onGetNumberOfCurrentPlayers :: proc(data: ^steam.NumberOfCurrentPlayers, ioFailure: bool) {
-    log.log(.Info,"[get_number_of_current_players] success:", data.bSuccess)
+    log.log(.Info,"\n[get_number_of_current_players] success:\n", data.bSuccess)
     if ioFailure || !bool(data.bSuccess) {
-        log.log(.Info,"get_number_of_current_players failed.")
+        log.log(.Info,"\nget_number_of_current_players failed.\n")
         return
     }
 
-    log.log(.Info,"[get_number_of_current_players] Number of players currently playing:", data.cPlayers)
+    log.log(.Info,"\n[get_number_of_current_players] Number of players currently playing:\n", data.cPlayers)
     s.steam.number_of_current_players = int(data.cPlayers)
 }
 
 get_number_of_current_players :: proc() {
 	if s.steam.is_using_steam != true {return}
-	log.log(.Info,"[get_number_of_current_players] Getting number of current players.")
+	log.log(.Info,"\n[get_number_of_current_players] Getting number of current players.\n")
 	hSteamApiCall := steam.UserStats_GetNumberOfCurrentPlayers(steam.UserStats())
 }
 

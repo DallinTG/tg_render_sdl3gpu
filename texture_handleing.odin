@@ -137,7 +137,7 @@ reg_texture_from_file::proc(filename: string,mod_name: string = "")->(hd:Texture
 reg_all_texture_from_dir_path::proc(dir: string,mod_name: string = ""){
 	all_fil_info,err:=os.read_all_directory_by_path(dir, context.temp_allocator)
 	if err != nil{
-		fmt.print("reg_all_texture_from_dir failed",err,"\n\n\n\n\n")
+		log.log(.Warning,"\nreg_all_texture_from_dir failed",err,"\n\n\n\n\n")
 		return
 	}
 	for &fil in all_fil_info{
@@ -163,14 +163,13 @@ reg_all_texture_from_loaded_directory::proc(all_fil_info: []runtime.Load_Directo
 		}
 		hd,id:=reg_texture_from_bits(img,[2]string{mod_name,fil.name})
 		enum_v,ok:=reflect.enum_from_name(Enum_T,format_string(fil.name,".png"))
-		// fmt.print(typeid_of(Enum_T),str.trim_suffix(fil.name,".png"),"\n")
+
 		if ok{
-			// fmt.print("waffles\n")
+
 			extra_info[enum_v].hd = hd
 			extra_info[enum_v].id = id
 		}else{
-			log.log(.Warning,"bad Enum")
-			fmt.print(fil.name,"\n",str.trim_suffix(fil.name,".png"),"\n")
+			log.log(.Warning,"bad Enum",fil.name,"\n",str.trim_suffix(fil.name,".png"),"\n")
 		}
 	}
 	return
@@ -460,7 +459,7 @@ create_gpu_texture::proc(
 	if texture_groop == nil{
 		texture_groop = &s.texture_groop
 	}
-
+	assert(width > 0 && height > 0,"create_gpu_texture failed w_h must be width > 0 && height > 0")
 	tex := sdl.CreateGPUTexture(s.gpu_device,createinfo={
 		type = type,
 		format=format,

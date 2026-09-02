@@ -54,11 +54,11 @@ State :: struct{
 	// meshes:         hm.Handle_Map(Mesh, Mesh_Handle, 1024*10),
 	// fonts:          hm.Handle_Map(Font, Font_Handle, 200),
 	// clay_instances: hm.Handle_Map(Clay_Instance, Clay_I_Handle, 50),
-	shaders:		hm.Dynamic_Handle_Map(Shader, Shader_Handle),
-	windows:		hm.Dynamic_Handle_Map(Window, Window_Handle),
-	meshes:		 	hm.Dynamic_Handle_Map(Mesh, Mesh_Handle),
-	fonts:		 	hm.Dynamic_Handle_Map(Font, Font_Handle),
-	clay_instances: hm.Dynamic_Handle_Map(Clay_Instance, Clay_I_Handle),
+	shaders:		Shader_Handle_Map,
+	windows:		Window_Handle_Map,
+	meshes:		 	Meshe_Handle_Map,
+	fonts:		 	Font_Handle_Map,
+	clay_instances: Clay_Instances_Handle_Map,
 	// ui_boxes:		hm.Dynamic_Handle_Map(UI_Box_Data, UI_Box_Handle),
 	
 	defalt_font:Font_Handle,
@@ -80,7 +80,11 @@ State :: struct{
 
 
 }
-
+Clay_Instances_Handle_Map :: hm.Dynamic_Handle_Map(Clay_Instance, Clay_I_Handle)
+Font_Handle_Map           :: hm.Dynamic_Handle_Map(Font, Font_Handle)
+Meshe_Handle_Map          :: hm.Dynamic_Handle_Map(Mesh, Mesh_Handle)
+Shader_Handle_Map         :: hm.Dynamic_Handle_Map(Shader, Shader_Handle)
+Window_Handle_Map         :: hm.Dynamic_Handle_Map(Window, Window_Handle)
 Window_Handle :: distinct Handle
 Window::struct{
 	handle:Window_Handle,
@@ -125,6 +129,8 @@ R_Pass ::struct{
 	// win_size:[2]i32,
 	ubo:UBO,
 	render_target:^Render_Target,
+
+	name:string, // used for debuging
 }
 
 Render_Pass_Info::struct{
@@ -255,37 +261,31 @@ start_tick::proc()->(app_should_close:bool){//returns true if app_should_close
 			s.app_should_close = true
 		case .WINDOW_CLOSE_REQUESTED:
 			win := sdl.GetWindowFromID(event.window.windowID)
-			sdl.DestroyWindow(win)
-			remove_closed_windows()
-			if hm.len(s.windows) <= 0 {
+			if hm.len(s.windows) <= 1 {
 				s.app_should_close = true
 			}
-			// case .KEY_DOWN:
-			// 	s.input.key_down[event.key.scancode] = true
-			// case .KEY_UP:
-			// 	s.input.key_down[event.key.scancode] = false
-			// case .MOUSE_MOTION:
-			// 	s.input.mouse_move += Vec2{event.motion.xrel, event.motion.yrel}
-			// case .MOUSE_BUTTON_DOWN:
-			// 	s.input.mouse_button_down[cast(sdl.MouseButtonFlag)(event.button.button - 1)] = true
-			// case .MOUSE_BUTTON_UP:
-			// 	s.input.mouse_button_down[cast(sdl.MouseButtonFlag)(event.button.button - 1)] = false
-			// case .MOUSE_WHEEL:
-			// 	s.input.mouse_wheel = event.wheel
+			remove_window(win)
 		}
 	}
 	return s.app_should_close 
 }
 
 
-create_render_pass :: proc (frame_data:^Frame_Data,vert_shader_hd: Shader_Handle, frag_shader_hd: Shader_Handle, info:Render_Pass_Info=DEFALT_MASKED_PASS) ->(pass:R_Pass){
-	// window:=get_window(window_hd)
+create_render_pass :: proc (
+	frame_data:^Frame_Data,
+	vert_shader_hd: Shader_Handle, 
+	frag_shader_hd: Shader_Handle, 
+	info:Render_Pass_Info=DEFALT_MASKED_PASS, 
+	name:string="Not Named"
+) ->(pass:R_Pass){
+
 	vert_shader:=get_shader(vert_shader_hd)
 	frag_shader:=get_shader(frag_shader_hd)
+
 	pass.info = info
 	pass.frame_data = frame_data
-	
 	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{})
+	pass.name = name // This is just for debuging
 
 	target_info := sdl.GPUGraphicsPipelineTargetInfo{
 		num_color_targets = 1,
@@ -320,10 +320,14 @@ do_render_pass::proc(
 	meshes_hd:[]Mesh_Handle,
 ){
 	if pass == nil {
-		fmt.print("pass == nil\n")
+		log.log(.Warning,"\n",pass.name,"pass == nil\n")
 		return
 	}
-	if pass.render_target == nil{return}
+
+	if pass.render_target == nil{
+		log.log(.Warning,"\n",pass.name,"pass.render_target == nil\n")
+		return
+	}
 
 	view_mat :Mat4= 1//lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
 	proj_mat :Mat4= 1//lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
@@ -375,7 +379,10 @@ check_and_resize_all_frame_buffers::proc(
 ){
 	
 	render_target := get_render_target(render_target)
-	// if render_target == nil{return}
+	if render_target == nil{
+		log.log(.Warning, "render_target == nil",)
+		return
+	}
 	// if render_target.data == nil{return}
 
 	rtci:=&render_target.msaa_texture_createinfo
@@ -384,7 +391,7 @@ check_and_resize_all_frame_buffers::proc(
 	if render_target.wh != {cam.texture_size.x, cam.texture_size.y}{// update depth_texture if screane is resized
 		ok:=sdl.WaitForGPUIdle(s.gpu_device)
 		if ok{
-			fmt.print("new cam.depth_texture size",render_target.wh,[2]i32{cam.texture_size.x, cam.texture_size.y},"\n")
+			log.log(.Info,"\nnew cam.depth_texture size",render_target.wh,[2]i32{cam.texture_size.x, cam.texture_size.y},"\n")
 
 			cam.texture_size.x  = render_target.wh.x
 			cam.texture_size.y = render_target.wh.y
@@ -394,14 +401,18 @@ check_and_resize_all_frame_buffers::proc(
 			cdtci.format =  s.depth_texture_format
 			cdtci.width = cast(u32)cam.texture_size.x
 			cdtci.height = cast(u32)cam.texture_size.y
-			cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)		
+			if cam.texture_size.x > 0 && cam.texture_size.y > 0 {
+				cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)		
+			}else{
+				log.error("render_target.wh")
+			}
 		}
 	}
 		
 	if render_target.wh != {cast(i32)rtci.width,cast(i32)rtci.height}{// update depth_texture if screane is resized
 		ok:=sdl.WaitForGPUIdle(s.gpu_device)
 		if ok{
-			fmt.print("new pass.msaa_texture size",render_target.wh,[2]i32{cast(i32)rtci.width,cast(i32)rtci.height},"\n")
+			log.log(.Info,"\nnew pass.msaa_texture size",render_target.wh,[2]i32{cast(i32)rtci.width,cast(i32)rtci.height},"\n")
 
 			rtci.width  = cast(u32)render_target.wh.x
 			rtci.height = cast(u32)render_target.wh.y
@@ -410,31 +421,43 @@ check_and_resize_all_frame_buffers::proc(
 			rtci.format =  s.swap_chain_texture_format
 			rtci.width = cast(u32)render_target.wh.x
 			rtci.height = cast(u32)render_target.wh.y
-			render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+			if render_target.wh.x > 0 && render_target.wh.y > 0 {
+				render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+			}else{
+				log.error("render_target.wh")
+			}
 		}
 	}
 	
 	if cam.depth_texture == nil{
 		ok:=sdl.WaitForGPUIdle(s.gpu_device)
 		if ok{
-			fmt.print("new cam.depth_texture == nil",render_target.wh,[2]i32{cast(i32)cam.texture_size.x,cast(i32)cam.texture_size.y},"\n")
+			log.log(.Info,"\nnew cam.depth_texture == nil",render_target.wh,[2]i32{cast(i32)cam.texture_size.x,cast(i32)cam.texture_size.y},"\n")
 
 			cdtci.format =  s.depth_texture_format
 			cdtci.width = cast(u32)cam.texture_size.x
 			cdtci.height = cast(u32)cam.texture_size.y
-			cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)
+			if cam.texture_size.x > 0 && cam.texture_size.y > 0 {
+				cam.depth_texture = sdl.CreateGPUTexture(s.gpu_device, createinfo = cdtci^)
+			}else{
+				log.error("cam.depth_texture")
+			}
 		}
 	}
 	
 	if render_target.msaa_tex == nil{
 		ok:=sdl.WaitForGPUIdle(s.gpu_device)
 		if ok{
-			fmt.print("new pass.msaa_texture == nil",render_target.wh,[2]i32{cast(i32)render_target.wh.x,cast(i32)render_target.wh.y},"\n")
+			log.log(.Info,"\nnew pass.msaa_texture == nil",render_target.wh,[2]i32{cast(i32)render_target.wh.x,cast(i32)render_target.wh.y},"\n")
 
 			rtci.format =  s.swap_chain_texture_format
 			rtci.width = cast(u32)render_target.wh.x
 			rtci.height = cast(u32)render_target.wh.y
-			render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+			if render_target.wh.x > 0 && render_target.wh.y > 0 {
+				render_target.msaa_tex = sdl.CreateGPUTexture(s.gpu_device, createinfo = rtci^)
+			}else{
+				log.error("render_target.msaa_tex")
+			}
 		}
 	}
 	
@@ -451,17 +474,17 @@ start_render::proc(
 	clear_color:[4]f32={.3,.3,.3,1},
 ){
 	if pass == nil {
-		fmt.print("pass == nil\n")
+		log.log(.Warning,"\n",pass.name,"pass == nil\n")
 		return
 	}
 	if cam == nil {
-		fmt.print("cam == nil\n")
+		log.log(.Warning,"\n",pass.name,"cam == nil\n")
 		return
 	}
 	// pass.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	pass.render_target = get_render_target(render_target)
 	if pass.render_target == nil {
-		fmt.print("pass.render_target == nil\n")
+		log.log(.Warning,"\n",pass.name,"pass.render_target == nil\n")
 		return
 	}
 	switch rt in render_target {
@@ -499,12 +522,13 @@ start_render::proc(
 }
 
 submit_render::proc(pass:^R_Pass,){
+	if s.app_should_close {return}
 	if pass == nil {
-		fmt.print("pass == nil\n")
+		log.log(.Warning,"\n",pass.name,"pass == nil\n")
 		return
 	}
 	if pass.render_target == nil {
-		fmt.print("pass.render_target == nil\n")
+		log.log(.Warning,"\n",pass.name,"pass.render_target == nil\n")
 		return
 	}
 	sdl.EndGPURenderPass(pass.render_pas)
@@ -522,6 +546,7 @@ start_frame::proc(frame:^Frame_Data){
 	frame.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 }
 submit_frame::proc(frame:^Frame_Data){
+	if s.app_should_close {return}
 	ok := sdl.SubmitGPUCommandBuffer(frame.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
 }
 
@@ -534,6 +559,16 @@ update_windows::proc(render_cmd_buf :^sdl.GPUCommandBuffer,){
 }
 update_window::proc(win:^Window,render_cmd_buf :^sdl.GPUCommandBuffer,){			swap_chan_w:u32
 	swap_chan_h:u32
+	if s.app_should_close {return}
+	if win == nil{
+		log.log(.Warning, "\nwin == nil")
+		return
+	}
+	if !hm.is_valid(&s.windows ,win.handle){
+		log.log(.Warning, "\ncan not update window. windowHD is not valid ")
+		return
+	}
+	
 	ok:=sdl.WaitAndAcquireGPUSwapchainTexture(render_cmd_buf, win.data, &win.Render_Target.data,&swap_chan_w,&swap_chan_h)
 	if !ok {
 		log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")
@@ -547,6 +582,17 @@ update_window::proc(win:^Window,render_cmd_buf :^sdl.GPUCommandBuffer,){			swap_
 	win.Render_Target.wh = {cast(i32)swap_chan_w,cast(i32)swap_chan_h}
 	if !ok{log.log(.Debug,"WaitAndAcquireGPUSwapchainTexture failed")}
 }
+remove_window::proc(win:^sdl.Window){
+	win_id := sdl.GetWindowID(win)
+	windows_iter := hm.iterator_make(&s.windows)
+	for window,hd in hm.iterate(&windows_iter) {
+		if sdl.GetWindowID(window.data) == win_id{
+			hm.remove(&s.windows,window.handle)
+			sdl.DestroyWindow(win)
+		}
+	}
+}
+
 remove_closed_windows::proc(){
 	windows_iter := hm.iterator_make(&s.windows)
 	for window,hd in hm.iterate(&windows_iter) {
@@ -696,11 +742,9 @@ get_render_target::proc(render_target:Render_Targets)->(texture:^Render_Target){
 		win:=get_window(rt)
 		if win != nil{
 			texture = &win.Render_Target
-			// fmt.print(texture.wh.x," ",texture.wh.y,"    ")
 			// texture.data = win.swap_chain
 			// sdl.GetWindowSize(win.data,&texture.wh.x,&texture.wh.y)
 			// sdl.GetWindowSizeInPixels(win.data,&texture.wh.x,&texture.wh.y)
-			// fmt.print(texture.wh.x," ",texture.wh.y,"\n")
 		}
 	case ^Render_Target:
 		texture = rt

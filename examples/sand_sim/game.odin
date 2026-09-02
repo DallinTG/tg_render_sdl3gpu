@@ -129,9 +129,9 @@ main :: proc(){
 
 
 
-	g.pass = tg.create_render_pass(&g.frame_data, g.vert_shader, g.frag_shader)
-	g.ui_pass = tg.create_render_pass(&g.frame_data, g.ui_vert_shader, g.ui_frag_shader)
-	g.sand_sim_pass = tg.create_render_pass(&g.frame_data, g.sand_sim_vert_shader, g.sand_sim_frag_shader)
+	g.pass = tg.create_render_pass(&g.frame_data, g.vert_shader, g.frag_shader, name = "Defalt_Pass")
+	g.ui_pass = tg.create_render_pass(&g.frame_data, g.ui_vert_shader, g.ui_frag_shader, name = "UI_Pass")
+	g.sand_sim_pass = tg.create_render_pass(&g.frame_data, g.sand_sim_vert_shader, g.sand_sim_frag_shader, name = "Sand_Sim_Pass")
 
 	init()
 	tg.get_number_of_current_players()
@@ -145,7 +145,6 @@ main :: proc(){
 		}
 
 		if s.time.is_60_hz{
-			fmt.print(g.server.type,"\n")
 			sink_game_info(&g.server,&g.info)
 			g.clay_render_comands=create_layout()
 			wh:=tg.get_window_size(g.window)

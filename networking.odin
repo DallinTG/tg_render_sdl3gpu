@@ -14,21 +14,7 @@ import hm "core:container/handle_map"
 import "core:math/rand"
 import "core:time"
 
-// Networking_State::struct{
-// 	is_up:bool,
-// 	type:Server_Types,
 
-// 	endpoint: Endpoint,
-// 	sock: net.UDP_Socket,
-
-// 	// ip: string,
-// 	// port: int,
-// 	// buffer:[256]u8,
-
-// 	// st_sock:^steam.INetworkingMessages,
-// 	// st_endpoint:^steam.SteamNetworkingIdentity,
-// 	// buffer:[256]u8,
-// }
 Server_Types::enum{
 	nil,
 	host,
@@ -121,13 +107,6 @@ init_udp_client :: proc(net_inst:^Networking_Instance, server_endpoint:Endpoint)
 	return
 }
 
-
-// do_udp_server::proc(server:^Networking_State){
-	// bytes_recv, remote_endpoint, err_recv := recv_udp(server, server.buffer[:])
-	// received := server.buffer[:bytes_recv]
-	// if len(received) == 0 {return}
-// }
-
 send_udp::proc(net_inst:^Networking_Instance, endpoint:^Endpoint, data:[]u8)->(bytes_sent:int, err_send:net.UDP_Send_Error){
 	switch &ep in endpoint{
 		case  net.Endpoint:
@@ -166,19 +145,8 @@ recv_udp::proc(net_inst:^Networking_Instance,buff:[]u8)->(bytes_recv: int, remot
 			return
 		}
 	}
-	// st_msg:steam.SteamNetworkingMessage
-	// st_msg_pt:=&st_msg
-	// steam.NetworkingMessages_ReceiveMessagesOnChannel(net_st.st_sock,0,&st_msg_pt,1)
-	// received := net_st.buffer[:bytes_recv]
-	
-
 	return
 }
-
-// stop_udp_echo_client:: proc(client:^Networking_State) {
-// 	net.close(client.sock)
-// 	log.logf(.Info, "Closed socket")
-// }
 
 // _____________________________________
 // 
@@ -276,7 +244,7 @@ get_defalt_networking_instance::proc()->(net_inst:^Networking_Instance){
 start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 // start_server::proc(ip:string="0.0.0.0", port:int=35823, net_inst:^Networking_Instance){
 	if net_inst.type == .nil{
-		log.logf(.Info, "starting server")
+		log.logf(.Info, "\nstarting server\n")
 		init_udp_server(net_inst,server_endpoint)
 		net_inst.status = .hosting
 		create_steame_lobby()
@@ -286,7 +254,7 @@ start_server::proc(server_endpoint:Endpoint, net_inst:^Networking_Instance){
 	}
 }
 join_server::proc(server_endpoint:^Endpoint, net_inst:^Networking_Instance){
-	log.logf(.Info, "conecting to server")
+	log.logf(.Info, "\nconecting to server\n")
 	init_udp_client(net_inst, server_endpoint^)
 	send_join_request(server_endpoint,net_inst)
 }

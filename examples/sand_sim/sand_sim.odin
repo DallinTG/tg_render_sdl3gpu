@@ -560,10 +560,6 @@ mesh_chunck::proc(chunck:^Chunck,pos:[2]int,w_map:^Map){
 			col = {1,1,1,.25}
 		)
 	}
-	// if chunck.ticks_to_sleep > 0 {
-	// 	tg.draw_text(mesh = &mesh.cpu,vert_t = tg.Vertex_Data,pos = {cast(f32)(pos.x*CELL_SIZE*CHUNCK_SIZE),cast(f32)(pos.y*CELL_SIZE*CHUNCK_SIZE*-1),0},text =fmt.tprint(chunck.ticks_to_sleep))
-	// }
-	// tg.draw_text(mesh = &mesh.cpu,vert_t = tg.Vertex_Data,pos = {cast(f32)(pos.x*CELL_SIZE*CHUNCK_SIZE),cast(f32)(pos.y*CELL_SIZE*CHUNCK_SIZE*-1),0},text =fmt.tprint(chunck.ticks_to_sleep))
 	tg.update_mesh(chunck.mesh)
 }
 
@@ -585,36 +581,24 @@ render_map_debug_overlay::proc(w_map:^Map){
 
 rand_1_1:[2]int:{1,-1}
 update_map::proc(w_map:^Map){
-	// fmt.print(hash.ginger_hash16(cast(u16)w_map.tick_count),"\n")
 	w_map.rand_tick_seed = cast(u32)hash.ginger_hash16(cast(u16)w_map.tick_count)
 	if w_map.rand_tick_seed % 2 == 0{
 		w_map.l_r = -1
 	}else{
 		w_map.l_r = 1
 	}
-	// rand.reset(cast(u64)w_map.rand_tick_seed)
+
 	temp:=rand.int32_range(0,2)
 	if temp == 0{
 		w_map.l_r = -1
 	}else{
 		w_map.l_r = 1
 	}
-	// rand.reset(cast(u64)w_map.rand_tick_seed)
-	// w_map.l_r=rand.choice(rand_1[:])
-
-
 
 	proses_set_cell_cmd(&g.server, w_map)
 	sink_next_chunck(&g.server, w_map)
 	sink_w_map_info(&g.server, g.w_map)
 
-	// for &chuncks,x in &w_map.chuncks{
-	// 	for &chunck,y in &chuncks{
-	// 		update_chunck(&chunck,x,y,w_map)
-	// 	}
-	// }
-	
-	
 	for &chuncks,x in &w_map.chuncks{
 		for &chunck,y in &chuncks{
 			update_chunck(&chunck,x,y,w_map)
@@ -909,7 +893,7 @@ can_cell_fall_through::proc(cell_a:[2]int, cell_b:[2]int, w_map:^Map) ->(can_cel
 	cell_a_data:=get_cell_data(cell_a,w_map)
 	cell_b_data:=get_cell_data(cell_b,w_map)
 	cell_b:=get_cell(cell_b,w_map)
-	// fmt.print(cell_b.flags,"waffles 90 \n")
+
 	if .is_solid in cell_b.flags {return false}
 	if math.abs(cell_a_data.density) > cell_b_data.density {return true}
 	return false
@@ -1119,14 +1103,7 @@ draw_chunck::proc(
 	rotate_m4:    tg.Mat4 = lin.matrix4_from_quaternion_f32(rotate_q)
 	mat :=translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
 
-	// resize(&mesh.vertex_buf,size_of(vert_t) * CHUNCK_SIZE * CHUNCK_SIZE * 4) 
-	// resize(&mesh.index_buf,CHUNCK_SIZE * CHUNCK_SIZE * 6) 
-
 	mesh.index_buf_used = CHUNCK_SIZE * CHUNCK_SIZE * 6
-	// mesh.vertex_buf_used = size_of(vert_t) * CHUNCK_SIZE * CHUNCK_SIZE * 4
-	// mesh.vertex_count = CHUNCK_SIZE * CHUNCK_SIZE * 4
-
-	// fmt.print(mesh.index_buf_used,mesh.vertex_buf_used,mesh.vertex_count,"\n\n")
 
 	dirt_rect:=chunck.dirty_rect_last + {-1,-1,1,1}
 	dirt_rect.x = clamp(dirt_rect.x,0,CHUNCK_SIZE-1)
@@ -1141,10 +1118,8 @@ draw_chunck::proc(
 			vert_offset:= (y*CHUNCK_SIZE+x) * 4
 			index_offset:= (y*CHUNCK_SIZE+x) * 6
 			if chunck.cells[x][y].id != .air{
-				// fmt.print("vert_offset:",vert_offset , "   index_offset:",index_offset,"\n")
 				when intrinsics.type_has_field(vert_t, "pos"){
 					//front
-					// fmt.print( (x+w_h.x*y)*4 ,x,y," {x*y =",x*y,"}","\n")
 					verts[0].pos =  { 0+cast(f32)x,   0 +(cast(f32)y*-1),  0, 1}
 					verts[1].pos =  { 0+cast(f32)x,  -1 +(cast(f32)y*-1),  0, 1}
 					verts[2].pos =  { 1+cast(f32)x,  -1 +(cast(f32)y*-1),  0, 1}
