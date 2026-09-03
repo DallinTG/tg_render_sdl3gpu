@@ -17,7 +17,7 @@ import cl"../../clay-odin"
 import st"core:strings"
 import steam "../../steamworks"
 
-USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
+// USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
 MAX_PLAYERS::20
 
 Handle :: hm.Handle32
@@ -103,16 +103,21 @@ init::proc(){
 }
 
 main :: proc(){
+	tracking_allocator:mem.Tracking_Allocator
+	context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
+	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
+	defer tg.end_tracking_allocator(&tracking_allocator)
 	g = new(Game)
-	context.logger = log.create_console_logger()
-	when USE_TRACKING_ALLOCATOR {
-		tracking_allocator: mem.Tracking_Allocator
-		default_allocator := context.allocator
-		mem.tracking_allocator_init(&tracking_allocator, default_allocator)
-		context.allocator = mem.tracking_allocator(&tracking_allocator)
-	}
+	// when tg.USE_TRACKING_ALLOCATOR {
+	// 	tracking_allocator: mem.Tracking_Allocator
+	// 	default_allocator := context.allocator
+	// 	mem.tracking_allocator_init(&tracking_allocator, default_allocator)
+	// 	context.allocator = mem.tracking_allocator(&tracking_allocator)
+	// }
 	// tg.init_steam()
 	s=tg.init()
+	
+	tg.name_thread("Main")
 	g.window = tg.init_window()
 
 	g.cam = tg.create_camera(type = .orthographic)
@@ -140,7 +145,6 @@ main :: proc(){
 		tg.gather_input_info()
 		tg.run_steam_callbacks()
 		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
-		
 		for ev in &tg.s.events {
 		}
 
@@ -186,19 +190,19 @@ main :: proc(){
 	tg.leave_shutdown_server(&g.server)
 
 	cleane_up_game()
-
-	when USE_TRACKING_ALLOCATOR {
-		for _, val in tracking_allocator.allocation_map {
-			log.errorf("\n%v: Leaked %v bytes,err: %v , mode:%v\n", val.location, val.size,val.err,val.mode)
-			if val.size<256 {
-				str_b:=cast([^]u8)val.memory
-				str_d:=str_b[:val.size]
-				str:=cast(string)str_d
-				fmt.print(str)
-			}
-		}
-		mem.tracking_allocator_destroy(&tracking_allocator)
-	}
+	
+	// when tg.USE_TRACKING_ALLOCATOR {
+	// 	for _, val in tracking_allocator.allocation_map {
+	// 		log.errorf("\n%v: Leaked %v bytes,err: %v , mode:%v\n", val.location, val.size,val.err,val.mode)
+	// 		if val.size<256 {
+	// 			str_b:=cast([^]u8)val.memory
+	// 			str_d:=str_b[:val.size]
+	// 			str:=cast(string)str_d
+	// 			fmt.print(str)
+	// 		}
+	// 	}
+	// 	mem.tracking_allocator_destroy(&tracking_allocator)
+	// }
 }
 cleane_up_game::proc(){
 	fmt.print("g.game_should_close",s.app_should_close,"\n")
@@ -304,6 +308,18 @@ init_rendering_thread::proc(){
 }
 
 do_rendering::proc(){
+	tg.name_thread("Rendering")
+	tracking_allocator:mem.Tracking_Allocator
+	context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
+	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
+	defer tg.end_tracking_allocator(&tracking_allocator)
+
+	// when tg.USE_TRACKING_ALLOCATOR {
+	// 	tracking_allocator: mem.Tracking_Allocator
+	// 	default_allocator := context.allocator
+	// 	mem.tracking_allocator_init(&tracking_allocator, default_allocator)
+	// 	context.allocator = mem.tracking_allocator(&tracking_allocator)
+	// }
 	rendering_loop:for !s.app_should_close {
 
 		// mesh_map(g.w_map)
@@ -328,7 +344,23 @@ do_rendering::proc(){
 		tg.submit_frame(&g.frame_data)
 
 	}
+	
+	// when tg.USE_TRACKING_ALLOCATOR {
+	// 	for _, val in tracking_allocator.allocation_map {
+	// 		log.errorf("\n%v: Leaked %v bytes,err: %v , mode:%v\n", val.location, val.size,val.err,val.mode)
+	// 		if val.size<256 {
+	// 			str_b:=cast([^]u8)val.memory
+	// 			str_d:=str_b[:val.size]
+	// 			str:=cast(string)str_d
+	// 			fmt.print(str)
+	// 		}
+	// 	}
+	// 	mem.tracking_allocator_destroy(&tracking_allocator)
+	// }
+
 	log.logf(.Info,"closeing Render Thread",)
+
+
 
 }
 

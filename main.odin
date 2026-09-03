@@ -25,6 +25,8 @@ import "core:image/bmp"
 import "core:image/png"
 import "core:image/tga"
 
+USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
+
 Handle :: hm.Handle32
 s:^State
 State :: struct{
@@ -36,6 +38,7 @@ State :: struct{
 	allocator: runtime.Allocator,
 	frame_arena: runtime.Arena,
 	frame_allocator: runtime.Allocator,
+	tracking_allocator: mem.Tracking_Allocator,
 	
 	
 	swap_chain_texture_format:	sdl.GPUTextureFormat,
@@ -77,6 +80,8 @@ State :: struct{
 	ui: UI_Info,
 	is_ui_l_click:proc()->(bool),//TODO This needs to be removed
 	is_ui_r_click:proc()->(bool),//TODO This needs to be removed
+
+
 
 
 }
@@ -179,8 +184,29 @@ UBO ::struct{
 
 // rot:f32=0// FIXME this should not be heare
 
+init_tracking_allocator::proc(tra_allocator:^mem.Tracking_Allocator, allocator:= context.allocator,)->(new_allocator:runtime.Allocator){
+	when USE_TRACKING_ALLOCATOR {
+		mem.tracking_allocator_init(tra_allocator, allocator)
+		new_allocator = mem.tracking_allocator(tra_allocator)
+		return new_allocator
+	}
+	return allocator
+}
 
-
+end_tracking_allocator::proc(tra_allocator:^mem.Tracking_Allocator){
+	when USE_TRACKING_ALLOCATOR {
+		for _, val in tra_allocator.allocation_map {
+			log.errorf("\n%v: Leaked %v bytes,err: %v , mode:%v\n", val.location, val.size,val.err,val.mode)
+			if val.size<256 {
+				str_b:=cast([^]u8)val.memory
+				str_d:=str_b[:val.size]
+				str:=cast(string)str_d
+				fmt.print(str)
+			}
+		}
+		mem.tracking_allocator_destroy(tra_allocator)
+	}
+}
 
 init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_location)->(new_state:^State){
 	ok:bool
@@ -377,7 +403,7 @@ check_and_resize_all_frame_buffers::proc(
 	cam:^Camera,
 	render_target:Render_Targets,
 ){
-	
+	// fmt.print("waffles")
 	render_target := get_render_target(render_target)
 	if render_target == nil{
 		log.log(.Warning, "render_target == nil",)

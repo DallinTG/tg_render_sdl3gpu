@@ -276,6 +276,17 @@ leave_shutdown_server::proc(net_inst:^Networking_Instance){
 
 
 do_networking::proc(net_inst_pt:rawptr){
+	name_thread("Networking")
+	tracking_allocator:mem.Tracking_Allocator
+	context.logger = create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
+	context.allocator = init_tracking_allocator(&tracking_allocator)
+	defer end_tracking_allocator(&tracking_allocator)
+	// when USE_TRACKING_ALLOCATOR {
+	// 	tracking_allocator: mem.Tracking_Allocator
+	// 	default_allocator := context.allocator
+	// 	mem.tracking_allocator_init(&tracking_allocator, default_allocator)
+	// 	context.allocator = mem.tracking_allocator(&tracking_allocator)
+	// }
 	net_inst:=cast(^Networking_Instance)net_inst_pt
 	for !s.app_should_close{
 		switch net_inst.type{
@@ -294,6 +305,20 @@ do_networking::proc(net_inst_pt:rawptr){
 			}
 		}
 	}
+
+	// when USE_TRACKING_ALLOCATOR {
+	// 	for _, val in tracking_allocator.allocation_map {
+	// 		log.errorf("\n%v: Leaked %v bytes,err: %v , mode:%v\n", val.location, val.size,val.err,val.mode)
+	// 		if val.size<256 {
+	// 			str_b:=cast([^]u8)val.memory
+	// 			str_d:=str_b[:val.size]
+	// 			str:=cast(string)str_d
+	// 			fmt.print(str)
+	// 		}
+	// 	}
+	// 	mem.tracking_allocator_destroy(&tracking_allocator)
+	// }
+
 	log.logf(.Info,"closing networking thread")
 
 }
