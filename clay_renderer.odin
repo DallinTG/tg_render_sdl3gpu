@@ -451,36 +451,15 @@ render_clay_instance::proc(
 	clay_instance:Clay_I_Handle,
 	pass:^R_Pass,
 	camera:^Camera,
-	// render_target:Render_Targets,
-	// load_op:	sdl.GPULoadOp=.LOAD,
-	// d_load_op:	sdl.GPULoadOp=.LOAD,
-	// store_op:   sdl.GPUStoreOp = .STORE,
-	// d_store_op: sdl.GPUStoreOp = .STORE,
-	// clear_color:[4]f32={.3,.3,.3,1},
 ){
 	inst:=get_clay_instance(clay_instance)
 	do_render_pass(
 		pass, 
 		camera, 
 		{inst.mesh}, 
-		// render_target, 
-		// load_op = load_op, 
-		// d_load_op = d_load_op, 
-		// clear_color = clear_color,
-		// store_op = store_op, 
-		// d_store_op = d_store_op
 	)	
 }
-// update_render_clay_instance::proc(
-// 	clay_instance:Clay_I_Handle,
-// 	pass:^R_Pass,
-// 	renderCommands: ^cl.ClayArray(cl.RenderCommand),
-// 	camera:^Camera,
-// 	wh:[2]i32
-// ){
-// 	update_clay_instance(clay_instance, renderCommands, wh)
-// 	render_clay_instance(clay_instance,pass, camera,)
-// }
+
 delete_clay_instance::proc(clay_instance:Clay_I_Handle){
 	inst:=get_clay_instance(clay_instance)
 	// delete_r_pass(&inst.pass)

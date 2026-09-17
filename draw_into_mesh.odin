@@ -179,6 +179,29 @@ draw_verts_by_quad :: proc(mesh: ^Mesh_CPU, $quad_count:u32, verts:$T/[]$E){
 	append_to_mesh(mesh, indexes[:],verts[:])
 }
 
+draw_faces_mat :: proc(mesh: ^Mesh_CPU, feces:$T/[]$E , mat:matrix[4, 4]f32 = Mat4(1)){
+	when intrinsics.type_has_field(E, "pos"){
+		transform_feces(feces[:],mat)
+	}
+	draw_feces(mesh,feces[:])
+}
+transform_feces::proc(feces:$T/[]$E , mat:matrix[4, 4]f32 = Mat4(1)){
+	vec4:[4]Vec4
+	for &v , i in feces{
+		vec4[0] = {v.pos[0].x,  v.pos[0].y,  v.pos[0].z,  1.0}
+		vec4[1] = {v.pos[1].x,  v.pos[1].y,  v.pos[1].z,  1.0}
+		vec4[2] = {v.pos[2].x,  v.pos[2].y,  v.pos[2].z,  1.0}
+		vec4[3] = {v.pos[3].x,  v.pos[3].y,  v.pos[3].z,  1.0}
+		v.pos[0] =  (mat * vec4[0]).xyzw
+		v.pos[1] =  (mat * vec4[1]).xyzw
+		v.pos[2] =  (mat * vec4[2]).xyzw
+		v.pos[3] =  (mat * vec4[3]).xyzw
+	}
+}
+draw_feces :: proc(mesh: ^Mesh_CPU, feces:$T/[]$E){
+	append_to_mesh(mesh, {},feces[:])
+}
+
 // this is for drawing into a mesh at a offset mostly for a mesh that you know exsactly how it will be layed out
 draw_over_verts_by_quad_mat :: proc(mesh: ^Mesh_CPU, $quad_count:u32, verts:$T/[]$E , verts_offset:int, indexes_offset:int, mat:matrix[4, 4]f32 = Mat4(1)){
 	when intrinsics.type_has_field(E, "pos"){
@@ -323,6 +346,8 @@ draw_cube::proc(mesh: ^Mesh_CPU, tex:^Texture, $vert_t:typeid, col:[4]f32={1,1,1
 	}
 	draw_verts_by_quad_mat(mesh, 6, verts[:], mat)
 }
+
+
 Rect::struct{
 	pos:[3]f32,
 	w_h:[2]f32,

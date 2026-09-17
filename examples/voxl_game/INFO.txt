@@ -1,0 +1,28 @@
+
+
+vertex data----------------------------------------------------
+vertex buff
+
+face buff
+	4x6xu5 lighting
+	3xu5 block position
+	1xu16 texture index
+	1xu16 modl index
+
+modl buff
+	4x4f32 uv coordinates
+	3xf32 face normal
+
+resources-------------------------------------------------------
+
+Blazingly Fast Greedy Mesher - Voxel Engine Optimizations 
+https://www.youtube.com/watch?v=qnGoGq7DWMc
+
+coool ambiont aclution
+https://www.youtube.com/watch?v=1gxcNUUc37Y
+
+Making a Next-gen Simulation Game: Towns & Infinite View Distance 
+https://www.youtube.com/watch?v=13ZbL561rF4
+
+vertex data layout
+https://www.youtube.com/watch?v=fjT98PpFjTM

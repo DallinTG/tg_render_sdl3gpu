@@ -29,8 +29,15 @@ import "base:runtime"
 @(private)
 thread_name:map[int]string
 
+@(deferred_in=delete_thread_names)
 name_thread::proc(name:string){
 	thread_name[os.get_current_thread_id()] = name
+}
+
+delete_thread_names::proc(name:string){
+	if name == "Main"{
+		delete(thread_name)
+	}
 }
 
 create_tg_console_logger :: proc(lowest := log.Level.Debug, opt := log.Default_Console_Logger_Opts, ident := "", allocator := context.allocator) -> log.Logger {

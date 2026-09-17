@@ -84,18 +84,12 @@ create_mesh::proc(cpu_mesh:Mesh_CPU, max_num_verts:int = 50000, max_num_indices:
 	mesh_attribute_info:=type_info_of(cpu_mesh.attribute_type)
 	mesh:Mesh
 
-
 	vertices_byte_size:=(max_num_verts*mesh_attribute_info.size)
 	indices_byte_size:=(max_num_indices*size_of(u32))
-	
-	
 
-	// vertices_byte_size:=len(cpu_mesh.vertex_buf)+(rezerved_buf_size*mesh_attribute_info.size)
-	// indices_byte_size:=len(cpu_mesh.index_buf) * size_of(cpu_mesh.index_buf[0])+(rezerved_buf_size*size_of(u32))
 	mesh.cpu = cpu_mesh
 	mesh.cpu.attribute_size = mesh_attribute_info.size
 	mesh.cpu.name = debug_name
-	// fmt.print(mesh_attribute_info.size,"\n")
 
 	mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
 		usage={.GRAPHICS_STORAGE_READ},
@@ -111,7 +105,7 @@ create_mesh::proc(cpu_mesh:Mesh_CPU, max_num_verts:int = 50000, max_num_indices:
 		usage = .UPLOAD,
 		size = cast(u32)(vertices_byte_size + indices_byte_size),
 	})
-	// fmt.print(vertices_byte_size, indices_byte_size,vertices_byte_size + indices_byte_size ,"\n\n\n\n\n")
+
 	mesh_hd=hm.add(&s.meshes, mesh)
 	return
 }
@@ -136,6 +130,8 @@ update_mesh::proc(mesh_hd:Mesh_Handle){
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
+	
+	fmt.print("vertices_byte_size",mesh.cpu.name,vertices_byte_size,"\n")
 
 	if vertices_byte_size > 0 {
 		sdl.UploadToGPUBuffer(
@@ -180,11 +176,7 @@ get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){
 }
 
 append_to_mesh::proc(mesh:^Mesh_CPU,indices:[]u32,vertices:$T/[]$E, shift_indices:bool=true){
-	// attribute_info:=type_info_of(mesh.attribute_type,)
-	// assert(mesh != nil)
-	// assert(mesh.attribute_type != nil)
-	// mesh_attribute_info:=type_info_of(mesh.attribute_type)
-	// attribute_info:=type_info_of(E,)
+
 	attribute_size:=size_of(E)
 	assert(mesh.attribute_size == attribute_size, "mesh vertex data size must == incoming vertices size")
 	indices:=indices
@@ -196,18 +188,10 @@ append_to_mesh::proc(mesh:^Mesh_CPU,indices:[]u32,vertices:$T/[]$E, shift_indice
 		}
 	}
 	vertices_byte_size:= len(vertices) * attribute_size
-	// indices_byte_size:= len(indices) * size_of(indices[0])
-	
-	// resize_dynamic_array(&mesh.vertex_buf, vertices_byte_size + cast(int)mesh.vertex_buf_used)
-	// resize_dynamic_array(&mesh.index_buf,  len(indices) + cast(int)mesh.index_buf_used)
-	
-	// mem.copy(raw_data(mesh.vertex_buf[mesh.vertex_buf_used:]), raw_data(vertices), vertices_byte_size)
-	// mem.copy(raw_data(mesh.index_buf[mesh.index_buf_used:]), raw_data(indices), indices_byte_size)
+
 	buffer_write_slice(&mesh.vertex_buf,vertices)
 	append(&mesh.index_buf, ..indices)
-	
-	// mesh.vertex_count += cast(u32)len(vertices)
-	// mesh.vertex_buf_used += cast(u32)vertices_byte_size
+
 	mesh.index_buf_used += cast(u32)len(indices)
 }
 

@@ -103,6 +103,8 @@ cleane_up_input_handling::proc(event_data:^event_data){
 }
 max_key_combo::4
 reg_input_events::proc(){
+	reg_event(input_e_id.move_u,{{{data=             {id= sdl.Scancode.W,               pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+	reg_event(input_e_id.move_d,{{{data=             {id= sdl.Scancode.S,               pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
 	reg_event(input_e_id.move_l,{{{data=             {id= sdl.Scancode.A,               pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
 	reg_event(input_e_id.move_r,{{{data=             {id= sdl.Scancode.D,               pressed= false,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(input_e_id.jump,{{{data=               {id= sdl.Scancode.SPACE,           pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})

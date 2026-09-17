@@ -193,6 +193,10 @@ init_tracking_allocator::proc(tra_allocator:^mem.Tracking_Allocator, allocator:=
 	return allocator
 }
 
+
+
+
+
 end_tracking_allocator::proc(tra_allocator:^mem.Tracking_Allocator){
 	when USE_TRACKING_ALLOCATOR {
 		for _, val in tra_allocator.allocation_map {
@@ -337,21 +341,30 @@ create_render_pass :: proc (
 			// enable_alpha_to_coverage = true,
 		},
 	})
-	return
+	resize_dynamic_array(&pass.texture_sampler_binding,5)
+	return pass
+}
+
+Render_Type::enum{
+	vertex,
+	face,
 }
 
 do_render_pass::proc(
 	pass:^R_Pass,
 	cam:^Camera,
 	meshes_hd:[]Mesh_Handle,
+	type:Render_Type = .vertex,
 ){
+
 	if pass == nil {
 		log.log(.Warning,"\n",pass.name,"pass == nil\n")
 		return
 	}
-
 	if pass.render_target == nil{
-		log.log(.Warning,"\n",pass.name,"pass.render_target == nil\n")
+		if !s.app_should_close{
+			log.log(.Warning,"\n",pass.name,"pass.render_target == nil\n")
+		}
 		return
 	}
 
@@ -361,7 +374,7 @@ do_render_pass::proc(
 	switch cam.type {
 	case .perspective:
 		view_mat = lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
-		proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90 * cam.zoom), cast(f32)pass.render_target.wh.x / cast(f32)pass.render_target.wh.y,-100, 100)
+		proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90 * cam.zoom), cast(f32)pass.render_target.wh.x / cast(f32)pass.render_target.wh.y,0.1, 1000)
 	case .orthographic:
 		pos:=cam.pos
 		view_mat = lin.matrix4_translate_f32({-pos.x,-pos.y,-pos.z})
@@ -384,19 +397,34 @@ do_render_pass::proc(
 	for &texture in  s.texture_arr_groop{
 		if texture != {}{
 			texture:=get_gpu_texture(texture.tex_hd)
+			// on a siantifck calculator what butoon is used to 
 			append_elem(&pass.texture_sampler_binding ,sdl.GPUTextureSamplerBinding{ texture = texture.data, sampler = pass.sampler})
 		}
 	}
 
 	sdl.BindGPUFragmentSamplers(pass.render_pas, 0, raw_data(pass.texture_sampler_binding), cast(u32)len(pass.texture_sampler_binding))
 
-	for mesh_hd in meshes_hd{
-		mesh:=get_mesh(mesh_hd)
-		// sdl.BindGPUVertexStorageBuffers
-		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
-		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)	
-		sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0) 
-		
+	switch type{
+	case .vertex:
+		for mesh_hd in meshes_hd{
+			mesh:=get_mesh(mesh_hd)
+			// sdl.BindGPUVertexStorageBuffers
+			sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
+			sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)	
+			sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0) 
+			
+		}
+	case .face:
+		for mesh_hd in meshes_hd{
+			mesh:=get_mesh(mesh_hd)
+			// sdl.BindGPUVertexStorageBuffers
+			sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
+			// sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)
+			face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
+			fmt.print("face_count",face_count,"\n")
+			sdl.DrawGPUPrimitives(pass.render_pas,face_count*6, 1, 0, 0) 
+			
+		}
 	}
 }
 check_and_resize_all_frame_buffers::proc(
@@ -510,7 +538,9 @@ start_render::proc(
 	// pass.render_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	pass.render_target = get_render_target(render_target)
 	if pass.render_target == nil {
-		log.log(.Warning,"\n",pass.name,"pass.render_target == nil\n")
+		if !s.app_should_close{
+			log.log(.Warning,"\n",pass.name,"pass.render_target == nil\n")
+		}
 		return
 	}
 	switch rt in render_target {
@@ -690,29 +720,30 @@ screane_space_to_world_2d::proc(cam:^Camera,pos:[2]f32)->(world:[2]f32){
 	return 
 }
 // this is a very rudimenty controler and should only be used for testing
-update_camera_3d::proc(cam:^Camera, dt:f32, sensitivity:f32=3, speed:f32=1.5,){
-	// move_input:Vec2
-	// if s.input.key_down[.W] do move_input.y = 1
-	// else if s.input.key_down[.S] do move_input.y = -1
-	// if s.input.key_down[.A] do move_input.x = -1
-	// else if s.input.key_down[.D] do move_input.x = 1
+update_camera_3d::proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=1.5,){
+	move_input:Vec2
 	
-	// look_input := s.input.mouse_move * sensitivity * dt
+	if is_input_event(.move_u,always_consume_p = false, always_consume_d = false) do move_input.y = 1
+	else if is_input_event(.move_d,always_consume_p = false, always_consume_d = false) do move_input.y = -1
+	if is_input_event(.move_l,always_consume_p = false, always_consume_d = false) do move_input.x = -1
+	else if is_input_event(.move_r,always_consume_p = false, always_consume_d = false) do move_input.x = 1
 	
-	// cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)
-	// cam.look.pitch = math.clamp(cam.look.pitch - look_input.y, -89, 89)
+	look_input := s.input_events.mouse_move * sensitivity * dt
+	
+	cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)
+	cam.look.pitch = math.clamp(cam.look.pitch - look_input.y, -89, 89)
 
-	// look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
+	look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
 
-	// forward := look_mat * Vec3 {0,0,-1}
-	// right := look_mat * Vec3 {1,0,0}
-	// move_dir := forward * move_input.y + right * move_input.x
-	// // move_dir.y = 0
+	forward := look_mat * Vec3 {0,0,-1}
+	right := look_mat * Vec3 {1,0,0}
+	move_dir := forward * move_input.y + right * move_input.x
+	// move_dir.y = 0
 
-	// motion := lin.normalize0(move_dir) * speed * dt
+	motion := lin.normalize0(move_dir) * speed * dt
 
-	// cam.pos += motion
-	// cam.target = cam.pos + forward
+	cam.pos += motion
+	cam.target = cam.pos + forward
 }
 
 

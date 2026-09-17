@@ -1,4 +1,4 @@
-package sand_sim
+package voxl_game
 
 import tg"../../../tg_render_sdl3gpu"
 import sdl "vendor:sdl3"
@@ -186,41 +186,41 @@ loby_joining_regected::proc(){
 	}) {}
 }
 // tg.ui_drag_box_dec(g.ui_boxes.test,{0,0},true)
-sand_sim_cell_id_picker_ui_box::proc(ui_box_handle:tg.UI_Box_Handle){
+// sand_sim_cell_id_picker_ui_box::proc(ui_box_handle:tg.UI_Box_Handle){
 
-	ui_box,cl_inst,ok,vis:=tg.start_ui_box(ui_box_handle)
-	if !ok {return}
+// 	ui_box,cl_inst,ok,vis:=tg.start_ui_box(ui_box_handle)
+// 	if !ok {return}
 
-	if !vis {return}
-	if cl.UI(cl.ID("sand_sim_cell_id_picker_ui_box_container"))(tg.ui_box_dec(ui_box_handle)) {
-		if cl.UI(cl.ID("drag_box_sand_sim_cell_id_picker_ui_box"))(
-			tg.ui_drag_box_dec(ui_box_handle,s.input_events.mouse_move)
-		){
-			tg.button_txt("temp")
-		}
-		MAX_IN_ROW::10
-		courent_pos_in_row:int
-		pading:=tg.get_ui_pading(.small)
-		row_count:u32
-		for cell, cell_id in Cell_Info{
-			if courent_pos_in_row == 0{
-				cl._OpenElementWithId(cl.ID("sand_sim_cell_id_picker_ui_box_row",row_count))
-				cl.ConfigureOpenElement({layout = {layoutDirection = .LeftToRight,childGap = pading},})
-			}
-			sand_sim_cell_id_picker(cell_id,ui_box_handle)
-			courent_pos_in_row +=1
-			if courent_pos_in_row == MAX_IN_ROW{
-				courent_pos_in_row = 0
-				row_count+=1
-				cl._CloseElement()
-			}
-		}
-		if courent_pos_in_row != MAX_IN_ROW{
-			cl._CloseElement()
-		}
-		tg.interact_ui_box_click(ui_box_handle)
-	}
-}
+// 	if !vis {return}
+// 	if cl.UI(cl.ID("sand_sim_cell_id_picker_ui_box_container"))(tg.ui_box_dec(ui_box_handle)) {
+// 		if cl.UI(cl.ID("drag_box_sand_sim_cell_id_picker_ui_box"))(
+// 			tg.ui_drag_box_dec(ui_box_handle,s.input_events.mouse_move)
+// 		){
+// 			tg.button_txt("temp")
+// 		}
+// 		MAX_IN_ROW::10
+// 		courent_pos_in_row:int
+// 		pading:=tg.get_ui_pading(.small)
+// 		row_count:u32
+// 		for cell, cell_id in Cell_Info{
+// 			if courent_pos_in_row == 0{
+// 				cl._OpenElementWithId(cl.ID("sand_sim_cell_id_picker_ui_box_row",row_count))
+// 				cl.ConfigureOpenElement({layout = {layoutDirection = .LeftToRight,childGap = pading},})
+// 			}
+// 			sand_sim_cell_id_picker(cell_id,ui_box_handle)
+// 			courent_pos_in_row +=1
+// 			if courent_pos_in_row == MAX_IN_ROW{
+// 				courent_pos_in_row = 0
+// 				row_count+=1
+// 				cl._CloseElement()
+// 			}
+// 		}
+// 		if courent_pos_in_row != MAX_IN_ROW{
+// 			cl._CloseElement()
+// 		}
+// 		tg.interact_ui_box_click(ui_box_handle)
+// 	}
+// }
 sand_sim_cell_id_icon_dec::proc(
 	cell_color:[4]f32,
 	border_col_id:tg.Color_Types = .border,
@@ -249,18 +249,18 @@ sand_sim_cell_id_icon_dec::proc(
 	return dec
 }
 
-sand_sim_cell_id_picker::proc(id:Cell_ids,ui_box_handle:tg.UI_Box_Handle){
-	cell:=Cell_Info[id]
-	if cl.UI(cl.ID("sand_sim_cell_id_picker",cast(u32)id))(sand_sim_cell_id_icon_dec(cell.color)) {
-		if cl.Hovered() {
-			if tg.is_input_event(.ui_l_c,always_consume_d = true){
-				tg.interact_ui_box(ui_box_handle)
-				g.player.curent_cell = id
-			}
-		}
-	}
+// sand_sim_cell_id_picker::proc(id:Cell_ids,ui_box_handle:tg.UI_Box_Handle){
+// 	cell:=Cell_Info[id]
+// 	if cl.UI(cl.ID("sand_sim_cell_id_picker",cast(u32)id))(sand_sim_cell_id_icon_dec(cell.color)) {
+// 		if cl.Hovered() {
+// 			if tg.is_input_event(.ui_l_c,always_consume_d = true){
+// 				tg.interact_ui_box(ui_box_handle)
+// 				g.player.curent_cell = id
+// 			}
+// 		}
+// 	}
 
-}
+// }
 
 Defalt_UI_Boxes::struct{
 	test:tg.UI_Box_Handle,
@@ -268,7 +268,7 @@ Defalt_UI_Boxes::struct{
 
 init_defalt_ui_boxes::proc(){
 	g.ui_boxes.test = tg.create_ui_box({name="theme_picker_ui_box",update_proc=tg.theme_picker_ui_box,is_visible = false},g.ui_clay_inst)
-	tg.create_ui_box({name="sand_sim_cell_id_picker_ui_box",update_proc=sand_sim_cell_id_picker_ui_box,is_visible = false},g.ui_clay_inst)
+	// tg.create_ui_box({name="sand_sim_cell_id_picker_ui_box",update_proc=sand_sim_cell_id_picker_ui_box,is_visible = false},g.ui_clay_inst)
 	tg.create_ui_box(tg.UI_Box_Data{name="inspector_ui_box",update_proc=tg.inspector_ui_box,is_visible = false,inspector={parent = s,do_depth = false}},g.ui_clay_inst)
 	
 }
