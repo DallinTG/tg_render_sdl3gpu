@@ -1,5 +1,6 @@
 package voxl_game
 
+
 import "core:time"
 import tg"../../../tg_render_sdl3gpu"
 import sdl "vendor:sdl3"
@@ -75,7 +76,8 @@ mesh_chunck::proc(chunck:^Chunck){
 			for vox, z in col{
 				item:=reg.get(&g.item_reg,vox.item_hd)
 				if item != nil{
-					tg.draw_cube_by_face(&mesh.cpu,nil,item.texture_face_index,tg.Vert_Face,{1,1,1,1},tg.Cube{{cast(f32)x,cast(f32)y,cast(f32)z},{1,1,1}},{0,0,0})
+					// tg.draw_cube_by_face(&mesh.cpu,nil,item.texture_face_index,tg.Vert_Face,{1,1,1,1},tg.Cube{{cast(f32)x,cast(f32)y,cast(f32)z},{1,1,1}},{0,0,0})
+					draw_cube_by_face_item(&mesh.cpu,{cast(u16)x,cast(u16)y,cast(u16)z},vox.item_hd)
 				}
 				// tg.draw_rect(&mesh.cpu,text,tg.Vertex_Data,{1,1,1,1},tg.Rect{{cast(f32)x,cast(f32)y,cast(f32)z},{1,1}})
 			}
@@ -93,7 +95,7 @@ render_chunck::proc(chunck:^Chunck){
 		return
 	}
 	hds[0]=chunck.mesh_hd
-	tg.do_render_pass(&g.vox_pass, &g.cam, hds[:],{&g.texture_facees},type = .face)
+	tg.do_render_pass(&g.vox_pass, &g.cam, hds[:],{&g.texture_facees,&g.geometry_facees},type = .face)
 }
 
 render_map::proc(w_map:^Map){
@@ -103,4 +105,32 @@ render_map::proc(w_map:^Map){
 
 render_map_debug_overlay::proc(w_map:^Map){
 	// tg.do_render_pass(&g.pass, &g.cam, {w_map.overlay_mesh},)
+}
+
+draw_cube_by_face_item::proc(
+	mesh: ^tg.Mesh_CPU,
+	pos:[3]u16,
+	item_hd:Item_HD,
+){
+	faces:[6]tg.Vert_Face
+	item:=reg.get(&g.item_reg,item_hd)
+
+	packed_pos := pack_block_pos(pos)
+
+	for &face in &faces{
+		face.block_pos = packed_pos
+		face.texture_face_index = cast(u32)item.texture_face_index
+	}
+	for &face,i in &faces{
+		face.geometry_face_index = cast(u16)item.model_indices.cube_indices[cast(Cube_Indices)i]
+	}
+	
+	tg.draw_feces(mesh,faces[:])
+}
+pack_block_pos :: proc(pos: [3]u16) -> u16 {
+    assert(pos.x < 32)
+    assert(pos.y < 32)
+    assert(pos.z < 32)
+
+	return pos.x | (pos.y << 5) | (pos.z << 10)
 }

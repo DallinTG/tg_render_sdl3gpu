@@ -23,26 +23,21 @@ import "core:sort"
 import "core:slice"
 
 
-Vert_Face::struct  #align(16){
-	// block_pos:[3]u8,
-	pos:[4][4]f32,
-	// uv:[4][2]f32,
-	modl_index:u32,
-	// img_index:u32,
-	// layer:u32,
+Vert_Face::struct{
+	block_pos:u16,
+	geometry_face_index:u16,
 	texture_face_index:u32,
-	pad_ :u32,
 }
 Vert_Face_Texure::struct{
 	img_index:u32,
 	layer:u32,
 	uv:[4][2]f32,
 }
-
-Vert_Model::struct{
+Vert_Face_Geometry::struct{
 	pos:[4][4]f32,
-	uv:[4][2]f32,
+	normal: [4]f32,
 }
+
 
 Indexed_GPU_Data::struct{
 	mesh_hd:Mesh_Handle,
@@ -181,6 +176,5 @@ draw_cube_by_face::proc(
 			face.texture_face_index = cast(u32)texture_face_index
 		}
 	}
-	fmt.print("wewe\n\n")
 	draw_faces_mat(mesh, faces[:], mat)
 }

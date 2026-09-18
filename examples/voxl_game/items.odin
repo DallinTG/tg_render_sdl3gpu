@@ -119,6 +119,8 @@ Item_Info::struct{
 	texture_id:tg.Texture_ID_Types,
 	texture_face_index:u16,
 
+	model_indices:Model_Indices,
+
 	tier:		Item_Tier,
 	rarity:		Item_Rarity
 }
@@ -200,13 +202,26 @@ Item_Rarity::enum{
 
 init_all_item_data::proc(){
 	init_texture_facees()
+	init_geometry_facees()
+	g.cube_face_geometry =  create_cube_face_geometry()
 	reg_materials()
 	reg_items()
 	
 	update_texture_facees()
+	update_geometry_facees()
 }
 init_texture_facees::proc(){
 	g.texture_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Texure,"texture_facees_gpu_data")
+}
+init_geometry_facees::proc(){
+	g.geometry_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Geometry,"geometry_facees_gpu_data")
+}
+
+update_texture_facees::proc(){
+	tg.update_indexed_gpu_data(&g.texture_facees)
+}
+update_geometry_facees::proc(){
+	tg.update_indexed_gpu_data(&g.geometry_facees)
 }
 add_texture_face::proc(tex_id:tg.Texture_ID_Types, $T:typeid)->(index:int){
 	texture:=tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
@@ -228,20 +243,188 @@ add_texture_face::proc(tex_id:tg.Texture_ID_Types, $T:typeid)->(index:int){
 }
 
 // resends the data to the gpu
-update_texture_facees::proc(){
-	tg.update_indexed_gpu_data(&g.texture_facees)
-}
+
 
 sand_hd:Item_HD
 DF_FACE_TYPE::tg.Vert_Face_Texure
 reg_items::proc(){
 	sand_info:Item_Info={
 		texture_id = .Food_Drink_Glass_Juice_Cocktail,
-		texture_face_index = cast(u16)add_texture_face(.Food_Drink_Glass_Juice_Cocktail,DF_FACE_TYPE)
+		texture_face_index = cast(u16)add_texture_face(.Food_Drink_Glass_Juice_Cocktail,DF_FACE_TYPE),
+		model_indices = g.cube_face_geometry,
 		// texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
 	}
 	sand_hd=reg.add(&g.item_reg,sand_info,{1,1})
 }
 reg_materials::proc(){
 
+}
+Cube_Indices::enum{
+	pos_x,
+	neg_x,
+	pos_y,
+	neg_y,
+	pos_z,
+	neg_z,
+}
+
+Model_Indices :: struct {
+	cube_indices:[Cube_Indices]int,
+
+	extra_count:int,
+	extra:int,
+}
+
+create_cube_face_geometry :: proc() -> Model_Indices {
+	result: Model_Indices
+
+	// result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
+	// 	&g.geometry_facees,
+	// 	tg.Vert_Face_Geometry{
+	// 		pos = {
+	// 			{1, 0, 0, 1},
+	// 			{1, 0, 1, 1},
+	// 			{1, 1, 1, 1},
+	// 			{1, 1, 0, 1},
+	// 		},
+	// 	},
+	// )
+
+	// result.cube_indices[.neg_x] = tg.add_indexed_gpu_data(
+	// 	&g.geometry_facees,
+	// 	tg.Vert_Face_Geometry{
+	// 		pos = {
+	// 			{0, 0, 1, 1},
+	// 			{0, 0, 0, 1},
+	// 			{0, 1, 0, 1},
+	// 			{0, 1, 1, 1},
+	// 		},
+	// 	},
+	// )
+
+	// result.cube_indices[.pos_y] = tg.add_indexed_gpu_data(
+	// 	&g.geometry_facees,
+	// 	tg.Vert_Face_Geometry{
+	// 		pos = {
+	// 			{0, 1, 0, 1},
+	// 			{1, 1, 0, 1},
+	// 			{1, 1, 1, 1},
+	// 			{0, 1, 1, 1},
+	// 		},
+	// 	},
+	// )
+
+	// result.cube_indices[.neg_y] = tg.add_indexed_gpu_data(
+	// 	&g.geometry_facees,
+	// 	tg.Vert_Face_Geometry{
+	// 		pos = {
+	// 			{0, 0, 1, 1},
+	// 			{1, 0, 1, 1},
+	// 			{1, 0, 0, 1},
+	// 			{0, 0, 0, 1},
+	// 		},
+	// 	},
+	// )
+
+	// result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
+	// 	&g.geometry_facees,
+	// 	tg.Vert_Face_Geometry{
+	// 		pos = {
+	// 			{1, 0, 1, 1},
+	// 			{0, 0, 1, 1},
+	// 			{0, 1, 1, 1},
+	// 			{1, 1, 1, 1},
+	// 		},
+	// 	},
+	// )
+
+	// result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
+	// 	&g.geometry_facees,
+	// 	tg.Vert_Face_Geometry{
+	// 		pos = {
+	// 			{0, 0, 0, 1},
+	// 			{1, 0, 0, 1},
+	// 			{1, 1, 0, 1},
+	// 			{0, 1, 0, 1},
+	// 		},
+	// 	},
+	// )
+// 
+//___________________________________
+
+	result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 0,  0,  0, 1},
+				{ 0, -1,  0, 1},
+				{ 1, -1,  0, 1},
+				{ 1,  0,  0, 1},
+			},
+		},
+	)
+
+	result.cube_indices[.neg_x] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 1,  0, -1, 1},
+				{ 1, -1, -1, 1},
+				{ 0, -1, -1, 1},
+				{ 0,  0, -1, 1},
+			},
+		},
+	)
+
+	result.cube_indices[.pos_y] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 1,  0,  0, 1},
+				{ 1, -1,  0, 1},
+				{ 1, -1, -1, 1},
+				{ 1,  0, -1, 1},
+			},
+		},
+	)
+
+	result.cube_indices[.neg_y] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 0,  0, -1, 1},
+				{ 0, -1, -1, 1},
+				{ 0, -1,  0, 1},
+				{ 0,  0,  0, 1},
+			},
+		},
+	)
+
+	result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 0,  0, -1, 1},
+				{ 0,  0,  0, 1},
+				{ 1,  0,  0, 1},
+				{ 1,  0, -1, 1},
+			},
+		},
+	)
+
+	result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 1, -1, -1, 1},
+				{ 1, -1,  0, 1},
+				{ 0, -1,  0, 1},
+				{ 0, -1, -1, 1},
+			},
+		},
+	)
+	
+	tg.update_indexed_gpu_data(&g.geometry_facees)
+
+	return result
 }

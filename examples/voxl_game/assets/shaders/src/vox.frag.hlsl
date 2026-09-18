@@ -5,6 +5,7 @@ struct Input{
 	uint   img_index : TEXCOORD2;
 	uint   layer: TEXCOORD3;
 	float4 color2 : TEXCOORD4;
+	float4 normal : TEXCOORD5;
 };
 // Texture2D<float4> tex : register(t0, space2);
 SamplerState smp[10] : register(s0, space2);

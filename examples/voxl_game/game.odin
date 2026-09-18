@@ -25,10 +25,13 @@ s:^tg.State
 g:^Game
 Game::struct{
 	
-	item_reg:Item_Reg,
-	material_reg:Material_Reg,
-	texture_facees:tg.Indexed_GPU_Data,
+	item_reg:		Item_Reg,
+	material_reg:	Material_Reg,
+	texture_facees:	tg.Indexed_GPU_Data,
+	geometry_facees:tg.Indexed_GPU_Data,
 
+	//TODO temp
+	cube_face_geometry:Model_Indices,
 	t_chuck:Chunck,
 
 	cam:tg.Camera,
@@ -150,7 +153,12 @@ main :: proc(){
 	mesh_chunck(&g.t_chuck)
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
-
+		fmt.println(
+    "Face size:",
+    size_of(tg.Vert_Face),
+    "Geometry size:",
+    size_of(tg.Vert_Face_Geometry),
+)
 		tg.update_time_info()
 		tg.gather_input_info()
 		tg.run_steam_callbacks()
