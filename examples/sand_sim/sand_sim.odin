@@ -449,12 +449,12 @@ out_of_bounds_cell:Cell={
 
 CHUNCK_VERTEX_TYPE::Sand_Sim_Cell_Vertex_Data
 init_chunck_mesh::proc(w_map:^Chunck, map_info:=DEFALT_MAP_INFO){
-	mesh_cpu:tg.Mesh_CPU={attribute_type = CHUNCK_VERTEX_TYPE}
-	mesh_attribute_info:=type_info_of(mesh_cpu.attribute_type)
-	// resize(&mesh_cpu.vertex_buf,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4) 
-	tg.init_buffer(&mesh_cpu.vertex_buf,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4,.static_buff)
-	resize(&mesh_cpu.index_buf,CHUNCK_SIZE * CHUNCK_SIZE * 6) 
-	w_map.mesh = tg.create_mesh(mesh_cpu,CHUNCK_SIZE * CHUNCK_SIZE * 4,CHUNCK_SIZE * CHUNCK_SIZE * 6,debug_name = "chunk")
+	// mesh_cpu:tg.Mesh_CPU={attribute_type = CHUNCK_VERTEX_TYPE}
+	// mesh_attribute_info:=type_info_of(mesh_cpu.attribute_type)
+	// // resize(&mesh_cpu.vertex_buf,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4) 
+	// tg.init_buffer(&mesh_cpu.vertex_buf,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4,.static_buff)
+	// resize(&mesh_cpu.index_buf,CHUNCK_SIZE * CHUNCK_SIZE * 6) 
+	w_map.mesh = tg.create_mesh(CHUNCK_VERTEX_TYPE,CHUNCK_SIZE * CHUNCK_SIZE * 4,CHUNCK_SIZE * CHUNCK_SIZE * 6,.static_buff,debug_name = "chunk")
 }
 
 get_cell_pos_by_pos::proc(pos:[2]f32)->([2]int){
@@ -471,8 +471,8 @@ init_map::proc(new_map:^^Map,){
 			init_chunck_mesh(&chunck)
 		}
 	}
-	overlay_mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data}
-	new_map^.overlay_mesh = tg.create_mesh(overlay_mesh_cpu,debug_name = "overlay_mesh")
+	// overlay_mesh_cpu:tg.Mesh_CPU={attribute_type = tg.Vertex_Data}
+	new_map^.overlay_mesh = tg.create_mesh(tg.Vertex_Data,debug_name = "overlay_mesh")
 	
 }
 // init_chunck::proc(new_chunck:^^Chunck,){

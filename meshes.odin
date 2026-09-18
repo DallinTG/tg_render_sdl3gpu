@@ -41,16 +41,12 @@ Mesh_CPU::struct{
 	vertex_buf:Generic_Buffer,
 	
 	index_buf:[dynamic]u32,
-	// index_buf:[]u32,
 	index_buf_used:u32,
 	attribute_type:typeid,
 	attribute_size:int,
 	
 	name:string,//for debuging
 }
-
-
-
 Mesh_GPU::struct{
 	is_good:bool,
 	vertex_buf:^sdl.GPUBuffer,
@@ -80,16 +76,24 @@ CUBE_INDEXES:[]u32:{
 	0+4*5, 1+4*5, 2+4*5, 0+4*5, 2+4*5, 3+4*5,
 }
 
-create_mesh::proc(cpu_mesh:Mesh_CPU, max_num_verts:int = 50000, max_num_indices:int = 50000*2,debug_name:string = "not_named") ->(mesh_hd:Mesh_Handle){
+create_mesh::proc(attribute_type:typeid, max_num_verts:int = 50000, max_num_indices:int = 50000*2, type:Buffer_Types = .dynamic_buff, debug_name:string = "not_named") ->(mesh_hd:Mesh_Handle){
+	cpu_mesh:Mesh_CPU
+	cpu_mesh.attribute_type = attribute_type
 	mesh_attribute_info:=type_info_of(cpu_mesh.attribute_type)
 	mesh:Mesh
 
 	vertices_byte_size:=(max_num_verts*mesh_attribute_info.size)
 	indices_byte_size:=(max_num_indices*size_of(u32))
 
+	if type == .static_buff{
+		init_buffer(&cpu_mesh.vertex_buf,vertices_byte_size, vertices_byte_size,.static_buff)
+		resize(&cpu_mesh.index_buf, max_num_indices) 
+	}
+
 	mesh.cpu = cpu_mesh
 	mesh.cpu.attribute_size = mesh_attribute_info.size
 	mesh.cpu.name = debug_name
+
 
 	mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
 		usage={.GRAPHICS_STORAGE_READ},
@@ -131,7 +135,7 @@ update_mesh::proc(mesh_hd:Mesh_Handle){
 	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
 	
-	fmt.print("vertices_byte_size",mesh.cpu.name,vertices_byte_size,"\n")
+	// fmt.print("vertices_byte_size",mesh.cpu.name,vertices_byte_size,"\n")
 
 	if vertices_byte_size > 0 {
 		sdl.UploadToGPUBuffer(
@@ -188,8 +192,9 @@ append_to_mesh::proc(mesh:^Mesh_CPU,indices:[]u32,vertices:$T/[]$E, shift_indice
 		}
 	}
 	vertices_byte_size:= len(vertices) * attribute_size
-
+	// fmt.println("APPEND: ",mesh.name,len(vertices),attribute_size,vertices_byte_size)
 	buffer_write_slice(&mesh.vertex_buf,vertices)
+	// fmt.println("AFTER APPEND: ",len(mesh.vertex_buf.buffer.buf))
 	append(&mesh.index_buf, ..indices)
 
 	mesh.index_buf_used += cast(u32)len(indices)

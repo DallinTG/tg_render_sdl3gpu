@@ -25,8 +25,11 @@ s:^tg.State
 g:^Game
 Game::struct{
 	
-	t_chuck:Chunck,
 	item_reg:Item_Reg,
+	material_reg:Material_Reg,
+	texture_facees:tg.Indexed_GPU_Data,
+
+	t_chuck:Chunck,
 
 	cam:tg.Camera,
 	cam_ui:tg.Camera,
@@ -99,9 +102,10 @@ init::proc(){
 	init_defalt_ui_boxes()
 
 	tg.update_steam_friend_info()
-	reg_items()
+	init_all_item_data()
 	init_chunck_mesh(&g.t_chuck)
 	init_rendering_thread()
+
 	
 
 
@@ -146,6 +150,7 @@ main :: proc(){
 	mesh_chunck(&g.t_chuck)
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
+
 		tg.update_time_info()
 		tg.gather_input_info()
 		tg.run_steam_callbacks()

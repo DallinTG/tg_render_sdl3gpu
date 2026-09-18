@@ -26,22 +26,53 @@ import "core:slice"
 Vert_Face::struct  #align(16){
 	// block_pos:[3]u8,
 	pos:[4][4]f32,
-	uv:[4][2]f32,
+	// uv:[4][2]f32,
 	modl_index:u32,
-	img_index:u32,
-	layer:u32,
+	// img_index:u32,
+	// layer:u32,
+	texture_face_index:u32,
 	pad_ :u32,
 }
+Vert_Face_Texure::struct{
+	img_index:u32,
+	layer:u32,
+	uv:[4][2]f32,
+}
 
-Vert_Modl::struct{
+Vert_Model::struct{
 	pos:[4][4]f32,
 	uv:[4][2]f32,
 }
 
+Indexed_GPU_Data::struct{
+	mesh_hd:Mesh_Handle,
+	count:int,
+}
+
+init_indexed_gpu_data::proc(vert_type:typeid,debug_name:="Face_Texure_Mesh")->(indexed_gpu_data:Indexed_GPU_Data){
+	indexed_gpu_data.mesh_hd = create_mesh(vert_type,debug_name = debug_name)
+	return
+}
+add_indexed_gpu_data::proc(indexed_gpu_data:^Indexed_GPU_Data,data:$T)->(index:int){
+	index = indexed_gpu_data.count
+	new_data:[1]T
+	new_data[0] = data
+	mesh:=get_mesh(indexed_gpu_data.mesh_hd)
+	append_to_mesh(&mesh.cpu, {}, new_data[:], )
+	indexed_gpu_data.count += 1
+	return
+}
+update_indexed_gpu_data::proc(indexed_gpu_data:^Indexed_GPU_Data){
+	update_mesh(indexed_gpu_data.mesh_hd)
+}
+delete_indexed_gpu_data::proc(indexed_gpu_data:^Indexed_GPU_Data){
+	delete_mesh(indexed_gpu_data.mesh_hd)
+}
 
 draw_cube_by_face::proc(
 	mesh: ^Mesh_CPU, 
-	tex:^Texture, 
+	tex:^Texture,
+	texture_face_index:u16 = 0,
 	$vert_t:typeid, 
 	col:[4]f32={1,1,1,1}, 
 	cube:Cube, 
@@ -102,24 +133,7 @@ draw_cube_by_face::proc(
 		faces[3].col = col
 		faces[4].col = col
 		faces[5].col = col
-		// verts[6].col = col
-		// verts[7].col = col
-		// verts[8].col = col
-		// verts[9].col = col
-		// verts[10].col = col
-		// verts[11].col = col
-		// verts[12].col = col
-		// verts[13].col = col
-		// verts[14].col = col
-		// verts[15].col = col
-		// verts[16].col = col
-		// verts[17].col = col
-		// verts[18].col = col
-		// verts[19].col = col
-		// verts[20].col = col
-		// verts[21].col = col
-		// verts[22].col = col
-		// verts[23].col = col
+
 	}
 	when intrinsics.type_has_field(vert_t, "uv"){
 		faces[0].uv[0] =  {0,0}
@@ -162,5 +176,11 @@ draw_cube_by_face::proc(
 			face.layer = tex.layer
 		}
 	}
+	when intrinsics.type_has_field(vert_t, "texture_face_index"){
+		for &face in &faces{
+			face.texture_face_index = cast(u32)texture_face_index
+		}
+	}
+	fmt.print("wewe\n\n")
 	draw_faces_mat(mesh, faces[:], mat)
 }

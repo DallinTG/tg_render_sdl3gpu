@@ -414,8 +414,8 @@ init_clay_instance::proc(
     
     inst.gbl_font_size = gbl_font_size
 	// inst.pass = create_render_pass(vert_shader, frag_shader, info = DEFALT_TEXT_PASS)
-	mesh_cpu:Mesh_CPU={attribute_type = DEFALT_UI_VERTEX_DATA}
-	inst.mesh = create_mesh(mesh_cpu,gpu_buf_size,debug_name ="clay_inst")
+	// mesh_cpu:Mesh_CPU={attribute_type = DEFALT_UI_VERTEX_DATA}
+	inst.mesh = create_mesh(DEFALT_UI_VERTEX_DATA,gpu_buf_size,debug_name ="clay_inst")
 	inst.z_offseter = z_offseter
 	
 	minMemorySize: c.size_t = cast(c.size_t)cl.MinMemorySize()
@@ -457,6 +457,7 @@ render_clay_instance::proc(
 		pass, 
 		camera, 
 		{inst.mesh}, 
+		{},
 	)	
 }
 

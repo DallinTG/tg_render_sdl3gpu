@@ -17,7 +17,7 @@ import cl"../../clay-odin"
 import st"core:strings"
 import steam "../../steamworks"
 import reg "../../registry"
-
+import "base:intrinsics"
 
 
 Item_Reg::reg.Registry(Item_Info,Item_HD)
@@ -116,7 +116,8 @@ Item_Info::struct{
 	tags:Item_Tags,
 	material_hd:Material_HD,
 	name:string,
-	texture:^tg.Texture,
+	texture_id:tg.Texture_ID_Types,
+	texture_face_index:u16,
 
 	tier:		Item_Tier,
 	rarity:		Item_Rarity
@@ -194,4 +195,53 @@ Item_Rarity::enum{
 	Mythic,
 	Devine,
 	MOFASNSASD
+}
+
+
+init_all_item_data::proc(){
+	init_texture_facees()
+	reg_materials()
+	reg_items()
+	
+	update_texture_facees()
+}
+init_texture_facees::proc(){
+	g.texture_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Texure,"texture_facees_gpu_data")
+}
+add_texture_face::proc(tex_id:tg.Texture_ID_Types, $T:typeid)->(index:int){
+	texture:=tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
+	data:T
+	when intrinsics.type_has_field(T, "img_index"){
+		data.img_index = cast(u32)texture.groop_index
+	}
+	when intrinsics.type_has_field(T, "layer"){
+		data.layer = texture.layer
+	}
+	when intrinsics.type_has_field(T, "layer"){
+		data.uv[0] =  {0,0}
+		data.uv[1] =  {0,1}
+		data.uv[2] =  {1,1}
+		data.uv[3] =  {1,0}
+	}
+	index=tg.add_indexed_gpu_data(&g.texture_facees,data)
+	return
+}
+
+// resends the data to the gpu
+update_texture_facees::proc(){
+	tg.update_indexed_gpu_data(&g.texture_facees)
+}
+
+sand_hd:Item_HD
+DF_FACE_TYPE::tg.Vert_Face_Texure
+reg_items::proc(){
+	sand_info:Item_Info={
+		texture_id = .Food_Drink_Glass_Juice_Cocktail,
+		texture_face_index = cast(u16)add_texture_face(.Food_Drink_Glass_Juice_Cocktail,DF_FACE_TYPE)
+		// texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
+	}
+	sand_hd=reg.add(&g.item_reg,sand_info,{1,1})
+}
+reg_materials::proc(){
+
 }

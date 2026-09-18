@@ -20,14 +20,6 @@ import reg "../../registry"
 
 
 
-sand_hd:Item_HD
-
-reg_items::proc(){
-	sand_info:Item_Info={
-		texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
-	}
-	sand_hd=reg.add(&g.item_reg,sand_info,{1,1})
-}
 
 Voxel_Modle::union{
 	Voxel_Non,
@@ -60,13 +52,8 @@ mesh_map::proc(w_map:^Map){
 }
 CHUNCK_VERTEX_TYPE::tg.Vert_Face
 
-init_chunck_mesh::proc(chunck:^Chunck,debug_name := "chunk"){
-	mesh_cpu:tg.Mesh_CPU={attribute_type = CHUNCK_VERTEX_TYPE}
-	mesh_attribute_info:=type_info_of(mesh_cpu.attribute_type)
-	// resize(&mesh_cpu.vertex_buf,size_of(CHUNCK_VERTEX_TYPE) * CHUNCK_SIZE * CHUNCK_SIZE * 4) 
-	tg.init_buffer(&mesh_cpu.vertex_buf,0,size_of(CHUNCK_VERTEX_TYPE)*CHUNCK_SIZE * CHUNCK_SIZE * CHUNCK_SIZE * 6 *6)
-	// resize(&mesh_cpu.index_buf,size_of(CHUNCK_VERTEX_TYPE)*CHUNCK_SIZE * CHUNCK_SIZE * CHUNCK_SIZE * 6 *6) 
-	chunck.mesh_hd = tg.create_mesh(mesh_cpu,CHUNCK_SIZE * CHUNCK_SIZE * CHUNCK_SIZE * 6 * 6*6, CHUNCK_SIZE * CHUNCK_SIZE * CHUNCK_SIZE * 6 * 6*6,debug_name = debug_name)
+init_chunck_mesh::proc(chunck:^Chunck,debug_name := "chunk"){ 
+	chunck.mesh_hd = tg.create_mesh(CHUNCK_VERTEX_TYPE, CHUNCK_SIZE * CHUNCK_SIZE * CHUNCK_SIZE * 6 * 6*6, CHUNCK_SIZE * CHUNCK_SIZE * CHUNCK_SIZE * 6 * 6*6,debug_name = debug_name)
 
 	for &plane, x in &chunck.data{
 		for &col, y in &plane{
@@ -88,7 +75,7 @@ mesh_chunck::proc(chunck:^Chunck){
 			for vox, z in col{
 				item:=reg.get(&g.item_reg,vox.item_hd)
 				if item != nil{
-					tg.draw_cube_by_face(&mesh.cpu,item.texture,tg.Vert_Face,{1,1,1,1},tg.Cube{{cast(f32)x,cast(f32)y,cast(f32)z},{1,1,1}},{0,0,0})
+					tg.draw_cube_by_face(&mesh.cpu,nil,item.texture_face_index,tg.Vert_Face,{1,1,1,1},tg.Cube{{cast(f32)x,cast(f32)y,cast(f32)z},{1,1,1}},{0,0,0})
 				}
 				// tg.draw_rect(&mesh.cpu,text,tg.Vertex_Data,{1,1,1,1},tg.Rect{{cast(f32)x,cast(f32)y,cast(f32)z},{1,1}})
 			}
@@ -99,14 +86,14 @@ mesh_chunck::proc(chunck:^Chunck){
 
 	tg.update_mesh(chunck.mesh_hd)
 }
-hds:[1]tg.Mesh_Handle
 render_chunck::proc(chunck:^Chunck){
+	hds:[1]tg.Mesh_Handle
 	if chunck.mesh_hd == {0,0}{
 		log.log(.Warning,"\ncant do render_chunck() chunck mesh hd == {0,0} \n")
 		return
 	}
 	hds[0]=chunck.mesh_hd
-	tg.do_render_pass(&g.vox_pass, &g.cam, hds[:],type = .face)
+	tg.do_render_pass(&g.vox_pass, &g.cam, hds[:],{&g.texture_facees},type = .face)
 }
 
 render_map::proc(w_map:^Map){

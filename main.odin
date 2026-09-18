@@ -131,6 +131,7 @@ R_Pass ::struct{
 	msaa_texture: ^sdl.GPUTexture,
 	
 	texture_sampler_binding:[dynamic]sdl.GPUTextureSamplerBinding,//this gets rebuilt per frame
+
 	// win_size:[2]i32,
 	ubo:UBO,
 	render_target:^Render_Target,
@@ -354,6 +355,7 @@ do_render_pass::proc(
 	pass:^R_Pass,
 	cam:^Camera,
 	meshes_hd:[]Mesh_Handle,
+	indexed_gpu_data:[]^Indexed_GPU_Data,
 	type:Render_Type = .vertex,
 ){
 
@@ -397,7 +399,6 @@ do_render_pass::proc(
 	for &texture in  s.texture_arr_groop{
 		if texture != {}{
 			texture:=get_gpu_texture(texture.tex_hd)
-			// on a siantifck calculator what butoon is used to 
 			append_elem(&pass.texture_sampler_binding ,sdl.GPUTextureSamplerBinding{ texture = texture.data, sampler = pass.sampler})
 		}
 	}
@@ -418,12 +419,18 @@ do_render_pass::proc(
 		for mesh_hd in meshes_hd{
 			mesh:=get_mesh(mesh_hd)
 			// sdl.BindGPUVertexStorageBuffers
-			sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
-			// sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)
+			buffer_count:u32
+			sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &mesh.gpu.vertex_buf,1)
+			buffer_count+=1
+			for data in indexed_gpu_data{
+				index_mesh :=get_mesh(data.mesh_hd)
+				sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &index_mesh.gpu.vertex_buf,1)
+				buffer_count+=1
+			}
+
 			face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
-			fmt.print("face_count",face_count,"\n")
+			// fmt.print(face_count,len(mesh.cpu.vertex_buf.buffer.buf),mesh.cpu.attribute_size,"\n")
 			sdl.DrawGPUPrimitives(pass.render_pas,face_count*6, 1, 0, 0) 
-			
 		}
 	}
 }
