@@ -29,10 +29,12 @@ Game::struct{
 	material_reg:	Material_Reg,
 	texture_facees:	tg.Indexed_GPU_Data,
 	geometry_facees:tg.Indexed_GPU_Data,
-
+	
+	w_map:Map,
+	
 	//TODO temp
 	cube_face_geometry:Model_Indices,
-	t_chuck:Chunck,
+	// t_chuck:Chunck,
 
 	cam:tg.Camera,
 	cam_ui:tg.Camera,
@@ -106,7 +108,8 @@ init::proc(){
 
 	tg.update_steam_friend_info()
 	init_all_item_data()
-	init_chunck_mesh(&g.t_chuck)
+	init_map(&g.w_map)
+
 	init_rendering_thread()
 
 	
@@ -149,16 +152,11 @@ main :: proc(){
 	// g.sand_sim_pass = tg.create_render_pass(&g.frame_data, g.vert_shader,  g.frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "Sand_Sim_Pass")
 
 	init()
-	
-	mesh_chunck(&g.t_chuck)
+	mesh_map(&g.w_map)
+	// mesh_chunck(&g.t_chuck)
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
-		fmt.println(
-    "Face size:",
-    size_of(tg.Vert_Face),
-    "Geometry size:",
-    size_of(tg.Vert_Face_Geometry),
-)
+	
 		tg.update_time_info()
 		tg.gather_input_info()
 		tg.run_steam_callbacks()
@@ -264,16 +262,17 @@ do_rendering::proc(){
 	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
 	defer tg.end_tracking_allocator(&tracking_allocator)
 
+	// mesh_map(&g.w_map)
 	rendering_loop:for !s.app_should_close {
 		tg.start_frame(&g.frame_data)
 
 		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
-		render_chunck(&g.t_chuck,)
+		// render_chunck(&g.t_chuck,)
+		render_map(&g.w_map)
 		tg.submit_render(&g.vox_pass)
 
 		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE_AND_STORE)
 		tg.submit_render(&g.pass)
-
 		tg.start_render(&g.ui_pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
 		tg.render_clay_instance(g.ui_clay_inst,&g.ui_pass,&g.cam_ui)
 		tg.submit_render(&g.ui_pass)

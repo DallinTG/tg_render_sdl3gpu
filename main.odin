@@ -409,6 +409,7 @@ do_render_pass::proc(
 	case .vertex:
 		for mesh_hd in meshes_hd{
 			mesh:=get_mesh(mesh_hd)
+			sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
 			// sdl.BindGPUVertexStorageBuffers
 			sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
 			sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)	
@@ -418,6 +419,7 @@ do_render_pass::proc(
 	case .face:
 		for mesh_hd in meshes_hd{
 			mesh:=get_mesh(mesh_hd)
+			sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
 			// sdl.BindGPUVertexStorageBuffers
 			buffer_count:u32
 			sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &mesh.gpu.vertex_buf,1)
@@ -427,7 +429,7 @@ do_render_pass::proc(
 				sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &index_mesh.gpu.vertex_buf,1)
 				buffer_count+=1
 			}
-
+			
 			face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
 			// fmt.print(face_count,len(mesh.cpu.vertex_buf.buffer.buf),mesh.cpu.attribute_size,"\n")
 			sdl.DrawGPUPrimitives(pass.render_pas,face_count*6, 1, 0, 0) 

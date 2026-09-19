@@ -59,6 +59,7 @@ Mesh::struct{
 	handle:Mesh_Handle,
 	cpu:Mesh_CPU,
 	gpu:Mesh_GPU,
+	mesh_mat :Mat4,
 }
 
 TRIANGLE_INDEXES:[]u32:{
@@ -94,16 +95,19 @@ create_mesh::proc(attribute_type:typeid, max_num_verts:int = 50000, max_num_indi
 	mesh.cpu.attribute_size = mesh_attribute_info.size
 	mesh.cpu.name = debug_name
 
+	if vertices_byte_size> 0{
+		mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
+			usage={.GRAPHICS_STORAGE_READ},
+			size = cast(u32)vertices_byte_size,
+		})
+	}
 
-	mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
-		usage={.GRAPHICS_STORAGE_READ},
-		size = cast(u32)vertices_byte_size,
-	})
-
-	mesh.gpu.index_buf = sdl.CreateGPUBuffer(s.gpu_device,{
-		usage={.GRAPHICS_STORAGE_READ},
-		size = cast(u32)indices_byte_size,
-	})
+	if indices_byte_size> 0{
+		mesh.gpu.index_buf = sdl.CreateGPUBuffer(s.gpu_device,{
+			usage={.GRAPHICS_STORAGE_READ},
+			size = cast(u32)indices_byte_size,
+		})
+	}
 
 	mesh.gpu.transfer_buf = sdl.CreateGPUTransferBuffer(s.gpu_device,{
 		usage = .UPLOAD,
@@ -120,6 +124,7 @@ delete_mesh::proc(mesh_hd:Mesh_Handle){
 	delete_buffer(&mesh.cpu.vertex_buf)
 	sdl.ReleaseGPUBuffer(s.gpu_device, mesh.gpu.index_buf)
 	sdl.ReleaseGPUBuffer(s.gpu_device, mesh.gpu.vertex_buf)
+	sdl.ReleaseGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 	hm.remove(&s.meshes,mesh_hd)
 	
 }

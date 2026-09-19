@@ -572,11 +572,11 @@ render_map::proc(w_map:^Map){
 			index+=1
 		}
 	}
-	tg.do_render_pass(&g.sand_sim_pass, &g.cam, meshes[:],)
+	tg.do_render_pass(&g.sand_sim_pass, &g.cam, meshes[:],{})
 }
 
 render_map_debug_overlay::proc(w_map:^Map){
-	tg.do_render_pass(&g.pass, &g.cam, {w_map.overlay_mesh},)
+	tg.do_render_pass(&g.pass, &g.cam, {w_map.overlay_mesh},{},)
 }
 
 rand_1_1:[2]int:{1,-1}

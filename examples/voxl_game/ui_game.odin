@@ -59,6 +59,8 @@ start_menu::proc(){
 						fmt.print("Button--Host\n")
 						string_ep:=tg.endpoint_from_string_endpoint()
 						tg.start_server(server_endpoint = s.steam.networking_identity, net_inst=&g.server)
+					}else{
+						fmt.print("warning no steame client found need open")
 					}
 					// tg.start_server(server_endpoint = string_ep, net_inst=&g.server)
 			

@@ -183,7 +183,7 @@ draw_update_entitys_mesh::proc(entitys:^Entity_Handle_Map,){
 	tg.update_mesh(g.entitys_mesh)
 }
 render_entitys::proc(entitys:^Entity_Handle_Map,){
-	tg.do_render_pass(&g.pass, &g.cam, {g.entitys_mesh})
+	tg.do_render_pass(&g.pass, &g.cam, {g.entitys_mesh},{})
 }
 get_entity::proc(hd:Entity_Handle)->(ent:^Entity){
 	ent = hm.get(&g.entitys,hd)

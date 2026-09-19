@@ -49,6 +49,11 @@ struct type_UBO
     float4x4 mvp;
 };
 
+struct type_Chuck_Data
+{
+    float4x4 chuck_mat;
+};
+
 struct Face
 {
     uint packed_block_pos_geometry_face_index;
@@ -89,7 +94,7 @@ struct type_StructuredBuffer_Face_Geometry
     Face_Geometry _m0[1];
 };
 
-constant spvUnsafeArray<uint, 6> _68 = spvUnsafeArray<uint, 6>({ 0u, 1u, 2u, 2u, 3u, 0u });
+constant spvUnsafeArray<uint, 6> _71 = spvUnsafeArray<uint, 6>({ 0u, 1u, 2u, 2u, 3u, 0u });
 
 struct main0_out
 {
@@ -102,59 +107,59 @@ struct main0_out
     float4 gl_Position [[position]];
 };
 
-vertex main0_out main0(constant type_UBO& UBO [[buffer(0)]], const device type_StructuredBuffer_Face& Faces [[buffer(1)]], const device type_StructuredBuffer_Face_Texure& face_texure [[buffer(2)]], const device type_StructuredBuffer_Face_Geometry& face_geometry [[buffer(3)]], uint gl_VertexIndex [[vertex_id]])
+vertex main0_out main0(constant type_UBO& UBO [[buffer(0)]], constant type_Chuck_Data& Chuck_Data [[buffer(1)]], const device type_StructuredBuffer_Face& Faces [[buffer(2)]], const device type_StructuredBuffer_Face_Texure& face_texure [[buffer(3)]], const device type_StructuredBuffer_Face_Geometry& face_geometry [[buffer(4)]], uint gl_VertexIndex [[vertex_id]])
 {
     main0_out out = {};
-    uint _73 = gl_VertexIndex / 6u;
-    uint _74 = gl_VertexIndex % 6u;
-    uint _81 = Faces._m0[_73].packed_block_pos_geometry_face_index & 65535u;
-    uint _82 = Faces._m0[_73].packed_block_pos_geometry_face_index >> 16u;
-    uint _83 = Faces._m0[_73].texture_face_index & 65535u;
-    float2 _129;
-    float4 _130;
-    if (_68[_74] == 0u)
+    uint _76 = gl_VertexIndex / 6u;
+    uint _77 = gl_VertexIndex % 6u;
+    uint _84 = Faces._m0[_76].packed_block_pos_geometry_face_index & 65535u;
+    uint _85 = Faces._m0[_76].packed_block_pos_geometry_face_index >> 16u;
+    uint _86 = Faces._m0[_76].texture_face_index & 65535u;
+    float2 _132;
+    float4 _133;
+    if (_71[_77] == 0u)
     {
-        _129 = face_texure._m0[_83].uv0;
-        _130 = face_geometry._m0[_82].pos0;
+        _132 = face_texure._m0[_86].uv0;
+        _133 = face_geometry._m0[_85].pos0;
     }
     else
     {
-        float2 _127;
-        float4 _128;
-        if (_68[_74] == 1u)
+        float2 _130;
+        float4 _131;
+        if (_71[_77] == 1u)
         {
-            _127 = face_texure._m0[_83].uv1;
-            _128 = face_geometry._m0[_82].pos1;
+            _130 = face_texure._m0[_86].uv1;
+            _131 = face_geometry._m0[_85].pos1;
         }
         else
         {
-            float2 _125;
-            float4 _126;
-            if (_68[_74] == 2u)
+            float2 _128;
+            float4 _129;
+            if (_71[_77] == 2u)
             {
-                _125 = face_texure._m0[_83].uv2;
-                _126 = face_geometry._m0[_82].pos2;
+                _128 = face_texure._m0[_86].uv2;
+                _129 = face_geometry._m0[_85].pos2;
             }
             else
             {
-                bool _120 = _68[_74] == 3u;
-                _125 = select(float2(0.0), face_texure._m0[_83].uv3, bool2(_120));
-                _126 = select(float4(0.0, 0.0, 0.0, 1.0), face_geometry._m0[_82].pos3, bool4(_120));
+                bool _123 = _71[_77] == 3u;
+                _128 = select(float2(0.0), face_texure._m0[_86].uv3, bool2(_123));
+                _129 = select(float4(0.0, 0.0, 0.0, 1.0), face_geometry._m0[_85].pos3, bool4(_123));
             }
-            _127 = _125;
-            _128 = _126;
+            _130 = _128;
+            _131 = _129;
         }
-        _129 = _127;
-        _130 = _128;
+        _132 = _130;
+        _133 = _131;
     }
-    float3 _132 = _130.xyz + float3(float(_81 & 31u), float((_81 >> 5u) & 31u), float((_81 >> 10u) & 31u));
-    out.gl_Position = UBO.mvp * float4(_132.x, _132.y, _132.z, _130.w);
+    float3 _135 = _133.xyz + float3(float(_84 & 31u), float((_84 >> 5u) & 31u), float((_84 >> 10u) & 31u));
+    out.gl_Position = UBO.mvp * (Chuck_Data.chuck_mat * float4(_135.x, _135.y, _135.z, _133.w));
     out.out_var_TEXCOORD0 = float4(1.0);
-    out.out_var_TEXCOORD1 = _129;
-    out.out_var_TEXCOORD2 = face_texure._m0[_83].img_index;
-    out.out_var_TEXCOORD3 = face_texure._m0[_83].layer;
+    out.out_var_TEXCOORD1 = _132;
+    out.out_var_TEXCOORD2 = face_texure._m0[_86].img_index;
+    out.out_var_TEXCOORD3 = face_texure._m0[_86].layer;
     out.out_var_TEXCOORD4 = float4(0.0);
-    out.out_var_TEXCOORD5 = face_geometry._m0[_82].normal.xyz;
+    out.out_var_TEXCOORD5 = face_geometry._m0[_85].normal.xyz;
     return out;
 }
 

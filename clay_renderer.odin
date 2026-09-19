@@ -114,6 +114,10 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
 	inst.z_offset = 0
 	clear_mesh_cpu(mesh)
 	draw_rect_clay(inst, mesh,0, 0, 0, 0, {0,0,0,0})// this is just a blank rect to force it to update
+
+	draw_fps(mesh,UI_Vertex_Data ,{80,0,0})
+	draw_tps(mesh,UI_Vertex_Data ,{80,-20,0})
+
     for i in 0 ..< render_commands.length {
         render_command := cl.RenderCommandArray_Get(render_commands, i)
         bounds := render_command.boundingBox

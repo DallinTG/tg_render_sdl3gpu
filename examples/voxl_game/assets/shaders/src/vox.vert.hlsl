@@ -2,6 +2,10 @@ cbuffer UBO : register(b0, space1){
 	float4x4 mvp;
 };
 
+cbuffer Chuck_Data : register(b1, space1){ 
+    float4x4 chuck_mat;
+};
+
 static const uint CORNER_MAP[6] = { 0, 1, 2, 2, 3, 0 };
 struct Face {
 	uint packed_block_pos__geometry_face_index;
@@ -89,7 +93,7 @@ Output main(uint vid : SV_VertexID) {
 
 	final_pos.xyz += block_pos;
 
-	output.position = mul(mvp, final_pos);
+	output.position = mul(mvp,mul(chuck_mat, final_pos));
 	output.uv = final_uv;
 
 	output.img_index = tex.img_index;
