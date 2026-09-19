@@ -32,4 +32,22 @@ Chunck_Data::[CHUNCK_SIZE][CHUNCK_SIZE][CHUNCK_SIZE]Voxel
 Chunck::struct{
 	data:Chunck_Data,
 	mesh_hd:tg.Mesh_Handle,
+
+	draw_cmd:[Model_Indices]sdl.GPUIndirectDrawCommand
+}
+
+
+Model_Indices::enum{
+	pos_x,
+	neg_x,
+	pos_y,
+	neg_y,
+	pos_z,
+	neg_z,
+	extra,
+}
+
+Model_Data :: struct {
+	cube_indices:[Model_Indices]int,
+	extra_count:int,
 }

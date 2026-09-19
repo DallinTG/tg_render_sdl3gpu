@@ -33,7 +33,7 @@ Game::struct{
 	w_map:Map,
 	
 	//TODO temp
-	cube_face_geometry:Model_Indices,
+	cube_face_geometry:Model_Data,
 	// t_chuck:Chunck,
 
 	cam:tg.Camera,
@@ -124,7 +124,7 @@ main :: proc(){
 	defer tg.end_tracking_allocator(&tracking_allocator)
 	tg.name_thread("Main")
 	g = new(Game)
-	s=tg.init()
+	s=tg.init(init_settings=tg.DF_VULKIN_ONLY_INIT_SETTINGS)
 	
 	g.window = tg.init_window()
 

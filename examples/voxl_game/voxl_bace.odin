@@ -136,7 +136,7 @@ draw_cube_by_face_item::proc(
 		face.texture_face_index = cast(u32)item.texture_face_index
 	}
 	for &face,i in &faces{
-		face.geometry_face_index = cast(u16)item.model_indices.cube_indices[cast(Cube_Indices)i]
+		face.geometry_face_index = cast(u16)item.model_data.cube_indices[cast(Model_Indices)i]
 	}
 	
 	tg.draw_feces(mesh,faces[:])

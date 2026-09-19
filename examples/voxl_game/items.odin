@@ -119,7 +119,7 @@ Item_Info::struct{
 	texture_id:tg.Texture_ID_Types,
 	texture_face_index:u16,
 
-	model_indices:Model_Indices,
+	model_data:Model_Data,
 
 	tier:		Item_Tier,
 	rarity:		Item_Rarity
@@ -251,7 +251,7 @@ reg_items::proc(){
 	sand_info:Item_Info={
 		texture_id = .Food_Drink_Glass_Juice_Cocktail,
 		texture_face_index = cast(u16)add_texture_face(.Food_Drink_Glass_Juice_Cocktail,DF_FACE_TYPE),
-		model_indices = g.cube_face_geometry,
+		model_data = g.cube_face_geometry,
 		// texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
 	}
 	sand_hd=reg.add(&g.item_reg,sand_info,{1,1})
@@ -259,24 +259,10 @@ reg_items::proc(){
 reg_materials::proc(){
 
 }
-Cube_Indices::enum{
-	pos_x,
-	neg_x,
-	pos_y,
-	neg_y,
-	pos_z,
-	neg_z,
-}
 
-Model_Indices :: struct {
-	cube_indices:[Cube_Indices]int,
 
-	extra_count:int,
-	extra:int,
-}
-
-create_cube_face_geometry :: proc() -> Model_Indices {
-	result: Model_Indices
+create_cube_face_geometry :: proc() -> Model_Data {
+	result: Model_Data
 
 	// result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
 	// 	&g.geometry_facees,

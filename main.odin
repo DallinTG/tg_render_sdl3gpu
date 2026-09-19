@@ -25,6 +25,8 @@ import "core:image/bmp"
 import "core:image/png"
 import "core:image/tga"
 
+import vk "vendor:vulkan"
+
 USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
 
 Handle :: hm.Handle32
@@ -213,7 +215,25 @@ end_tracking_allocator::proc(tra_allocator:^mem.Tracking_Allocator){
 	}
 }
 
-init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_location)->(new_state:^State){
+Init_Settings::struct{
+	force_vulkin:bool,
+	debug_mode:bool,
+	suported_shaders:sdl.GPUShaderFormat,
+	init_flags: sdl.InitFlags,
+}
+DF_INIT_SETTINGS:Init_Settings:{
+	force_vulkin = false,
+	debug_mode = true,
+	suported_shaders = {.SPIRV ,.DXIL ,.MSL},
+	init_flags = {.VIDEO},
+}
+DF_VULKIN_ONLY_INIT_SETTINGS:Init_Settings:{
+	force_vulkin = true,
+	debug_mode = true,
+	suported_shaders = {.SPIRV},
+	init_flags = {.VIDEO},
+}
+init :: proc(state:^State=nil,init_settings:Init_Settings=DF_INIT_SETTINGS, allocator:= context.allocator, location:=#caller_location)->(new_state:^State){
 	ok:bool
 	sdl.SetLogPriorities(.VERBOSE)
 	// sdl.SetLogOutputFunction()
@@ -227,12 +247,62 @@ init :: proc(state:^State=nil, allocator:= context.allocator, location:=#caller_
 	init_steam()
 	s.frame_allocator = runtime.arena_allocator(&s.frame_arena)
 	s.allocator = allocator
-	ok = sdl.Init({.VIDEO})
-	assert(ok , "SDL init failed")
-	s.gpu_device = sdl.CreateGPUDevice({.SPIRV ,.DXIL ,.MSL} ,true, nil)
-	assert(s.gpu_device != nil,"SDL CreateGPUDevice failed")
-	
+	ok = sdl.Init(init_settings.init_flags)
+	log.log(.Info, "GPU drivers:", sdl.GetNumGPUDrivers())
+	for i in 0..<sdl.GetNumGPUDrivers() {
+		log.log(.Info,i, sdl.GetGPUDriver(i))
+	}
 
+	assert(ok , "SDL init failed")
+	if !init_settings.force_vulkin {
+		s.gpu_device = sdl.CreateGPUDevice(init_settings.suported_shaders ,init_settings.debug_mode, nil)
+		assert(s.gpu_device != nil,"SDL CreateGPUDevice failed gen_gpu")
+	}else{
+		vulkan_11_features := vk.PhysicalDeviceVulkan11Features{
+			sType = .PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+			pNext = nil,
+			shaderDrawParameters = true,
+		}
+		vulkan_options := sdl.GPUVulkanOptions{
+			vulkan_api_version = vk.MAKE_API_VERSION(0, 1, 2, 0),
+			feature_list       = rawptr(&vulkan_11_features),
+		}
+
+		props := sdl.CreateProperties()
+
+		sdl.SetStringProperty(
+			props,
+			sdl.PROP_GPU_DEVICE_CREATE_NAME_STRING,
+			"vulkan",
+		)
+		sdl.SetPointerProperty(
+			props,
+			sdl.PROP_GPU_DEVICE_CREATE_VULKAN_OPTIONS_POINTER,
+			rawptr(&vulkan_options),
+		)
+		sdl.SetBooleanProperty(
+			props,
+			sdl.PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN,
+			true,
+		)
+		sdl.SetBooleanProperty(
+			props,
+			sdl.PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN,
+			init_settings.debug_mode,
+		)
+
+		log.log(.Info,"GPU hint:", sdl.GetHint("SDL_GPU_DRIVER"))
+
+		s.gpu_device = sdl.CreateGPUDeviceWithProperties(props)
+
+		sdl.DestroyProperties(props)
+		
+		if s.gpu_device == nil {
+			log.log(.Error, "Vulkan device creation failed:", sdl.GetError())
+			assert(s.gpu_device != nil,fmt.aprint("SDL CreateGPUDevice failed in VULKIN_ONLY path",sdl.GetError()))
+		}
+	}
+	log.log(.Info, "GPU driver:", sdl.GetGPUDeviceDriver(s.gpu_device))
 
 	try_depth_format::proc(format: sdl.GPUTextureFormat){
 		if sdl.GPUTextureSupportsFormat(s.gpu_device, format, .D2, {.DEPTH_STENCIL_TARGET}){
@@ -433,6 +503,8 @@ do_render_pass::proc(
 			face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
 			// fmt.print(face_count,len(mesh.cpu.vertex_buf.buffer.buf),mesh.cpu.attribute_size,"\n")
 			sdl.DrawGPUPrimitives(pass.render_pas,face_count*6, 1, 0, 0) 
+
+			// sdl.DrawGPUPrimitivesIndirect()
 		}
 	}
 }
