@@ -111,6 +111,7 @@ init::proc(){
 	init_map(&g.w_map)
 
 	init_rendering_thread()
+	s.ind_cmd_buff = tg.init_face_indirect_buffers()
 
 	
 
@@ -265,6 +266,8 @@ do_rendering::proc(){
 	// mesh_map(&g.w_map)
 	rendering_loop:for !s.app_should_close {
 		tg.start_frame(&g.frame_data)
+		
+		tg.upload_face_indirect_commands(&g.vox_pass)
 
 		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
 		// render_chunck(&g.t_chuck,)

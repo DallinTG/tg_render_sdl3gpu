@@ -34,6 +34,7 @@ Generic_Buffer::struct{
 Buffer_Types::enum{
 	dynamic_buff,
 	static_buff,
+	indirect_cmd_buff,
 }
 
 init_buffer::proc(buff:^Generic_Buffer,len:int,size:int,type:Buffer_Types = .dynamic_buff){

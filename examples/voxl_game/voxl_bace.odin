@@ -117,6 +117,8 @@ render_map::proc(w_map:^Map){
 	tg.do_render_pass(&g.vox_pass, &g.cam, hds[:],{&g.texture_facees,&g.geometry_facees},type = .face)
 }
 
+
+
 render_map_debug_overlay::proc(w_map:^Map){
 	// tg.do_render_pass(&g.pass, &g.cam, {w_map.overlay_mesh},)
 }

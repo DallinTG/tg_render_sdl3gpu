@@ -96,10 +96,18 @@ create_mesh::proc(attribute_type:typeid, max_num_verts:int = 50000, max_num_indi
 	mesh.cpu.name = debug_name
 
 	if vertices_byte_size> 0{
-		mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
-			usage={.GRAPHICS_STORAGE_READ},
-			size = cast(u32)vertices_byte_size,
-		})
+		switch type{
+		case .dynamic_buff,.static_buff:
+			mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
+				usage={.GRAPHICS_STORAGE_READ},
+				size = cast(u32)vertices_byte_size,
+			})
+		case .indirect_cmd_buff:
+			mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
+				usage={.INDIRECT},
+				size = cast(u32)vertices_byte_size,
+			})
+		}
 	}
 
 	if indices_byte_size> 0{

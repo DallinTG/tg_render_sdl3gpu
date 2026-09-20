@@ -35,6 +35,12 @@ State :: struct{
 	app_should_close:bool,
 
 	steam:Steam_Info,
+	
+	//TODO Temp
+	// face_indirect_buffer:^sdl.GPUBuffer,
+	// face_indirect_transfer:^sdl.GPUTransferBuffer,
+	ind_cmd_buff:Mesh_Handle,
+
 
 	defalt_context: runtime.Context,
 	allocator: runtime.Allocator,
@@ -487,27 +493,200 @@ do_render_pass::proc(
 			
 		}
 	case .face:
-		for mesh_hd in meshes_hd{
-			mesh:=get_mesh(mesh_hd)
-			sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
-			// sdl.BindGPUVertexStorageBuffers
-			buffer_count:u32
-			sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &mesh.gpu.vertex_buf,1)
-			buffer_count+=1
-			for data in indexed_gpu_data{
-				index_mesh :=get_mesh(data.mesh_hd)
-				sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &index_mesh.gpu.vertex_buf,1)
-				buffer_count+=1
-			}
-			
-			face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
-			// fmt.print(face_count,len(mesh.cpu.vertex_buf.buffer.buf),mesh.cpu.attribute_size,"\n")
-			sdl.DrawGPUPrimitives(pass.render_pas,face_count*6, 1, 0, 0) 
+		// for mesh_hd in meshes_hd{
+		// 	mesh:=get_mesh(mesh_hd)
+		// 	sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
+		// 	// sdl.BindGPUVertexStorageBuffers
+		// 	buffer_count:u32
+		// 	sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &mesh.gpu.vertex_buf,1)
+		// 	buffer_count+=1
+		// 	for data in indexed_gpu_data{
+		// 		index_mesh :=get_mesh(data.mesh_hd)
+		// 		sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &index_mesh.gpu.vertex_buf,1)
+		// 		buffer_count+=1
+		// 	}
+		// 	face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
+		// 	fmt.print(face_count,len(mesh.cpu.vertex_buf.buffer.buf),mesh.cpu.attribute_size,"\n")
+		// 	sdl.DrawGPUPrimitives(pass.render_pas,face_count*6, 1, 0, 0) 
+		// }
+// 
+// 
+//---------------------------------------------------------
+// 
+ 
+		 for mesh_hd in meshes_hd{
+	        mesh := get_mesh(mesh_hd)
+	
+	        sdl.PushGPUVertexUniformData(
+	            pass.frame_data.render_cmd_buf,
+	            1,
+	            &mesh.mesh_mat,
+	            size_of(mesh.mesh_mat),
+	        )
+	
+	        buffer_count: u32
+	        sdl.BindGPUVertexStorageBuffers(
+	            pass.render_pas,
+	            buffer_count,
+	            &mesh.gpu.vertex_buf,
+	            1,
+	        )
+	        buffer_count += 1
+	
+	        for data in indexed_gpu_data{
+	            index_mesh := get_mesh(data.mesh_hd)
+	
+	            sdl.BindGPUVertexStorageBuffers(
+	                pass.render_pas,
+	                buffer_count,
+	                &index_mesh.gpu.vertex_buf,
+	                1,
+	            )
+	
+	            buffer_count += 1
+	        }
+	
+	        face_count := cast(u32)(
+	            len(mesh.cpu.vertex_buf.buffer.buf) / mesh.cpu.attribute_size
+	        )
+	
 
-			// sdl.DrawGPUPrimitivesIndirect()
-		}
+        // ------------------------------------------------------------
+        // Draw the 4 indirect commands.
+        // ------------------------------------------------------------
+        ind_cmb:= get_mesh(s.ind_cmd_buff)
+        sdl.DrawGPUPrimitivesIndirect(
+            pass.render_pas,
+            ind_cmb.gpu.vertex_buf,
+            0,
+            4,
+        )
+        }
 	}
 }
+
+upload_face_indirect_commands :: proc(
+
+	pass:^R_Pass,
+) {
+	commands :[dynamic;100]sdl.GPUIndirectDrawCommand
+
+	// for mesh_hd in meshes_hd {
+	// 	mesh := get_mesh(mesh_hd)
+
+		face_count :u32=32 * 32 * 32 * 6
+
+		faces_per_section := face_count / 4
+		verts_per_section := faces_per_section * 6
+
+		append(&commands,
+			sdl.GPUIndirectDrawCommand{
+				num_vertices = verts_per_section,
+				num_instances = 1,
+				first_vertex = 0,
+				first_instance = 0,
+			},
+			sdl.GPUIndirectDrawCommand{
+				num_vertices = verts_per_section,
+				num_instances = 1,
+				first_vertex = verts_per_section,
+				first_instance = 0,
+			},
+			sdl.GPUIndirectDrawCommand{
+				num_vertices = verts_per_section,
+				num_instances = 1,
+				first_vertex = verts_per_section * 2,
+				first_instance = 0,
+			},
+			sdl.GPUIndirectDrawCommand{
+				num_vertices = verts_per_section,
+				num_instances = 1,
+				first_vertex = verts_per_section * 3,
+				first_instance = 0,
+			},
+		)
+	
+		
+	// upload_size := size_of(commands[0]) * len(commands)
+
+	// mapped := sdl.MapGPUTransferBuffer(
+	// 	s.gpu_device,
+	// 	s.face_indirect_transfer,
+	// 	true,
+	// )
+
+	// assert(mapped != nil)
+
+	// mem.copy(
+	// 	mapped,
+	// 	raw_data(commands[:]),
+	// 	upload_size,
+	// )
+
+	// sdl.UnmapGPUTransferBuffer(
+	// 	s.gpu_device,
+	// 	s.face_indirect_transfer,
+	// )
+
+	// copy_pass := sdl.BeginGPUCopyPass(
+	// 	pass.frame_data.render_cmd_buf,
+	// )
+
+	// sdl.UploadToGPUBuffer(
+	// 	copy_pass,
+
+	// 	sdl.GPUTransferBufferLocation{
+	// 		transfer_buffer = s.face_indirect_transfer,
+	// 		offset = 0,
+	// 	},
+
+	// 	sdl.GPUBufferRegion{
+	// 		buffer = s.face_indirect_buffer,
+	// 		offset = 0,
+	// 		size = cast(u32)upload_size,
+	// 	},
+
+	// 	true,
+	// )
+
+	// sdl.EndGPUCopyPass(copy_pass)
+	ind_cmd_buff:=get_mesh(s.ind_cmd_buff)
+	append_to_mesh(&ind_cmd_buff.cpu,{},commands[:])
+	update_mesh(s.ind_cmd_buff)
+}
+
+
+init_face_indirect_buffers :: proc()->(mesh_hd: Mesh_Handle) {
+    // indirect_size := size_of(sdl.GPUIndirectDrawCommand) * 4
+
+    // s.face_indirect_buffer = sdl.CreateGPUBuffer(
+    //     s.gpu_device,
+    //     sdl.GPUBufferCreateInfo{
+    //         usage = {.INDIRECT},
+    //         size = cast(u32)indirect_size,
+    //     },
+    // )
+    
+    // s.face_indirect_transfer = sdl.CreateGPUTransferBuffer(
+    //     s.gpu_device,
+    //     sdl.GPUTransferBufferCreateInfo{
+    //         usage = .UPLOAD,
+    //         size = cast(u32)indirect_size,
+    //     },
+    // )
+
+    // assert(s.face_indirect_buffer != nil)
+    // assert(s.face_indirect_transfer != nil)
+
+    // sdl.SetGPUBufferName(
+    //     s.gpu_device,
+    //     s.face_indirect_buffer,
+    //     "face indirect test buffer",
+    // )
+
+    return create_mesh(sdl.GPUIndirectDrawCommand,4)
+}
+
 check_and_resize_all_frame_buffers::proc(
 	cam:^Camera,
 	render_target:Render_Targets,

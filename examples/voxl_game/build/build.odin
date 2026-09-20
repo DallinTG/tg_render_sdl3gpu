@@ -26,6 +26,12 @@ main :: proc() {
 		os.exit(1)
 	}
 	for file in files {
+		if file.name == "vox.vert.hlsl"||file.name == "vox.frag.hlsl"{
+			fmt.print(file.name," do just spv on this\n")
+			shadercross(file, "spv")
+			shadercross(file, "json")
+			continue
+		}
 		shadercross(file, "spv")
 		shadercross(file, "dxil")
 		shadercross(file, "msl")
