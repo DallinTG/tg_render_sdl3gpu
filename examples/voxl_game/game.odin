@@ -109,9 +109,10 @@ init::proc(){
 	tg.update_steam_friend_info()
 	init_all_item_data()
 	init_map(&g.w_map)
-
+	mesh_map(&g.w_map)
+	upload_chunks_to_gpu(&g.w_map)
 	init_rendering_thread()
-	s.ind_cmd_buff = tg.init_face_indirect_buffers()
+	// s.ind_cmd_buff = tg.init_face_indirect_buffers()
 
 	
 
@@ -151,13 +152,11 @@ main :: proc(){
 	g.ui_pass = tg.create_render_pass(&g.frame_data, g.ui_vert_shader, g.ui_frag_shader, name = "UI_Pass")
 	g.vox_pass = tg.create_render_pass(&g.frame_data, g.vox_vert_shader,  g.vox_frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "VOX_Pass")
 	// g.sand_sim_pass = tg.create_render_pass(&g.frame_data, g.vert_shader,  g.frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "Sand_Sim_Pass")
-
 	init()
-	mesh_map(&g.w_map)
+	
 	// mesh_chunck(&g.t_chuck)
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
-	
 		tg.update_time_info()
 		tg.gather_input_info()
 		tg.run_steam_callbacks()
@@ -262,18 +261,15 @@ do_rendering::proc(){
 	context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
 	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
 	defer tg.end_tracking_allocator(&tracking_allocator)
-
 	// mesh_map(&g.w_map)
 	rendering_loop:for !s.app_should_close {
 		tg.start_frame(&g.frame_data)
-		
-		tg.upload_face_indirect_commands(&g.vox_pass)
-
+		// tg.upload_face_indirect_commands(&g.vox_pass)
+		update_w_map_draw_cmds_buff(&g.w_map)
 		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
 		// render_chunck(&g.t_chuck,)
 		render_map(&g.w_map)
 		tg.submit_render(&g.vox_pass)
-
 		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE_AND_STORE)
 		tg.submit_render(&g.pass)
 		tg.start_render(&g.ui_pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)

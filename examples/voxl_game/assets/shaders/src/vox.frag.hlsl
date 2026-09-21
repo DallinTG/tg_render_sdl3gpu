@@ -56,3 +56,8 @@ float4 main(Input input) : SV_Target0 {
     
     return color * input.color * tint + input.color2;
 }
+
+
+// float4 main(Input input) : SV_Target0 {
+// 	return float4(1, 0, 0, 1);
+// }

@@ -462,6 +462,7 @@ render_clay_instance::proc(
 		camera, 
 		{inst.mesh}, 
 		{},
+		{},
 	)	
 }
 

@@ -125,9 +125,9 @@ cbuffer UBO : register(b0, space1){
 	float4x4 mvp;
 };
 
-cbuffer Chuck_Data : register(b1, space1){ 
-    float4x4 chuck_mat;
-};
+// cbuffer Chuck_Data : register(b1, space1){ 
+//     float4x4 chuck_mat;
+// };
 
 static const uint CORNER_MAP[6] = { 0, 1, 2, 2, 3, 0 };
 struct Face {
@@ -149,12 +149,18 @@ struct Face_Geometry {
 
 	float4 normal;
 };
-
+struct Chunk_Data{
+	int   pos_x;
+	int   pos_y;
+	int   pos_z;
+	int   size;
+};
 
 
 StructuredBuffer<Face> Faces : register(t0, space0);
 StructuredBuffer<Face_Texure> face_texure : register(t1, space0);
 StructuredBuffer<Face_Geometry> face_geometry : register(t2, space0);
+StructuredBuffer<Chunk_Data> chunk_data : register(t3, space0);
 
 struct Output{
 	float4 position : SV_Position;
@@ -178,6 +184,7 @@ Output main(
 // Output main(uint vid : SV_VertexID) {
 
 	uint face_index = vid / 6;
+
 	uint corner_id = CORNER_MAP[vid % 6];
 
 	Face face = Faces[face_index];
@@ -227,7 +234,14 @@ Output main(
 
 	final_pos.xyz += block_pos;
 
-	output.position = mul(mvp,mul(chuck_mat, final_pos));
+	final_pos.xyz += float3(
+	    mul(chunk_data[draw_index].pos_x , 32),
+	    mul(chunk_data[draw_index].pos_y , 32),
+	    mul(chunk_data[draw_index].pos_z , 32)
+	);	
+
+
+	output.position = mul(mvp, final_pos);
 	output.uv = final_uv;
 
 	output.img_index = tex.img_index;
@@ -242,3 +256,27 @@ Output main(
 
 	return output;
 }
+
+
+
+// Output main(uint vid : SV_VertexID) {
+//     Output output;
+
+//     float4 positions[3] = {
+//         float4(-0.5, -0.5, 0, 1),
+//         float4( 0.5, -0.5, 0, 1),
+//         float4( 0.0,  0.5, 0, 1)
+//     };
+
+//     output.position = positions[vid % 3];
+
+//     output.color = float4(1, 1, 1, 1);
+//     output.uv = float2(0, 0);
+//     output.img_index = 0;
+//     output.layer = 0;
+//     output.color2 = float4(0, 0, 0, 0);
+//     output.normal = float3(0, 0, 1);
+//     output.draw_index = 0;
+
+//     return output;
+// }

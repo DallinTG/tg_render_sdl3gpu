@@ -90,14 +90,14 @@ create_mesh::proc(attribute_type:typeid, max_num_verts:int = 50000, max_num_indi
 		init_buffer(&cpu_mesh.vertex_buf,vertices_byte_size, vertices_byte_size,.static_buff)
 		resize(&cpu_mesh.index_buf, max_num_indices) 
 	}
-
-	mesh.cpu = cpu_mesh
-	mesh.cpu.attribute_size = mesh_attribute_info.size
-	mesh.cpu.name = debug_name
-
+	if type != .no_tranfer_buff{
+		mesh.cpu = cpu_mesh
+		mesh.cpu.attribute_size = mesh_attribute_info.size
+		mesh.cpu.name = debug_name
+	}
 	if vertices_byte_size> 0{
 		switch type{
-		case .dynamic_buff,.static_buff:
+		case .dynamic_buff,.static_buff,.no_tranfer_buff:
 			mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
 				usage={.GRAPHICS_STORAGE_READ},
 				size = cast(u32)vertices_byte_size,
@@ -116,11 +116,12 @@ create_mesh::proc(attribute_type:typeid, max_num_verts:int = 50000, max_num_indi
 			size = cast(u32)indices_byte_size,
 		})
 	}
-
-	mesh.gpu.transfer_buf = sdl.CreateGPUTransferBuffer(s.gpu_device,{
-		usage = .UPLOAD,
-		size = cast(u32)(vertices_byte_size + indices_byte_size),
-	})
+	if type != .no_tranfer_buff{
+		mesh.gpu.transfer_buf = sdl.CreateGPUTransferBuffer(s.gpu_device,{
+			usage = .UPLOAD,
+			size = cast(u32)(vertices_byte_size + indices_byte_size),
+		})
+	}
 
 	mesh_hd=hm.add(&s.meshes, mesh)
 	return
