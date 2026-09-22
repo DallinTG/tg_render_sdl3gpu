@@ -6,6 +6,7 @@ import tg"../../../tg_render_sdl3gpu"
 import sdl "vendor:sdl3"
 import "core:log"
 import "core:mem"
+import "core:math"
 import "core:hash"
 import "core:c"
 import "core:fmt"
@@ -19,6 +20,15 @@ import cl"../../clay-odin"
 import st"core:strings"
 import steam "../../steamworks"
 import reg "../../registry"
+
+Vox_Render_Settings::struct{
+	do_chunk_back_face_culling:bool,
+	do_chunk_frustum_culling:bool,
+}
+DF_VOX_RENDER_SETTINGS:Vox_Render_Settings:{
+	do_chunk_back_face_culling = false,
+	do_chunk_frustum_culling = false,
+}
 
 
 CHUNK_SIZE::32
@@ -77,6 +87,8 @@ Voxel::struct{
 Chunk_Vox_Data::struct{
 	handle:Chunk_Vox_Data_HD,
 	data:Chunk_Vox_Data_Raw,
+    // mask[y][z]   bit x = solid at [x][y][z]
+	is_solid_mask: [CHUNK_SIZE][CHUNK_SIZE]bit_set[u32(0)..<CHUNK_SIZE; u32],
 }
 
 add_chunck::proc(w_map:^Map,pos:[3]int){
@@ -130,13 +142,14 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[3]int){
 	gen_vox_data(vox_data,chunk,pos)
 }
 
-gen_vox_data::proc(vox:^Chunk_Vox_Data,chunk:^Chunk,pos:[3]int){
+gen_vox_data::proc(vox_chunk:^Chunk_Vox_Data,chunk:^Chunk,pos:[3]int){
 	chunk.chunk_shader_data.pos = {cast(i32)pos.x,cast(i32)pos.y,cast(i32)pos.z,1}
 
-	for &plane, x in &vox.data{
+	for &plane, x in &vox_chunk.data{
 		for &col, y in &plane{
 			for &vox, z in &col{
 				vox.item_hd = sand_hd
+				vox_chunk.is_solid_mask[y][z] += {u32(x)}
 			}
 		}
 	}
@@ -175,30 +188,98 @@ mesh_chunk::proc(w_map:^Map, chunk_hd:Chunk_HD){
 	}
 
 
-	for side in Model_Sides{
+	side_loop:for side in Model_Sides{
+		key:=cast([3]int)chunk.chunk_shader_data.pos.xyz
+		switch side{
+		case .pos_x:
+			key += {1,0,0}
+		case .neg_x:
+			key += {-1,0,0}
+		case .pos_y:
+			key += {0,1,0}
+		case .neg_y:
+			key += {0,-1,0}
+		case .pos_z:
+			key += {0,0,1}
+		case .neg_z:
+			key += {0,0,-1}
+		case .extra:
+			//donothing
+		}
+		no_neighbor:bool
+		neighbor_chunck_hd, ok := w_map.chunks_map[key]
+		if !ok{
+			no_neighbor = true
+		}
+		neighbor_vox:^Chunk_Vox_Data
+		neighbor_vox_ok:bool
+		neighbor_chunk, neighbor_ok := get_chunk(w_map, neighbor_chunck_hd)
+		if !neighbor_ok{
+			no_neighbor = true
+		}else{
+			neighbor_vox,neighbor_vox_ok=get_chunk_vox_data(w_map,neighbor_chunk.vox_data_hd)
+			if !neighbor_vox_ok{
+				no_neighbor = true
+			}
+		}
+
+		if no_neighbor {
+			neighbor_vox = nil
+		}
+
+
+		// if !ok {
+		//     log.log(
+		//         .Error,
+		//         "NO NEIGHBOR",
+		//         " chunk=", chunk.chunk_shader_data.pos.xyz,
+		//         " side=", side,
+		//         " key=", key,
+		//         " neighbor_hd=", neighbor_chunck_hd,
+		//     )
+		// }
+
+		// if !ok {continue side_loop}
+
+		// neighbor_chunk, neighbor_ok := get_chunk(w_map, neighbor_chunck_hd)
+		// if !neighbor_ok{
+			// log.log(.Error, "failed invalid neighbor_chunk_hd(",neighbor_chunk,")")
+			// {continue side_loop}
+		// }
+
 		mesh_data,mesh_data_ok:=get_chunk_mesh_data(w_map,chunk.mesh_data[side])
 		if !mesh_data_ok{
 			chunk.mesh_data[side] = hm.add(&w_map.chunks_mesh_data,Chunk_Mesh_Data{})
 		}
-		mesh_chunk_side(w_map,chunk.mesh_data[side], chunk.vox_data_hd,side)
+		mesh_chunk_side(w_map,chunk.mesh_data[side], chunk.vox_data_hd, neighbor_vox,side)
 	}
 }
 
 
-mesh_chunk_side::proc(w_map:^Map,mesh_hd:Chunk_Mesh_Data_HD, vox_data_hd:Chunk_Vox_Data_HD, side:Model_Sides){
+mesh_chunk_side::proc(w_map:^Map,mesh_hd:Chunk_Mesh_Data_HD, vox_data_hd:Chunk_Vox_Data_HD, neighbor_vox:^Chunk_Vox_Data, side:Model_Sides){
 	chunk_vox,vox_ok:=get_chunk_vox_data(w_map,vox_data_hd)
 	if !vox_ok {
-		log.log(.Error,"mesh_chunk_side() has failed, vox_data_hd not valid")
+		log.log(.Error,"failed, vox_data_hd not valid",vox_data_hd)
 		return
 	}
-	chuck_mesh,mesh_ok:=get_chunk_mesh_data(w_map,mesh_hd)
+	// neighbor_vox_ok:bool
+	// neighbor_vox:^Chunk_Vox_Data = nil
+	// neighbor_chunk, neighbor_ok := get_chunk(w_map, neighbor_chunck_hd)
+	// if neighbor_ok{
+	// 	neighbor_vox,neighbor_vox_ok=get_chunk_vox_data(w_map,neighbor_chunk.vox_data_hd)
+	// }
+	chuck_mesh,mesh_ok:=get_chunk_mesh_data(w_map,mesh_hd,)
 	if !mesh_ok {
-		log.log(.Error,"mesh_chunk_side() has failed, mesh_hd not valid")
+		log.log(.Error,"failed, mesh_hd not valid",mesh_hd)
 		return
 	}
-	mesh_by_side_all(w_map,chunk_vox,chuck_mesh,side)
+
+
+	// mesh_by_side_all(w_map,chunk_vox,chuck_mesh,side)
+	mesh_by_bit_mask(w_map,chunk_vox,neighbor_vox,chuck_mesh,side)
 }
 
+//WARN this one is very slow and is just for debuging
 mesh_by_side_all::proc(w_map:^Map,voxls:^Chunk_Vox_Data,mesh:^Chunk_Mesh_Data,side:Model_Sides){
 	clear(&mesh.data)
 	for plane, x in voxls.data{
@@ -219,6 +300,232 @@ mesh_by_side_all::proc(w_map:^Map,voxls:^Chunk_Vox_Data,mesh:^Chunk_Mesh_Data,si
 		}
 	}
 }
+
+mesh_by_bit_mask :: proc(
+    w_map: 			^Map,
+    voxls: 			^Chunk_Vox_Data,
+	neighbor_voxls: ^Chunk_Vox_Data,
+    mesh: 			^Chunk_Mesh_Data,
+    side: 			Model_Sides,
+) {
+    clear(&mesh.data)
+
+    for y in 0..<CHUNK_SIZE {
+        for z in 0..<CHUNK_SIZE {
+
+            current := voxls.is_solid_mask[y][z]
+
+            visible: bit_set[u32(0)..<CHUNK_SIZE; u32]
+	
+		switch side {
+
+		case .pos_x:
+		    current_u32 := transmute(u32)current
+		
+		    neighbor_u32 := current_u32 >> 1
+		
+		    // x = 31 has no neighbor inside this chunk.
+		    // If there is a neighboring chunk, use its x = 0.
+		    if neighbor_voxls != nil {
+		        neighbor_u32 &= ~(u32(1) << 31)
+		
+		        neighbor_edge := transmute(u32)neighbor_voxls.is_solid_mask[y][z]
+		
+		        if (neighbor_edge & 1) != 0 {
+		            neighbor_u32 |= u32(1) << 31
+		        }
+
+		    } else {
+		        // No neighboring chunk = empty space.
+		        // Make sure x = 31 is considered empty.
+		        neighbor_u32 &= ~(u32(1) << 31)
+		    }
+		
+		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
+		        current_u32 &~ neighbor_u32
+		    )
+		
+		case .neg_x:
+		    current_u32 := transmute(u32)current
+		
+		    neighbor_u32 := current_u32 << 1
+		
+		    // x = 0 has no neighbor inside this chunk.
+		    // If there is a neighboring chunk, use its x = 31.
+		    if neighbor_voxls != nil {
+		        neighbor_u32 &= ~u32(1)
+		
+		        neighbor_edge := transmute(u32)neighbor_voxls.is_solid_mask[y][z]
+		
+		        if (neighbor_edge & (u32(1) << 31)) != 0 {
+		            neighbor_u32 |= u32(1)
+		        }
+		    } else {
+		        // No neighboring chunk = empty space.
+		        neighbor_u32 &= ~u32(1)
+		    }
+		
+		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
+		        current_u32 &~ neighbor_u32
+		    )
+		
+		case .pos_y:
+		    if y == CHUNK_SIZE - 1 {
+		        if neighbor_voxls == nil {
+		            // No +Y chunk, so boundary is exposed.
+		            visible = current
+		        } else {
+		            neighbor := neighbor_voxls.is_solid_mask[0][z]
+		            visible = current - neighbor
+		        }
+		    } else {
+		        neighbor := voxls.is_solid_mask[y + 1][z]
+		        visible = current - neighbor
+		    }
+		
+		
+		case .neg_y:
+		    if y == 0 {
+		        if neighbor_voxls == nil {
+		            // No -Y chunk, so boundary is exposed.
+		            visible = current
+		        } else {
+		            neighbor := neighbor_voxls.is_solid_mask[CHUNK_SIZE - 1][z]
+		            visible = current - neighbor
+		        }
+		    } else {
+		        neighbor := voxls.is_solid_mask[y - 1][z]
+		        visible = current - neighbor
+		    }
+		
+		
+		case .pos_z:
+	    if z == CHUNK_SIZE - 1 {
+	        if neighbor_voxls == nil {
+	            // No +Z chunk, so boundary is exposed.
+	            visible = current
+	        } else {
+	            neighbor := neighbor_voxls.is_solid_mask[y][0]
+	            visible = current - neighbor
+	        }
+	    } else {
+	        neighbor := voxls.is_solid_mask[y][z + 1]
+	        visible = current - neighbor
+	    }
+			
+		
+		case .neg_z:
+	    if z == 0 {
+	        if neighbor_voxls == nil {
+	            // No -Z chunk, so boundary is exposed.
+	            visible = current
+	        } else {
+	            neighbor := neighbor_voxls.is_solid_mask[y][CHUNK_SIZE - 1]
+	            visible = current - neighbor
+	        }
+	    } else {
+	        neighbor := voxls.is_solid_mask[y][z - 1]
+	        visible = current - neighbor
+	    }
+		
+		
+		case .extra:
+		    return
+		}
+// 
+
+
+
+		// case .pos_x:
+		//     current_u32 := transmute(u32)current
+		//     neighbor_u32 := current_u32 >> 1
+		
+		//     visible = transmute(bit_set[0..<CHUNK_SIZE; u32])(
+		//         current_u32 &~ neighbor_u32
+		//     )
+		
+		// case .neg_x:
+		//     current_u32 := transmute(u32)current
+		//     neighbor_u32 := current_u32 << 1
+		
+		//     visible = transmute(bit_set[0..<CHUNK_SIZE; u32])(
+		//         current_u32 &~ neighbor_u32
+		//     )
+		
+		// case .pos_y:
+		//     if y == CHUNK_SIZE - 1 {
+		//         visible = current
+		//     } else {
+		//         neighbor := voxls.is_solid_mask[y + 1][z]
+		//         visible = current - neighbor
+		//     }
+		
+		// case .neg_y:
+		//     if y == 0 {
+		//         visible = current
+		//     } else {
+		//         neighbor := voxls.is_solid_mask[y - 1][z]
+		//         visible = current - neighbor
+		//     }
+		
+		// case .pos_z:
+		//     if z == CHUNK_SIZE - 1 {
+		//         visible = current
+		//     } else {
+		//         neighbor := voxls.is_solid_mask[y][z + 1]
+		//         visible = current - neighbor
+		//     }
+		
+		// case .neg_z:
+		//     if z == 0 {
+		//         visible = current
+		//     } else {
+		//         neighbor := voxls.is_solid_mask[y][z - 1]
+		//         visible = current - neighbor
+		//     }
+		
+		// case .extra:
+  //   		return
+  //    	}
+
+
+
+
+
+
+
+			// if visible != {} {
+			//     log.log(
+			//         .Info,
+			//         "side=", side,
+			//         " y=", y,
+			//         " z=", z,
+			//         " visible=", visible,
+			//         " current=", current,
+			//     )
+			// }
+            for x in visible {
+
+                vox := voxls.data[x][y][z]
+
+                item := reg.get(&g.item_reg, vox.item_hd)
+                if item == nil {
+                    log.log(.Error,"item == nil, invalid item or registry is borked item_hd(",vox.item_hd,")",)
+                    continue
+                }
+
+                face: tg.Vert_Face
+
+                face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
+                face.texture_face_index = cast(u32)item.texture_face_index
+                face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
+                // log.log(.Debug,"do append",x,y,z,side,face,"\n")
+                append(&mesh.data, face)
+            }
+        }
+    }
+}
+
 pack_block_pos :: proc(pos: [3]u16) -> u16 {
     assert(pos.x < 32)
     assert(pos.y < 32)
@@ -253,13 +560,19 @@ mesh_map::proc(w_map:^Map){
 }
 
 upload_chunks_to_gpu::proc(w_map:^Map){
+	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
+	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
+
 	itor:=hm.iterator_make(&w_map.chunks)
 	loop:for chunk, chunk_hd in hm.iterate(&itor) {
-		upload_chunk_to_gpu(w_map, chunk_hd)
+		upload_chunk_to_gpu(w_map, chunk_hd, copy_pass)
 	}
+
+	sdl.EndGPUCopyPass(copy_pass)
+	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 }
 
-upload_chunk_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD){
+upload_chunk_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD,  copy_pass: ^sdl.GPUCopyPass){
 	chunk, ok := get_chunk(w_map,chunk_hd)
 	if !ok{
 		log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")")
@@ -268,11 +581,11 @@ upload_chunk_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD){
 	for mesh_hd, side in chunk.mesh_data{
 		chunk_mesh,mesh_ok:=get_chunk_mesh_data(w_map,mesh_hd)
 		if !mesh_ok {continue}
-		upload_chunk_side_to_gpu(w_map,chunk,chunk_mesh,side)
+		upload_chunk_side_to_gpu(w_map,chunk,chunk_mesh,side,copy_pass)
 	}
 }
 
-upload_chunk_side_to_gpu::proc(w_map:^Map, chunk:^Chunk, mesh:^Chunk_Mesh_Data, side:Model_Sides){
+upload_chunk_side_to_gpu::proc(w_map:^Map, chunk:^Chunk, mesh:^Chunk_Mesh_Data, side:Model_Sides, copy_pass: ^sdl.GPUCopyPass){
 	ptr,index,err := xar.freelist_push_with_index(&w_map.chunks_in_mesh,1)
 	if err != .None{
 		log.log(.Error, "upload_chunk_side_to_gpu() failed xar.freelist_push_with_index() alocation err")
@@ -283,7 +596,22 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk:^Chunk, mesh:^Chunk_Mesh_Data, 
 
 	// chunk.chunk_shader_data_index = index
 
-	upload_data_to_mesh_by_offset(w_map.map_mesh_hd,w_map.chunck_transfer_buffer,mesh.data[:],first_face)
+	// log.log(
+ //        .Debug,
+ //        "UPLOAD chunk=",
+ //        chunk.chunk_shader_data.pos.xyz,
+ //        " side=",
+ //        side,
+ //        " faces=",
+ //        len(mesh.data),
+ //        " index=",
+ //        index,
+ //        " first_face=",
+ //        first_face,
+ //    )
+
+
+	upload_data_to_mesh_by_offset(w_map.map_mesh_hd,w_map.chunck_transfer_buffer,mesh.data[:],first_face, copy_pass)
 	chunk.draw_cmd[side].num_vertices = cast(u32)len(mesh.data[:])*6
 	chunk.draw_cmd[side].first_vertex = first_face *6
 	chunk.draw_cmd[side].num_instances = 1 
@@ -291,11 +619,11 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk:^Chunk, mesh:^Chunk_Mesh_Data, 
 
 }
 
-upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.GPUTransferBuffer,vertices:$T/[]$E,offset:u32){
+upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.GPUTransferBuffer,vertices:$T/[]$E,offset:u32, copy_pass: ^sdl.GPUCopyPass){
 	mesh:=tg.get_mesh(mesh_hd)
 	vertices_byte_size := len(vertices)*size_of(E)
 	offset_byte_size:=offset*size_of(E)
-	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, transfer_buffer, cycle = false)
+	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, transfer_buffer, cycle = true)
 
 	copy(transfer_mem[:vertices_byte_size],mem.slice_to_bytes(vertices[:]))
 
@@ -321,32 +649,213 @@ upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.
 
 	sdl.EndGPUCopyPass(copy_pass)
 	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
+	ok2:=sdl.WaitForGPUIdle(s.gpu_device)
 }
 
-update_w_map_draw_cmds_buff::proc(w_map:^Map){
+update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 	itor:=hm.iterator_make(&w_map.chunks)
 	mesh:=tg.get_mesh(w_map.draw_cmd_buf_hd)
 	chunck_shader_data:=tg.get_mesh(w_map.chunk_shader_data.mesh_hd)
 	w_map.chunk_shader_data.count = 0
 	tg.clear_mesh_cpu(&mesh.cpu)
 	tg.clear_mesh_cpu(&chunck_shader_data.cpu)
+	view_mat, proj_mat:=tg.make_view_mat_proj_mat(cam)
+	frustum:=make_frustum(view_mat, proj_mat)
 	loop:for chunk, chunk_hd in hm.iterate(&itor) {
-		for draw_cmd, side in chunk.draw_cmd{
-			if draw_cmd.num_vertices > 0{
-				draw_cmd_:[1]sdl.GPUIndirectDrawCommand=draw_cmd
-				tg.append_to_mesh(&mesh.cpu,{},draw_cmd_[:])
-	
-				chunck_shader_data_:[1]Chunk_Shader_Data=chunk.chunk_shader_data
-				tg.append_to_mesh(&chunck_shader_data.cpu,{},chunck_shader_data_[:])
-				w_map.chunk_shader_data.count+=1
+		cam_chunk_pos:=cam_pos_to_chunck_pos(cam.pos)
 
+		if should_cull_chunk(&frustum,chunk.chunk_shader_data.pos.xyz){
+			continue
+		}
+
+		for draw_cmd, side in chunk.draw_cmd{
+			if draw_cmd.num_vertices == 0{
+				continue
 			}
+			if should_cull_chunk_side(side,chunk.chunk_shader_data.pos.xyz, cast([3]i32)cam_chunk_pos){
+				continue
+			}
+			draw_cmd_:[1]sdl.GPUIndirectDrawCommand=draw_cmd
+			tg.append_to_mesh(&mesh.cpu,{},draw_cmd_[:])
+			chunck_shader_data_:[1]Chunk_Shader_Data=chunk.chunk_shader_data
+			tg.append_to_mesh(&chunck_shader_data.cpu,{},chunck_shader_data_[:])
+			// log.log(.Debug,"draw_cmd",draw_cmd,"chunck_shader_data_",chunck_shader_data_)
+			w_map.chunk_shader_data.count+=1
+
 		}
 	}
+	log.log(.Debug,"cmd count",w_map.chunk_shader_data.count)
 	tg.update_mesh(w_map.draw_cmd_buf_hd)
 	tg.update_mesh(w_map.chunk_shader_data.mesh_hd)
 }
 
+should_cull_chunk_side::proc(side:Model_Sides, chunk_pos:[3]i32, cam_chunk_pos:[3]i32)->(cull:bool){
+    if !g.settings.do_chunk_back_face_culling{return}
+
+    switch side{
+    case .pos_x:
+        if chunk_pos.x > cam_chunk_pos.x {cull = true}
+
+    case .neg_x:
+        if chunk_pos.x < cam_chunk_pos.x {cull = true}
+
+    case .pos_y:
+        if chunk_pos.y > cam_chunk_pos.y {cull = true}
+
+    case .neg_y:
+        if chunk_pos.y < cam_chunk_pos.y {cull = true}
+
+    case .pos_z:
+        if chunk_pos.z > cam_chunk_pos.z {cull = true}
+
+    case .neg_z:
+        if chunk_pos.z < cam_chunk_pos.z {cull = true}
+
+    case .extra:
+    }
+
+    return cull
+}
+cam_pos_to_chunck_pos::proc(cam_pos:[3]f32)->(cam_chunk_pos:[3]int){	
+	cam_chunk_pos.x = cast(int)math.floor(cam_pos.x / CHUNK_SIZE)
+	cam_chunk_pos.y = cast(int)math.floor(cam_pos.y / CHUNK_SIZE)
+	cam_chunk_pos.z = cast(int)math.floor(cam_pos.z / CHUNK_SIZE)
+	return
+}
+
+Frustum_Plane :: struct {
+    normal: [3]f32,
+    distance: f32,
+}
+
+Frustum :: struct {
+    planes: [6]Frustum_Plane,
+}
+
+make_frustum :: proc(view_mat: tg.Mat4, proj_mat: tg.Mat4) -> Frustum {
+    frustum: Frustum
+
+    vp := proj_mat * view_mat
+
+    // Left
+    frustum.planes[0].normal = {
+        vp[0][3] + vp[0][0],
+        vp[1][3] + vp[1][0],
+        vp[2][3] + vp[2][0],
+    }
+    frustum.planes[0].distance = vp[3][3] + vp[3][0]
+
+    // Right
+    frustum.planes[1].normal = {
+        vp[0][3] - vp[0][0],
+        vp[1][3] - vp[1][0],
+        vp[2][3] - vp[2][0],
+    }
+    frustum.planes[1].distance = vp[3][3] - vp[3][0]
+
+    // Bottom
+    frustum.planes[2].normal = {
+        vp[0][3] + vp[0][1],
+        vp[1][3] + vp[1][1],
+        vp[2][3] + vp[2][1],
+    }
+    frustum.planes[2].distance = vp[3][3] + vp[3][1]
+
+    // Top
+    frustum.planes[3].normal = {
+        vp[0][3] - vp[0][1],
+        vp[1][3] - vp[1][1],
+        vp[2][3] - vp[2][1],
+    }
+    frustum.planes[3].distance = vp[3][3] - vp[3][1]
+
+    // Near
+    // Vulkan / SDL_GPU depth range: 0 <= z <= w
+    frustum.planes[4].normal = {
+        vp[0][2],
+        vp[1][2],
+        vp[2][2],
+    }
+    frustum.planes[4].distance = vp[3][2]
+
+    // Far
+    frustum.planes[5].normal = {
+        vp[0][3] - vp[0][2],
+        vp[1][3] - vp[1][2],
+        vp[2][3] - vp[2][2],
+    }
+    frustum.planes[5].distance = vp[3][3] - vp[3][2]
+
+    // Normalize all planes.
+    for &plane in &frustum.planes {
+        length := math.sqrt(
+            plane.normal.x * plane.normal.x +
+            plane.normal.y * plane.normal.y +
+            plane.normal.z * plane.normal.z,
+        )
+
+        if length > 0 {
+            plane.normal /= length
+            plane.distance /= length
+        }
+    }
+
+    return frustum
+}
+
+
+should_cull_chunk :: proc(
+    frustum: ^Frustum,
+    chunk_pos: [3]i32,
+) -> bool {
+	if !g.settings.do_chunk_frustum_culling {return false}
+    min_pos: [3]f32 = {
+        cast(f32)chunk_pos.x * cast(f32)CHUNK_SIZE,
+        cast(f32)chunk_pos.y * cast(f32)CHUNK_SIZE,
+        cast(f32)chunk_pos.z * cast(f32)CHUNK_SIZE,
+    }
+
+    max_pos: [3]f32 = {
+        min_pos.x + cast(f32)CHUNK_SIZE,
+        min_pos.y + cast(f32)CHUNK_SIZE,
+        min_pos.z + cast(f32)CHUNK_SIZE,
+    }
+
+    for plane in frustum.planes {
+
+        p: [3]f32
+
+        if plane.normal.x >= 0 {
+            p.x = max_pos.x
+        } else {
+            p.x = min_pos.x
+        }
+
+        if plane.normal.y >= 0 {
+            p.y = max_pos.y
+        } else {
+            p.y = min_pos.y
+        }
+
+        if plane.normal.z >= 0 {
+            p.z = max_pos.z
+        } else {
+            p.z = min_pos.z
+        }
+
+        distance :=
+            plane.normal.x * p.x +
+            plane.normal.y * p.y +
+            plane.normal.z * p.z +
+            plane.distance
+
+        if distance < 0 {
+            return true
+        }
+    }
+
+    return false
+}
 
 render_map::proc(w_map:^Map){
 	tg.do_render_pass(&g.vox_pass, &g.cam, {w_map.map_mesh_hd},{&g.texture_facees,&g.geometry_facees, &w_map.chunk_shader_data}, {w_map.draw_cmd_buf_hd},type = .face)

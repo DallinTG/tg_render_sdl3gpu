@@ -338,7 +338,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 // 
 //___________________________________
 
-	result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
+	result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
@@ -346,6 +346,30 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 0, -1,  0, 1},
 				{ 1, -1,  0, 1},
 				{ 1,  0,  0, 1},
+			},
+		},
+	)
+
+	result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 1,  0, -1, 1},
+				{ 1, -1, -1, 1},
+				{ 0, -1, -1, 1},
+				{ 0,  0, -1, 1},
+			},
+		},
+	)
+
+	result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 1,  0,  0, 1},
+				{ 1, -1,  0, 1},
+				{ 1, -1, -1, 1},
+				{ 1,  0, -1, 1},
 			},
 		},
 	)
@@ -354,30 +378,6 @@ create_cube_face_geometry :: proc() -> Model_Data {
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
-				{ 1,  0, -1, 1},
-				{ 1, -1, -1, 1},
-				{ 0, -1, -1, 1},
-				{ 0,  0, -1, 1},
-			},
-		},
-	)
-
-	result.cube_indices[.pos_y] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			pos = {
-				{ 1,  0,  0, 1},
-				{ 1, -1,  0, 1},
-				{ 1, -1, -1, 1},
-				{ 1,  0, -1, 1},
-			},
-		},
-	)
-
-	result.cube_indices[.neg_y] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			pos = {
 				{ 0,  0, -1, 1},
 				{ 0, -1, -1, 1},
 				{ 0, -1,  0, 1},
@@ -386,7 +386,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 		},
 	)
 
-	result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
+	result.cube_indices[.pos_y] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
@@ -398,7 +398,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 		},
 	)
 
-	result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
+	result.cube_indices[.neg_y] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {

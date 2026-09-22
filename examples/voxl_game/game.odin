@@ -36,6 +36,7 @@ Game::struct{
 	cube_face_geometry:Model_Data,
 	// t_chuck:Chunck,
 
+	settings:Vox_Render_Settings,
 	cam:tg.Camera,
 	cam_ui:tg.Camera,
 	ui_clay_inst:tg.Clay_I_Handle,
@@ -95,7 +96,7 @@ Player_Info::struct{
 
 
 init::proc(){
-
+	g.settings = DF_VOX_RENDER_SETTINGS
 	wh:=tg.get_window_size(g.window)
 	g.ui_clay_inst=tg.init_clay_instance({cast(f32)wh.x,cast(f32)wh.y},g.ui_vert_shader, g.ui_frag_shader, gbl_font_size = .1)
 
@@ -109,8 +110,8 @@ init::proc(){
 	tg.update_steam_friend_info()
 	init_all_item_data()
 	init_map(&g.w_map)
-	mesh_map(&g.w_map)
-	upload_chunks_to_gpu(&g.w_map)
+	// mesh_map(&g.w_map)
+	// upload_chunks_to_gpu(&g.w_map)
 	init_rendering_thread()
 	// s.ind_cmd_buff = tg.init_face_indirect_buffers()
 
@@ -261,11 +262,14 @@ do_rendering::proc(){
 	context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
 	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
 	defer tg.end_tracking_allocator(&tracking_allocator)
+	mesh_map(&g.w_map)
+	upload_chunks_to_gpu(&g.w_map)
+
 	// mesh_map(&g.w_map)
 	rendering_loop:for !s.app_should_close {
 		tg.start_frame(&g.frame_data)
 		// tg.upload_face_indirect_commands(&g.vox_pass)
-		update_w_map_draw_cmds_buff(&g.w_map)
+		update_w_map_draw_cmds_buff(&g.w_map, &g.cam)
 		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
 		// render_chunck(&g.t_chuck,)
 		render_map(&g.w_map)

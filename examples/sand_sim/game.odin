@@ -321,11 +321,11 @@ do_rendering::proc(){
 		tg.start_frame(&g.frame_data)
 
 		// do gameplay pass
-		tg.start_render(&g.sand_sim_pass ,&g.cam_ui, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
+		tg.start_render(&g.sand_sim_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
 		render_map(g.w_map)
 		tg.submit_render(&g.sand_sim_pass)
 
-		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE_AND_STORE)
+		tg.start_render(&g.pass ,&g.cam, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE_AND_STORE)
 		render_entitys(&g.entitys)
 		render_map_debug_overlay(g.w_map)
 		tg.submit_render(&g.pass)

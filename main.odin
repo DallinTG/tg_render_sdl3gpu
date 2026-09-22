@@ -446,25 +446,11 @@ do_render_pass::proc(
 		}
 		return
 	}
-	view_mat :Mat4= 1//lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
-	proj_mat :Mat4= 1//lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
+	// view_mat :Mat4= 1//lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
+	// proj_mat :Mat4= 1//lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
 	
-	switch cam.type {
-	case .perspective:
-		view_mat = lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
-		proj_mat = lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90 * cam.zoom), cast(f32)pass.render_target.wh.x / cast(f32)pass.render_target.wh.y,0.1, 1000)
-	case .orthographic:
-		pos:=cam.pos
-		view_mat = lin.matrix4_translate_f32({-pos.x,-pos.y,-pos.z})
-		proj_mat = lin.matrix_ortho3d_f32(
-			left= 0, 
-			right= cast(f32)pass.render_target.wh.x * cam.zoom, 
-			bottom= -cast(f32)pass.render_target.wh.y * cam.zoom, 
-			top= 0, 
-			near= -1.001, 
-			far= 1000,
-		)
-	}
+	view_mat,proj_mat:=make_view_mat_proj_mat(cam)
+
 	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
 	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}
 
@@ -517,15 +503,7 @@ do_render_pass::proc(
 					cmd.gpu.vertex_buf,
 					0,
 					cmd_count,
-					// 5,
 				)
-				// sdl.DrawGPUPrimitives(
-				// 	pass.render_pas,
-				// 	3,
-				// 	1,
-				// 	0,
-				// 	0,
-				// )
 			}
 		}else{
 			for mesh_hd in meshes_hd{
@@ -546,6 +524,31 @@ do_render_pass::proc(
 			}
 		}
 	}
+}
+
+make_view_mat_proj_mat::proc(cam:^Camera)->(view_mat:Mat4,proj_mat:Mat4){
+	switch cam.type {
+	case .perspective:
+		view_mat = lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
+		proj_mat = lin.matrix4_perspective_f32(
+			lin.to_radians(cast(f32)90 * cam.zoom), 
+			cast(f32)cam.texture_size.x / cast(f32)cam.texture_size.y,
+			0.1, 
+			1000,
+		)
+	case .orthographic:
+		pos:=cam.pos
+		view_mat = lin.matrix4_translate_f32({-pos.x,-pos.y,-pos.z})
+		proj_mat = lin.matrix_ortho3d_f32(
+			left= 0, 
+			right= cast(f32)cam.texture_size.x * cam.zoom, 
+			bottom= -cast(f32)cam.texture_size.y * cam.zoom, 
+			top= 0, 
+			near= -1.001, 
+			far= 1000,
+		)
+	}
+	return
 }
 
 check_and_resize_all_frame_buffers::proc(
