@@ -35,6 +35,9 @@ CHUNK_SIZE::32
 MAX_NUM_CHUNKS::1000 * 7
 MAX_FACE_COUNT::MAX_NUM_CHUNKS * CHUNK_MAX_FACE_NUM
 CHUNK_MAX_FACE_NUM:: CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE
+
+MAX_NUM_OF_MAP_MESH_SECTIONS :: 10000
+NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
 Map::struct{
 	chunks_map:map[[3]int]Chunk_HD,
 	chunks:Chunks_Handle_Map,
@@ -44,17 +47,33 @@ Map::struct{
 	draw_cmd_buf_hd:tg.Mesh_Handle,
 	map_mesh_hd:tg.Mesh_Handle,
 	chunk_shader_data:tg.Indexed_GPU_Data,
-	chunks_in_mesh: xar.Freelist_Array(int, 8),
+
+	// chunks_in_mesh: xar.Freelist_Array(int, 8),
+	chunks_in_mesh:tg.Free_List,
 
 	chunck_transfer_buffer:^sdl.GPUTransferBuffer,
 }
+
+Gen_Vox_Data_Q::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
+Gen_Vox_Data_Q_HD::distinct hm.Handle32
+Destroy_Vox_Data_Q::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
+Destroy_Vox_Data_HD::distinct hm.Handle32
+
+Gen_Mesh_Data_Q::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
+Gen_Mesh_Data_Q_HD::distinct hm.Handle32
+Destroy_Mesh_Data_Q::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
+Destroy_Mesh_Data_Q_HD::distinct hm.Handle32
+
+Upload_Mesh_Data_Q::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
+
 Chunks_Handle_Map::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
-Chunk_HD::hm.Handle32
+Chunk_HD::distinct hm.Handle32
 Chunk::struct{
 	handle:				Chunk_HD,
 	vox_data_hd:		Chunk_Vox_Data_HD,
 	draw_cmd:			[Model_Sides]sdl.GPUIndirectDrawCommand,
-	offset_in_map_mesh:	[Model_Sides]int,
+	// offset_in_map_mesh:	[Model_Sides]int,
+	range_in_map_mesh:	[Model_Sides]tg.Free_List_Range,
 	mesh_data:			[Model_Sides]Chunk_Mesh_Data_HD,
 	chunk_shader_data:Chunk_Shader_Data,
 	// chunk_shader_data_index:int,
@@ -65,7 +84,7 @@ Chunk_Shader_Data::struct{
 }
 
 Chunks_Mesh_Data_Handle_Map::hm.Dynamic_Handle_Map(Chunk_Mesh_Data,Chunk_Mesh_Data_HD)
-Chunk_Mesh_Data_HD::hm.Handle32
+Chunk_Mesh_Data_HD::distinct hm.Handle32
 
 Chunk_Mesh_Data::struct{
 	handle:Chunk_Mesh_Data_HD,
@@ -76,7 +95,7 @@ Chunk_Mesh_Data_Raw::[dynamic;CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE]tg.Vert_Face
 
 
 Chunks_Vox_Data_Handle_Map::hm.Dynamic_Handle_Map(Chunk_Vox_Data,Chunk_Vox_Data_HD)
-Chunk_Vox_Data_HD::hm.Handle32
+Chunk_Vox_Data_HD::distinct hm.Handle32
 
 Chunk_Vox_Data_Raw::[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE]Voxel
 
@@ -187,7 +206,6 @@ mesh_chunk::proc(w_map:^Map, chunk_hd:Chunk_HD){
 		return
 	}
 
-
 	side_loop:for side in Model_Sides{
 		key:=cast([3]int)chunk.chunk_shader_data.pos.xyz
 		switch side{
@@ -226,26 +244,6 @@ mesh_chunk::proc(w_map:^Map, chunk_hd:Chunk_HD){
 		if no_neighbor {
 			neighbor_vox = nil
 		}
-
-
-		// if !ok {
-		//     log.log(
-		//         .Error,
-		//         "NO NEIGHBOR",
-		//         " chunk=", chunk.chunk_shader_data.pos.xyz,
-		//         " side=", side,
-		//         " key=", key,
-		//         " neighbor_hd=", neighbor_chunck_hd,
-		//     )
-		// }
-
-		// if !ok {continue side_loop}
-
-		// neighbor_chunk, neighbor_ok := get_chunk(w_map, neighbor_chunck_hd)
-		// if !neighbor_ok{
-			// log.log(.Error, "failed invalid neighbor_chunk_hd(",neighbor_chunk,")")
-			// {continue side_loop}
-		// }
 
 		mesh_data,mesh_data_ok:=get_chunk_mesh_data(w_map,chunk.mesh_data[side])
 		if !mesh_data_ok{
@@ -432,78 +430,7 @@ mesh_by_bit_mask :: proc(
 		case .extra:
 		    return
 		}
-// 
 
-
-
-		// case .pos_x:
-		//     current_u32 := transmute(u32)current
-		//     neighbor_u32 := current_u32 >> 1
-		
-		//     visible = transmute(bit_set[0..<CHUNK_SIZE; u32])(
-		//         current_u32 &~ neighbor_u32
-		//     )
-		
-		// case .neg_x:
-		//     current_u32 := transmute(u32)current
-		//     neighbor_u32 := current_u32 << 1
-		
-		//     visible = transmute(bit_set[0..<CHUNK_SIZE; u32])(
-		//         current_u32 &~ neighbor_u32
-		//     )
-		
-		// case .pos_y:
-		//     if y == CHUNK_SIZE - 1 {
-		//         visible = current
-		//     } else {
-		//         neighbor := voxls.is_solid_mask[y + 1][z]
-		//         visible = current - neighbor
-		//     }
-		
-		// case .neg_y:
-		//     if y == 0 {
-		//         visible = current
-		//     } else {
-		//         neighbor := voxls.is_solid_mask[y - 1][z]
-		//         visible = current - neighbor
-		//     }
-		
-		// case .pos_z:
-		//     if z == CHUNK_SIZE - 1 {
-		//         visible = current
-		//     } else {
-		//         neighbor := voxls.is_solid_mask[y][z + 1]
-		//         visible = current - neighbor
-		//     }
-		
-		// case .neg_z:
-		//     if z == 0 {
-		//         visible = current
-		//     } else {
-		//         neighbor := voxls.is_solid_mask[y][z - 1]
-		//         visible = current - neighbor
-		//     }
-		
-		// case .extra:
-  //   		return
-  //    	}
-
-
-
-
-
-
-
-			// if visible != {} {
-			//     log.log(
-			//         .Info,
-			//         "side=", side,
-			//         " y=", y,
-			//         " z=", z,
-			//         " visible=", visible,
-			//         " current=", current,
-			//     )
-			// }
             for x in visible {
 
                 vox := voxls.data[x][y][z]
@@ -534,8 +461,11 @@ pack_block_pos :: proc(pos: [3]u16) -> u16 {
 	return pos.x | (pos.y << 5) | (pos.z << 10)
 }
 
+
+
 init_map::proc(w_map:^Map){
-	xar.freelist_init(&w_map.chunks_in_mesh)
+	// xar.freelist_init(&w_map.chunks_in_mesh)
+	tg.free_list_init(&w_map.chunks_in_mesh,MAX_NUM_OF_MAP_MESH_SECTIONS)
 	w_map.draw_cmd_buf_hd = tg.create_mesh(sdl.GPUIndirectDrawCommand,MAX_NUM_CHUNKS,{},type = .indirect_cmd_buff, debug_name = "w_map GPUIndirectDrawCommand buffer")
 	w_map.chunk_shader_data.mesh_hd = tg.create_mesh(Chunk_Shader_Data,MAX_NUM_CHUNKS,{},type = .dynamic_buff, debug_name = "Chunk shader data buffer")
 	w_map.map_mesh_hd = tg.create_mesh(tg.Vert_Face,MAX_FACE_COUNT,{},type = .no_tranfer_buff, debug_name = "w_map Chunk buffer mesh")
@@ -586,37 +516,26 @@ upload_chunk_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD,  copy_pass: ^sdl.GPUCop
 }
 
 upload_chunk_side_to_gpu::proc(w_map:^Map, chunk:^Chunk, mesh:^Chunk_Mesh_Data, side:Model_Sides, copy_pass: ^sdl.GPUCopyPass){
-	ptr,index,err := xar.freelist_push_with_index(&w_map.chunks_in_mesh,1)
-	if err != .None{
-		log.log(.Error, "upload_chunk_side_to_gpu() failed xar.freelist_push_with_index() alocation err")
+
+	if len(mesh.data) == 0{
+		// log.log(.Error, "cant upload a mesh whith 0 data")
 		return
 	}
-	chunk.offset_in_map_mesh[side] = index
-	first_face:=cast(u32)index*CHUNK_MAX_FACE_NUM
+	num_of_gpu_mesh_slots:=cast(u32)math.ceil(cast(f32)len(mesh.data)/NUM_OF_FACES_PER_MAP_MESH_SECTIONS)
+	range,ok:=tg.free_list_alloc(&w_map.chunks_in_mesh, num_of_gpu_mesh_slots)
 
-	// chunk.chunk_shader_data_index = index
+	if !ok{
+		log.log(.Error, "failed tg.free_list_alloc(&w_map.chunks_in_mesh) !ok mega mesh problobly full")
+		return
+	}
 
-	// log.log(
- //        .Debug,
- //        "UPLOAD chunk=",
- //        chunk.chunk_shader_data.pos.xyz,
- //        " side=",
- //        side,
- //        " faces=",
- //        len(mesh.data),
- //        " index=",
- //        index,
- //        " first_face=",
- //        first_face,
- //    )
-
+	chunk.range_in_map_mesh[side] = range
+	first_face:=cast(u32) range.start * NUM_OF_FACES_PER_MAP_MESH_SECTIONS
 
 	upload_data_to_mesh_by_offset(w_map.map_mesh_hd,w_map.chunck_transfer_buffer,mesh.data[:],first_face, copy_pass)
 	chunk.draw_cmd[side].num_vertices = cast(u32)len(mesh.data[:])*6
 	chunk.draw_cmd[side].first_vertex = first_face *6
 	chunk.draw_cmd[side].num_instances = 1 
-	// chunk.draw_cmd[side].first_instance = 0 + cast(u32)index
-
 }
 
 upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.GPUTransferBuffer,vertices:$T/[]$E,offset:u32, copy_pass: ^sdl.GPUCopyPass){
@@ -657,6 +576,7 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 	mesh:=tg.get_mesh(w_map.draw_cmd_buf_hd)
 	chunck_shader_data:=tg.get_mesh(w_map.chunk_shader_data.mesh_hd)
 	w_map.chunk_shader_data.count = 0
+	tmep_full_count:int
 	tg.clear_mesh_cpu(&mesh.cpu)
 	tg.clear_mesh_cpu(&chunck_shader_data.cpu)
 	view_mat, proj_mat:=tg.make_view_mat_proj_mat(cam)
@@ -669,6 +589,7 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 		}
 
 		for draw_cmd, side in chunk.draw_cmd{
+			tmep_full_count+=1
 			if draw_cmd.num_vertices == 0{
 				continue
 			}
@@ -684,7 +605,7 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 
 		}
 	}
-	log.log(.Debug,"cmd count",w_map.chunk_shader_data.count)
+	log.log(.Debug,"cmd count",w_map.chunk_shader_data.count,"tmep_full_count",tmep_full_count)
 	tg.update_mesh(w_map.draw_cmd_buf_hd)
 	tg.update_mesh(w_map.chunk_shader_data.mesh_hd)
 }
