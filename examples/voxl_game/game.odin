@@ -166,6 +166,7 @@ main :: proc(){
 		}
 
 		if s.time.is_60_hz{
+			manage_all_w_map_q(&g.w_map)
 			sink_game_info(&g.server,&g.info)
 			g.clay_render_comands=create_layout()
 			wh:=tg.get_window_size(g.window)
@@ -262,8 +263,8 @@ do_rendering::proc(){
 	context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
 	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
 	defer tg.end_tracking_allocator(&tracking_allocator)
-	mesh_map(&g.w_map)
-	upload_chunks_to_gpu(&g.w_map)
+	// mesh_map(&g.w_map)
+	// upload_chunks_to_gpu(&g.w_map)
 
 	// mesh_map(&g.w_map)
 	rendering_loop:for !s.app_should_close {
