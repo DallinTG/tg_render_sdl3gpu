@@ -224,7 +224,7 @@ update_geometry_facees::proc(){
 	tg.update_indexed_gpu_data(&g.geometry_facees)
 }
 add_texture_face::proc(tex_id:tg.Texture_ID_Types, $T:typeid)->(index:int){
-	texture:=tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
+	texture:=tg.get_texture_by_id(tex_id)
 	data:T
 	when intrinsics.type_has_field(T, "img_index"){
 		data.img_index = cast(u32)texture.groop_index
@@ -249,8 +249,8 @@ sand_hd:Item_HD
 DF_FACE_TYPE::tg.Vert_Face_Texure
 reg_items::proc(){
 	sand_info:Item_Info={
-		texture_id = .Food_Drink_Glass_Juice_Cocktail,
-		texture_face_index = cast(u16)add_texture_face(.Food_Drink_Glass_Juice_Cocktail,DF_FACE_TYPE),
+		texture_id = .Tile_Bace,
+		texture_face_index = cast(u16)add_texture_face(.Tile_Bace,DF_FACE_TYPE),
 		model_data = g.cube_face_geometry,
 		// texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
 	}
@@ -347,6 +347,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 1, -1,  0, 1},
 				{ 1,  0,  0, 1},
 			},
+			starting_shade = .9
 		},
 	)
 
@@ -359,6 +360,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 0, -1, -1, 1},
 				{ 0,  0, -1, 1},
 			},
+			starting_shade = .9
 		},
 	)
 
@@ -371,6 +373,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 1, -1, -1, 1},
 				{ 1,  0, -1, 1},
 			},
+			starting_shade = .75
 		},
 	)
 
@@ -383,6 +386,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 0, -1,  0, 1},
 				{ 0,  0,  0, 1},
 			},
+			starting_shade = .75
 		},
 	)
 
@@ -395,6 +399,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 1,  0,  0, 1},
 				{ 1,  0, -1, 1},
 			},
+			starting_shade = 1
 		},
 	)
 
@@ -407,6 +412,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 0, -1,  0, 1},
 				{ 0, -1, -1, 1},
 			},
+			starting_shade = .7
 		},
 	)
 	

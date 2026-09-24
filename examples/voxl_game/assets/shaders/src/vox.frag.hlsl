@@ -27,14 +27,19 @@ struct Input{
     float4 color2 : TEXCOORD4;
     float4 normal : TEXCOORD5;
     uint   draw_index : TEXCOORD6;
+    float   shading: TEXCOORD7;
 };
+
 
 SamplerState smp[10] : register(s0, space2);
 Texture2DArray<float4> g_Textures[10] : register(t0, space2);
 
 float4 main(Input input) : SV_Target0 {
     Texture2DArray tex = g_Textures[input.img_index];
-    float4 color = tex.Sample(smp[input.img_index], float3(input.uv, input.layer));
+	 float4 color = tex.Sample(
+	    smp[input.img_index],
+	    float3(input.uv, input.layer)
+	);
 
     float4 tint;
     if (all(color ==float4(0, 0, 0, 0))){
@@ -51,10 +56,21 @@ float4 main(Input input) : SV_Target0 {
         tint = float4(0, 0, 1, 1);
     }
     else {
-        tint = float4(1, 1, 0, 1);
+        tint = float4(0, 1, 0, 1);
     }
     
-    return color * input.color * tint + input.color2;
+    return color * input.color * tint  *  float4(input.shading,input.shading,input.shading,1);
+
+    // uint w, h, layers, levels;
+	// tex.GetDimensions(5, w, h, layers, levels);
+	
+	// return float4(
+	//     w == 1 ? 1 : 0,
+	//     h == 1 ? 1 : 0,
+	//     levels == 6 ? 1 : 0,
+	//     1
+	// );
+	// return float4(1, 0, 0, 1);
 }
 
 

@@ -36,6 +36,8 @@ Vert_Face_Texure::struct{
 Vert_Face_Geometry::struct{
 	pos:[4][4]f32,
 	normal: [4]f32,
+	starting_shade:f32,
+	_pading:[3]f32,
 }
 
 

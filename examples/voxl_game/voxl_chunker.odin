@@ -8,6 +8,7 @@ import sdl "vendor:sdl3"
 import "core:log"
 import "core:mem"
 import "core:math"
+import "core:math/rand"
 import "core:hash"
 import "core:c"
 import "core:fmt"
@@ -22,24 +23,33 @@ import st"core:strings"
 import steam "../../steamworks"
 import reg "../../registry"
 import atom "core:sync"
+import nos "core:math/noise"
 
 Vox_Render_Settings::struct{
 	do_chunk_back_face_culling:bool,
 	do_chunk_frustum_culling:bool,
 }
 DF_VOX_RENDER_SETTINGS:Vox_Render_Settings:{
-	do_chunk_back_face_culling = false,
-	do_chunk_frustum_culling = false,
+	do_chunk_back_face_culling = true,
+	do_chunk_frustum_culling = true,
 }
 
 
-CHUNK_SIZE::32
-MAX_NUM_CHUNKS::1000 * 7
-MAX_FACE_COUNT::MAX_NUM_CHUNKS * CHUNK_MAX_FACE_NUM
-CHUNK_MAX_FACE_NUM:: CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE
+// CHUNK_SIZE::32
+// MAX_NUM_CHUNKS::1000 * 7
+// MAX_FACE_COUNT::MAX_NUM_CHUNKS * CHUNK_MAX_FACE_NUM
+// CHUNK_MAX_FACE_NUM:: CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE
 
-MAX_NUM_OF_MAP_MESH_SECTIONS :: 10000
-NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
+// MAX_NUM_OF_MAP_MESH_SECTIONS ::  NUM_OF_FACES_PER_MAP_MESH_SECTIONS * 2 * CHUNK_SIZE * MAX_NUM_CHUNKS
+// NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
+// 
+CHUNK_SIZE::32
+MAX_NUM_CHUNKS::35000 * 7
+MAX_FACE_COUNT::MAX_NUM_CHUNKS * CHUNK_MAX_FACE_NUM
+CHUNK_MAX_FACE_NUM::  CHUNK_SIZE * CHUNK_SIZE / 2
+MAX_NUM_DRAW_CMD_BUF::MAX_NUM_CHUNKS / 8
+// MAX_NUM_OF_MAP_MESH_SECTIONS ::  NUM_OF_FACES_PER_MAP_MESH_SECTIONS * 2 * CHUNK_SIZE * MAX_NUM_CHUNKS
+// NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
 Map::struct{
 	chunks_map:map[[3]int]Chunk_HD,
 	chunks:Chunks_Handle_Map,
@@ -90,9 +100,10 @@ Chunk_Mesh_Data_HD::distinct hm.Handle32
 Chunk_Mesh_Data::struct{
 	handle:Chunk_Mesh_Data_HD,
 	data:Chunk_Mesh_Data_Raw,
+	face_count:int
 }
 
-Chunk_Mesh_Data_Raw::[dynamic;CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE]tg.Vert_Face
+Chunk_Mesh_Data_Raw::[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE]tg.Vert_Face
 
 
 Chunks_Vox_Data_Handle_Map::hm.Dynamic_Handle_Map(Chunk_Vox_Data,Chunk_Vox_Data_HD)
@@ -145,68 +156,6 @@ get_chunk_mesh_data::proc(w_map:^Map, mesh_data_hd:Chunk_Mesh_Data_HD)->(mesh_da
 	mesh_data,ok=hm.get(&w_map.chunks_mesh_data,mesh_data_hd)
 	return mesh_data,ok
 }
-// mesh_chunk::proc(w_map:^Map, chunk_hd:Chunk_HD){
-// 	chunk, ok := get_chunk(w_map,chunk_hd)
-// 	if !ok{
-// 		log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")")
-// 		return
-// 	}
-
-// 	vox_data,vox_data_ok:=get_chunk_vox_data(w_map,chunk.vox_data_hd)
-// 	if !vox_data_ok{
-// 		log.log(.Error, "failed invalid vox_data_hd(",chunk.vox_data_hd,")")
-// 		return
-// 	}
-
-// 	side_loop:for side in Model_Sides{
-// 		key:=cast([3]int)chunk.chunk_shader_data.pos.xyz
-// 		switch side{
-// 		case .pos_x:
-// 			key += {1,0,0}
-// 		case .neg_x:
-// 			key += {-1,0,0}
-// 		case .pos_y:
-// 			key += {0,1,0}
-// 		case .neg_y:
-// 			key += {0,-1,0}
-// 		case .pos_z:
-// 			key += {0,0,1}
-// 		case .neg_z:
-// 			key += {0,0,-1}
-// 		case .extra:
-// 			//donothing
-// 		}
-// 		no_neighbor:bool
-// 		neighbor_chunck_hd, ok := w_map.chunks_map[key]
-// 		if !ok{
-// 			no_neighbor = true
-// 		}
-// 		neighbor_vox:^Chunk_Vox_Data
-// 		neighbor_vox_ok:bool
-// 		neighbor_chunk, neighbor_ok := get_chunk(w_map, neighbor_chunck_hd)
-// 		if !neighbor_ok{
-// 			no_neighbor = true
-// 		}else{
-// 			neighbor_vox,neighbor_vox_ok=get_chunk_vox_data(w_map,neighbor_chunk.vox_data_hd)
-// 			if !neighbor_vox_ok{
-// 				no_neighbor = true
-// 			}
-// 		}
-
-// 		if no_neighbor {
-// 			neighbor_vox = nil
-// 		}
-
-// 		mesh_data,mesh_data_ok:=get_chunk_mesh_data(w_map,chunk.mesh_data[side])
-// 		if !mesh_data_ok{
-// 			chunk.mesh_data[side] = hm.add(&w_map.chunks_mesh_data,Chunk_Mesh_Data{})
-// 		}
-// 		mesh_chunk_side(w_map,chunk.mesh_data[side], chunk.vox_data_hd, neighbor_vox,side)
-// 	}
-// }
-
-
-
 
 pack_block_pos :: proc(pos: [3]u16) -> u16 {
     assert(pos.x < 32)
@@ -216,11 +165,9 @@ pack_block_pos :: proc(pos: [3]u16) -> u16 {
 	return pos.x | (pos.y << 5) | (pos.z << 10)
 }
 
-
-
 init_map::proc(w_map:^Map){
 	// xar.freelist_init(&w_map.chunks_in_mesh)
-	tg.free_list_init(&w_map.chunks_in_mesh,MAX_NUM_OF_MAP_MESH_SECTIONS)
+	tg.free_list_init(&w_map.chunks_in_mesh,MAX_NUM_CHUNKS)
 	w_map.draw_cmd_buf_hd = tg.create_mesh(sdl.GPUIndirectDrawCommand,MAX_NUM_CHUNKS,{},type = .indirect_cmd_buff, debug_name = "w_map GPUIndirectDrawCommand buffer")
 	w_map.chunk_shader_data.mesh_hd = tg.create_mesh(Chunk_Shader_Data,MAX_NUM_CHUNKS,{},type = .dynamic_buff, debug_name = "Chunk shader data buffer")
 	w_map.map_mesh_hd = tg.create_mesh(tg.Vert_Face,MAX_FACE_COUNT,{},type = .no_tranfer_buff, debug_name = "w_map Chunk buffer mesh")
@@ -228,9 +175,9 @@ init_map::proc(w_map:^Map){
 		usage = .UPLOAD,
 		size = cast(u32)(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * size_of(tg.Vert_Face)),
 	})
-	for x in -4..=4{
-		for y in -4..=4{
-			for z in -4..=4{
+	for x in -26..=26{
+		for y in -1..=1{
+			for z in -26..=26{
 				add_to_gen_chunk_q(w_map,{x,y,z})
 			} 
 		} 
@@ -474,15 +421,15 @@ manage_all_w_map_q::proc(w_map:^Map){
 	manage_Destroy_mesh_data_q(w_map)
 	manage_upload_mesh_data_q(w_map)
 	manage_unload_mesh_data_q(w_map)
-	log.log(.Debug,"\n",
-		"gen_chunk_q",hm.len(g.w_map.gen_chunk_q),"\n",
-		"destroy_chunk_q",hm.len(g.w_map.destroy_chunk_q),"\n",
-		"gen_vox_data_q",hm.len(g.w_map.gen_vox_data_q),"\n",
-		"destroy_vox_data_q",hm.len(g.w_map.destroy_vox_data_q),"\n",
-		"gen_mesh_data_q",hm.len(g.w_map.gen_mesh_data_q),"\n",
-		"destroy_mesh_data_q",hm.len(g.w_map.destroy_mesh_data_q),"\n",
-		"upload_mesh_data_q",hm.len(g.w_map.upload_mesh_data_q),"\n",
-	)
+	// log.log(.Debug,"\n",
+	// 	"gen_chunk_q",hm.len(g.w_map.gen_chunk_q),"\n",
+	// 	"destroy_chunk_q",hm.len(g.w_map.destroy_chunk_q),"\n",
+	// 	"gen_vox_data_q",hm.len(g.w_map.gen_vox_data_q),"\n",
+	// 	"destroy_vox_data_q",hm.len(g.w_map.destroy_vox_data_q),"\n",
+	// 	"gen_mesh_data_q",hm.len(g.w_map.gen_mesh_data_q),"\n",
+	// 	"destroy_mesh_data_q",hm.len(g.w_map.destroy_mesh_data_q),"\n",
+	// 	"upload_mesh_data_q",hm.len(g.w_map.upload_mesh_data_q),"\n",
+	// )
 }
 
 Gen_Chunk_Q::hm.Dynamic_Handle_Map(Gen_Chunk_Q_Data,Gen_Chunk_Q_HD)
@@ -649,6 +596,16 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[3]int){
 		}
 		// when adding to the meshing q wee need to now treat the curent chunk as the neihbor and the neighbor as the curent chunk
 		// and also send the opisit side of the curent side
+
+		// Mesh the chunk itself
+		add_to_gen_mesh_data_q(
+		    w_map = w_map,
+		    chunk_hd = chunk_hd,
+		    vox_data_hd = chunk.vox_data_hd,
+		    neighbor_vox_hd = neighbor_chunk.vox_data_hd,
+		    side = side,
+		)
+		// Mesh the neighbor too
 		add_to_gen_mesh_data_q(
 			w_map = w_map,
 			chunk_hd = neighbor_chunk_hd,
@@ -659,38 +616,168 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[3]int){
 	}
 }
 
-gen_vox_data::proc(vox_chunk:^Chunk_Vox_Data,chunk:^Chunk,pos:[3]int){
-	chunk.chunk_shader_data.pos = {cast(i32)pos.x,cast(i32)pos.y,cast(i32)pos.z,1}
+// gen_vox_data::proc(vox_chunk:^Chunk_Vox_Data,chunk:^Chunk,pos:[3]int){
+// 	chunk.chunk_shader_data.pos = {cast(i32)pos.x,cast(i32)pos.y,cast(i32)pos.z,1}
 
-	for &plane, x in &vox_chunk.data{
-		for &col, y in &plane{
-			vox := &col[1]
-			{
-			z:=1
-			// for &vox, z in &col{
-				vox.item_hd = sand_hd
-				vox_chunk.is_solid_mask[y][z] += {u32(x)}
-			// }
+// 	for &plane, x in &vox_chunk.data{
+// 		for &col, y in &plane{
+		
+// 			// vox := &col[1]
+// 			// z:=1
+// 			for &vox, z in &col{
+// 				world_y := y + chunk_y * CHUNK_SIZE
+// 				hight :=nos.noise_2d(6223378936854776807,{cast(f64)x*.1,cast(f64)z*.1}) 
+// 				// fmt.print(hight,"\n")
+// 				// val:=rand.int_range(0,100)
+// 				if (hight*.1)+(cast(f32)y * cast(f32)pos.y)>0{
+
+// 					vox.item_hd = sand_hd
+// 					vox_chunk.is_solid_mask[y][z] += {u32(x)}
+// 				}
+// 			}
+			
+// 		}
+// 	}
+// }
+
+
+// gen_vox_data :: proc(
+// 	vox_chunk: ^Chunk_Vox_Data,
+// 	chunk: ^Chunk,
+// 	pos: [3]int,
+// ) {
+// 	chunk.chunk_shader_data.pos = {cast(i32)pos.x,cast(i32)pos.y,cast(i32)pos.z,1}
+// 	scl:=.01
+// 	for &plane, x in &vox_chunk.data {
+// 		for &col, y in &plane {
+// 			for &vox, z in &col {
+
+// 				world_y := y + pos.y * CHUNK_SIZE
+// 				world_x := x + pos.x * CHUNK_SIZE
+// 				world_z := z + pos.z * CHUNK_SIZE
+
+// 				height := nos.noise_2d(
+// 					6223378936854776807,
+// 					{
+// 						cast(f64)world_x * scl,
+// 						cast(f64)world_z * scl,
+// 					},
+// 				)
+
+// 				terrain_height := height * 10.0
+
+// 				if cast(f32)world_y < terrain_height {
+// 					vox.item_hd = sand_hd
+// 					vox_chunk.is_solid_mask[y][z] += {u32(x)}
+// 				}
+// 			}
+// 		}
+// 	}
+// }
+
+
+// gen_vox_data :: proc(
+// 	vox_chunk: ^Chunk_Vox_Data,
+// 	chunk: ^Chunk,
+// 	pos: [3]int,
+// ) {
+// 	chunk.chunk_shader_data.pos = {
+// 		cast(i32)pos.x,
+// 		cast(i32)pos.y,
+// 		cast(i32)pos.z,
+// 		1,
+// 	}
+	
+// 	xz_scl:=.01
+// 	y_scl:f32=30
+
+// 	world_x_start := pos.x * CHUNK_SIZE
+// 	world_y_start := pos.y * CHUNK_SIZE
+// 	world_z_start := pos.z * CHUNK_SIZE
+
+// 	for x := 0; x < CHUNK_SIZE; x += 1 {
+// 		world_x := world_x_start + x
+
+// 		for z := 0; z < CHUNK_SIZE; z += 1 {
+// 			world_z := world_z_start + z
+
+// 			height := nos.noise_2d(
+// 				6223378936854776807,
+// 				{
+// 					cast(f64)world_x * xz_scl,
+// 					cast(f64)world_z * xz_scl,
+// 				},
+// 			)
+
+// 			terrain_height := height * y_scl
+
+// 			for y := 0; y < CHUNK_SIZE; y += 1 {
+// 				world_y := world_y_start + y
+
+// 				if cast(f32)world_y < terrain_height {
+// 					vox_chunk.data[x][y][z].item_hd = sand_hd
+// 					vox_chunk.is_solid_mask[y][z] += {u32(x)}
+// 				}
+// 			}
+// 		}
+// 	}
+// }
+
+gen_vox_data :: proc(
+	vox_chunk: ^Chunk_Vox_Data,
+	chunk: ^Chunk,
+	pos: [3]int,
+) {
+	chunk.chunk_shader_data.pos = {
+		cast(i32)pos.x,
+		cast(i32)pos.y,
+		cast(i32)pos.z,
+		1,
+	}
+
+	xz_scl: f64 = 0.01
+	y_scl: f64 = 30.0
+
+	world_x_start := pos.x * CHUNK_SIZE
+	world_y_start := pos.y * CHUNK_SIZE
+	world_z_start := pos.z * CHUNK_SIZE
+
+	for x := 0; x < CHUNK_SIZE; x += 1 {
+		world_x := world_x_start + x
+		x_bit := u32(1) << u32(x)
+
+		for z := 0; z < CHUNK_SIZE; z += 1 {
+			world_z := world_z_start + z
+
+			height := nos.noise_2d(
+				6223378936854776807,
+				{
+					cast(f64)world_x * xz_scl,
+					cast(f64)world_z * xz_scl,
+				},
+			)
+
+			// Number of solid blocks in this column.
+			solid_height := cast(int)(height * cast(f32)y_scl) - world_y_start
+
+			// Entire column is above the terrain.
+			if solid_height <= 0 {
+				continue
 			}
-			{
-			vox := &col[2]
-			z:=2
-			// for &vox, z in &col{
-				vox.item_hd = sand_hd
-				vox_chunk.is_solid_mask[y][z] += {u32(x)}
-			// }
+
+			// Terrain extends through the entire chunk.
+			if solid_height > CHUNK_SIZE {
+				solid_height = CHUNK_SIZE
 			}
-			{
-			vox := &col[0]
-			z:=0
-			// for &vox, z in &col{
-				vox.item_hd = sand_hd
-				vox_chunk.is_solid_mask[y][z] += {u32(x)}
-			// }
+
+			for y := 0; y < solid_height; y += 1 {
+				vox_chunk.data[x][y][z].item_hd = sand_hd
+				vox_chunk.is_solid_mask[y][z] |=  {u32(x)}
 			}
 		}
 	}
 }
+
 
 Destroy_Vox_Data_Q::hm.Dynamic_Handle_Map(Destroy_Vox_Data_Q_Data,Destroy_Vox_Data_HD)
 Destroy_Vox_Data_HD::distinct hm.Handle32
@@ -752,14 +839,14 @@ mesh_chunk_side::proc(
 	side:Model_Sides
 ){
 
-	log.log(
-	    .Debug,
-	    "MESH JOB",
-	    "chunk=", chunk_hd,
-	    "vox=", vox_data_hd,
-	    "neighbor=", neighbor_vox_hd,
-	    "side=", side,
-	)
+	// log.log(
+	//     .Debug,
+	//     "MESH JOB",
+	//     "chunk=", chunk_hd,
+	//     "vox=", vox_data_hd,
+	//     "neighbor=", neighbor_vox_hd,
+	//     "side=", side,
+	// )
 	chunk, ok := get_chunk(w_map,chunk_hd)
 	if !ok{
 		log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")")
@@ -786,9 +873,9 @@ mesh_chunk_side::proc(
 	}
 
 
-	// mesh_by_side_all(w_map,chunk_vox,mesh_data,side)
-	mesh_by_bit_mask(w_map,chunk_vox,neighbor_vox,mesh_data,side)
-	
+	// face_count:=mesh_by_side_all(w_map,chunk_vox,mesh_data,side)
+	face_count:=mesh_by_bit_mask(w_map,chunk_vox,neighbor_vox,mesh_data,side)
+	if face_count <= 0 {return}
 	add_to_upload_mesh_data_q(w_map,chunk_hd,chunk.mesh_data[side],side)
 }
 
@@ -798,8 +885,9 @@ mesh_by_side_all::proc(
 	voxls:^Chunk_Vox_Data,
 	mesh:^Chunk_Mesh_Data,
 	side:Model_Sides
-){
-	clear(&mesh.data)
+)->(face_count:int){
+	// clear(&mesh.data)
+	mesh.face_count = 0
 	for plane, x in voxls.data{
 		for col, y in plane{
 			for vox, z in col{
@@ -814,10 +902,14 @@ mesh_by_side_all::proc(
 				face.block_pos = packed_pos
 				face.texture_face_index = cast(u32)item.texture_face_index
 				face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
-				append(&mesh.data,face)
+				// append(&mesh.data,face)
+				mesh.data[face_count] = face
+				face_count+=1
 			}
 		}
 	}
+	mesh.face_count = face_count
+	return face_count
 }
 
 mesh_by_bit_mask :: proc(
@@ -826,56 +918,42 @@ mesh_by_bit_mask :: proc(
 	neighbor_voxls: ^Chunk_Vox_Data,
     mesh: 			^Chunk_Mesh_Data,
     side: 			Model_Sides,
-) {
-    clear(&mesh.data)
-
+)->(face_count:int) {
+    // clear(&mesh.data)
+	mesh.face_count = 0
     for y in 0..<CHUNK_SIZE {
         for z in 0..<CHUNK_SIZE {
-
             current := voxls.is_solid_mask[y][z]
-
             visible: bit_set[u32(0)..<CHUNK_SIZE; u32]
-	
 		switch side {
-
 		case .pos_x:
 		    current_u32 := transmute(u32)current
-		
 		    neighbor_u32 := current_u32 >> 1
-		
 		    // x = 31 has no neighbor inside this chunk.
 		    // If there is a neighboring chunk, use its x = 0.
 		    if neighbor_voxls != nil {
 		        neighbor_u32 &= ~(u32(1) << 31)
-		
 		        neighbor_edge := transmute(u32)neighbor_voxls.is_solid_mask[y][z]
-		
 		        if (neighbor_edge & 1) != 0 {
 		            neighbor_u32 |= u32(1) << 31
 		        }
-
 		    } else {
 		        // No neighboring chunk = empty space.
 		        // Make sure x = 31 is considered empty.
 		        neighbor_u32 &= ~(u32(1) << 31)
 		    }
-		
 		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
 		        current_u32 &~ neighbor_u32
 		    )
-		
+
 		case .neg_x:
 		    current_u32 := transmute(u32)current
-		
 		    neighbor_u32 := current_u32 << 1
-		
 		    // x = 0 has no neighbor inside this chunk.
 		    // If there is a neighboring chunk, use its x = 31.
 		    if neighbor_voxls != nil {
 		        neighbor_u32 &= ~u32(1)
-		
 		        neighbor_edge := transmute(u32)neighbor_voxls.is_solid_mask[y][z]
-		
 		        if (neighbor_edge & (u32(1) << 31)) != 0 {
 		            neighbor_u32 |= u32(1)
 		        }
@@ -883,7 +961,6 @@ mesh_by_bit_mask :: proc(
 		        // No neighboring chunk = empty space.
 		        neighbor_u32 &= ~u32(1)
 		    }
-		
 		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
 		        current_u32 &~ neighbor_u32
 		    )
@@ -902,7 +979,6 @@ mesh_by_bit_mask :: proc(
 		        visible = current - neighbor
 		    }
 		
-		
 		case .neg_y:
 		    if y == 0 {
 		        if neighbor_voxls == nil {
@@ -917,7 +993,6 @@ mesh_by_bit_mask :: proc(
 		        visible = current - neighbor
 		    }
 		
-		
 		case .pos_z:
 	    if z == CHUNK_SIZE - 1 {
 	        if neighbor_voxls == nil {
@@ -931,8 +1006,7 @@ mesh_by_bit_mask :: proc(
 	        neighbor := voxls.is_solid_mask[y][z + 1]
 	        visible = current - neighbor
 	    }
-			
-		
+
 		case .neg_z:
 	    if z == 0 {
 	        if neighbor_voxls == nil {
@@ -947,17 +1021,13 @@ mesh_by_bit_mask :: proc(
 	        visible = current - neighbor
 	    }
 		
-		
 		case .extra:
 		    return
 		}
-
             for x in visible {
-
                 vox := voxls.data[x][y][z]
-
                 item := reg.get(&g.item_reg, vox.item_hd)
-                log.log(.Debug,"do append",x,y,z,side,"\n")
+                // log.log(.Debug,"do append",x,y,z,side,"\n")
                 if item == nil {
                 	// this ia air so skip
                     // log.log(.Error,"item == nil, invalid item or registry is borked item_hd(",vox.item_hd,")",)
@@ -969,11 +1039,15 @@ mesh_by_bit_mask :: proc(
                 face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
                 face.texture_face_index = cast(u32)item.texture_face_index
                 face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
-                log.log(.Debug,"do append",x,y,z,side,face,"\n")
-                append(&mesh.data, face)
+                // log.log(.Debug,"do append",x,y,z,side,face,"\n")
+                // append(&mesh.data, face)
+                mesh.data[face_count] = face
+                face_count+=1
             }
         }
     }
+    mesh.face_count = face_count
+    return face_count
 }
 
 Destroy_Mesh_Data_Q::hm.Dynamic_Handle_Map(Destroy_Mesh_Data_Q_Data,Destroy_Mesh_Data_Q_HD)
@@ -1075,11 +1149,11 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 	mesh,mesh_ok:=get_chunk_mesh_data(w_map,mesh_hd)
 	if !mesh_ok {return}
 
-	if len(mesh.data) == 0{
+	if mesh.face_count == 0{
 		// log.log(.Error, "cant upload a mesh whith 0 data")
 		return
 	}
-	num_of_gpu_mesh_slots:=cast(u32)math.ceil(cast(f32)len(mesh.data)/NUM_OF_FACES_PER_MAP_MESH_SECTIONS)
+	num_of_gpu_mesh_slots:=cast(u32)math.ceil(cast(f32)mesh.face_count/CHUNK_MAX_FACE_NUM)
 	range,ok:=tg.free_list_alloc(&w_map.chunks_in_mesh, num_of_gpu_mesh_slots)
 
 	if !ok{
@@ -1088,10 +1162,10 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 	}
 
 	chunk.range_in_map_mesh[side] = range
-	first_face:=cast(u32) range.start * NUM_OF_FACES_PER_MAP_MESH_SECTIONS
+	first_face:=cast(u32) range.start * CHUNK_MAX_FACE_NUM
 
 	upload_data_to_mesh_by_offset(w_map.map_mesh_hd,w_map.chunck_transfer_buffer,mesh.data[:],first_face, copy_pass)
-	chunk.draw_cmd[side].num_vertices = cast(u32)len(mesh.data[:])*6
+	chunk.draw_cmd[side].num_vertices = cast(u32)mesh.face_count*6
 	chunk.draw_cmd[side].first_vertex = first_face *6
 	chunk.draw_cmd[side].num_instances = 1 
 }

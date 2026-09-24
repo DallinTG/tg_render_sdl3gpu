@@ -391,8 +391,22 @@ create_render_pass :: proc (
 
 	pass.info = info
 	pass.frame_data = frame_data
-	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{})
 	pass.name = name // This is just for debuging
+	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{
+		min_filter = .NEAREST,
+		mag_filter = .NEAREST,
+		mipmap_mode = .NEAREST,
+	
+	    address_mode_u = .REPEAT,
+	    address_mode_v = .REPEAT,
+	    address_mode_w = .REPEAT,
+
+		min_lod = 0,
+		max_lod = 12,
+
+	    enable_anisotropy = true,
+	    max_anisotropy = 8,
+	})
 
 	target_info := sdl.GPUGraphicsPipelineTargetInfo{
 		num_color_targets = 1,

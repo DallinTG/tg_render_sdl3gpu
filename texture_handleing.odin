@@ -18,6 +18,7 @@ import "core:image/jpeg"
 import "core:image/bmp"
 import "core:image/png"
 import "core:image/tga"
+import "core:math"
 
 import stb"vendor:stb/image"
 
@@ -460,14 +461,16 @@ create_gpu_texture::proc(
 		texture_groop = &s.texture_groop
 	}
 	assert(width > 0 && height > 0,"create_gpu_texture failed w_h must be width > 0 && height > 0")
+	num_levels := 1 + cast(u32)math.log2(cast(f32)max(width, height))
+	log.log(.Debug,"num_levels",num_levels,"wh",width,height)
 	tex := sdl.CreateGPUTexture(s.gpu_device,createinfo={
 		type = type,
 		format=format,
-		usage = {.SAMPLER},
+		usage = {.SAMPLER,.COLOR_TARGET},
 		width = width,
 		height = height,
 		layer_count_or_depth = layer_count,
-		num_levels = 1,
+		num_levels = num_levels,
 	})
 	texture_data:Texture_GPU_Data={
 		w=width,
@@ -498,12 +501,22 @@ uplode_data_to_gpu_texture::proc(texture:Texture_GPU_Handle,	bytes: []u8, width:
 	copy_cmd_buf := sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
 
-	sdl.UploadToGPUTexture(copy_pass, 
-		{transfer_buffer = tex_transfer_buf},
-		{texture = tex_ptr.data, layer = layer, w = cast(u32)width, h = cast(u32)height, d = 1},
-		false,
+	sdl.UploadToGPUTexture(
+		copy_pass, 
+		{
+			transfer_buffer = tex_transfer_buf
+		},
+		{
+			texture = tex_ptr.data, 
+			layer = layer, 
+			w = cast(u32)width, 
+			h = cast(u32)height, 
+			d = 1
+		},
+		true,
 	)
 	sdl.EndGPUCopyPass(copy_pass)
+	// sdl.GenerateMipmapsForGPUTexture(copy_cmd_buf, tex_ptr.data) 
 	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 	sdl.ReleaseGPUTransferBuffer(s.gpu_device, tex_transfer_buf)
 }
