@@ -48,9 +48,9 @@ draw_cube_by_face_item::proc(
 
 	packed_pos := pack_block_pos(pos)
 
-	for &face in &faces{
+	for &face,i in &faces{
 		face.block_pos = packed_pos
-		face.texture_face_index = cast(u32)item.texture_face_index
+		face.texture_face_index = cast(u32)item.texture_data.sides[cast(Model_Sides)i]
 	}
 	for &face,i in &faces{
 		face.geometry_face_index = cast(u16)item.model_data.cube_indices[cast(Model_Sides)i]

@@ -13,7 +13,7 @@ import cl"clay-odin"
 import hm "core:container/handle_map"
 
 import lin"core:math/linalg"
-
+import reg "registry"
 Inspector::struct{
 	fields:[dynamic]Field,
 	parent_history:[dynamic]any,
@@ -310,7 +310,7 @@ inspector_go_back_button::proc(
 		)
 	){
 		cl.Text("Back",text_dec(text_size_id=text_size_id,text_col_id=text_col_id,style_overide=style_overide))
-		texture:=get_texture_by_id(.Arrows_Go_Back_Return_Previous)
+		texture:=get_texture_by_id(reg.id(Icons_E.Arrows_Go_Back_Return_Previous))
 		if cl.UI(cl.ID("inspector_go_back_button_img",id))(defalt_img_box_dec(texture,border_size_id = .non,img_color = .element_selected,padding_size_id = .non,size = .normal)){}
 		if cl.Hovered(){
 			if is_input_event(.ui_l_c,always_consume_d = true){

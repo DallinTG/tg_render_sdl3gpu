@@ -27,26 +27,38 @@ import "core:encoding/cbor"
 reg_defalt_assets::proc(){
 	reg_defalt_textures()
 	gen_mipmaps()
-
 }
 reg_defalt_textures::proc(){
 	reg_bad_defalt_texture()
 	reg_white_defalt_texture()
-	reg_all_texture_from_loaded_directory(Icons_Dir,"icons",&Icons_Data)
-	reg_all_texture_from_loaded_directory(Textures_Dir,"textures",&Textures_Data)
+	reg_all_texture_from_loaded_directory_enum(Icons_Dir,&Icons_Data)
+	reg_all_texture_from_loaded_directory_enum(Textures_Dir,&Textures_Data)
 }
 gen_mipmaps::proc(){
 	copy_cmd_buf := sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	for &tex_arr, i in &s.texture_arr_groop {
 		if tex_arr != {} {
 			tex := get_gpu_texture(tex_arr.tex_hd)
-			log.log(.Debug,"Generate Mipmaps For GPU Texture",i)
 			sdl.GenerateMipmapsForGPUTexture(
 				copy_cmd_buf,
 				tex.data,
 			)
-
 		}
 	}
 	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
+}
+
+gen_mipmap::proc(groop:Texture_Arr_Groop){
+	cmd_buf := sdl.AcquireGPUCommandBuffer(s.gpu_device)
+
+	tex_arr:= &s.texture_arr_groop[groop] 
+	if tex_arr != {} {
+		tex := get_gpu_texture(tex_arr.tex_hd)
+		sdl.GenerateMipmapsForGPUTexture(
+			cmd_buf,
+			tex.data,
+		)
+	}
+	
+	ok := sdl.SubmitGPUCommandBuffer(cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 }

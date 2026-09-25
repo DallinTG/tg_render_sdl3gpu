@@ -116,10 +116,11 @@ Item_Info::struct{
 	tags:Item_Tags,
 	material_hd:Material_HD,
 	name:string,
-	texture_id:tg.Texture_ID_Types,
-	texture_face_index:u16,
+	// texture_id:tg.Texture_ID_Types,
+	// texture_face_index:u16,
 
 	model_data:Model_Data,
+	texture_data:Texture_Data,
 
 	tier:		Item_Tier,
 	rarity:		Item_Rarity
@@ -200,6 +201,15 @@ Item_Rarity::enum{
 }
 
 
+Model_Data :: struct {
+	cube_indices:[Model_Sides]int,
+	extra_count:int,
+}
+Texture_Data :: struct {
+	sides:[Model_Sides]int,
+	extra_count:int,
+}
+
 init_all_item_data::proc(){
 	init_texture_facees()
 	init_geometry_facees()
@@ -223,8 +233,8 @@ update_texture_facees::proc(){
 update_geometry_facees::proc(){
 	tg.update_indexed_gpu_data(&g.geometry_facees)
 }
-add_texture_face::proc(tex_id:tg.Texture_ID_Types, $T:typeid)->(index:int){
-	texture:=tg.get_texture_by_id(tex_id)
+add_texture_face::proc(id:reg.Reg_ID, $T:typeid,tint:[4]f32={1,1,1,1})->(index:int){
+	texture:=tg.get_texture_by_id(id)
 	data:T
 	when intrinsics.type_has_field(T, "img_index"){
 		data.img_index = cast(u32)texture.groop_index
@@ -238,132 +248,87 @@ add_texture_face::proc(tex_id:tg.Texture_ID_Types, $T:typeid)->(index:int){
 		data.uv[2] =  {1,1}
 		data.uv[3] =  {1,0}
 	}
+	when intrinsics.type_has_field(T, "tint"){
+		data.tint = tint
+
+	}
+
 	index=tg.add_indexed_gpu_data(&g.texture_facees,data)
 	return
 }
 
 // resends the data to the gpu
 
+DF_Items::enum{
+	air,
+	dirt,
+	grass,
+	stone_slate,
+}
+creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
+	i:=&df_items_info
+	i[.air] = Item_Info{
+
+	}
+	dirt_t_id:=add_texture_face(reg.id(Textures.Dirt),DF_FACE_TYPE)
+	i[.dirt] = Item_Info{
+		texture_data = {sides = fill_sides_all_1_t(dirt_t_id)},
+	}
+	grass_t_id:=add_texture_face(reg.id(Textures.Grass_Overlay),DF_FACE_TYPE)
+	i[.grass] = Item_Info{
+		texture_data = {
+			sides = [Model_Sides]int{
+				.pos_x = dirt_t_id,
+				.neg_x = dirt_t_id,
+				.pos_y = {},
+				.neg_y = dirt_t_id,
+				.pos_z = dirt_t_id,
+				.neg_z = dirt_t_id,
+				.extra = {},
+			}
+		},
+	}
+	stone_slate_t_id:=add_texture_face(reg.id(Textures.Stone_Slate),DF_FACE_TYPE)
+	i[.stone_slate] = Item_Info{
+		texture_data = {sides = fill_sides_all_1_t(stone_slate_t_id)},
+	}
+	return
+}
+fill_sides_all_1_t::proc(index:int) -> (sides:[Model_Sides]int){
+	sides[.pos_x] = index
+	sides[.neg_x] = index
+	sides[.pos_y] = index
+	sides[.neg_y] = index
+	sides[.pos_z] = index
+	sides[.neg_z] = index
+	return
+}
 
 sand_hd:Item_HD
 DF_FACE_TYPE::tg.Vert_Face_Texure
 reg_items::proc(){
+	tid:= add_texture_face(reg.id(Textures.Stone_Slate),DF_FACE_TYPE,tint = {1,1,1,1})
 	sand_info:Item_Info={
-		texture_id = .Tile_Bace,
-		texture_face_index = cast(u16)add_texture_face(.Tile_Bace,DF_FACE_TYPE),
+		// texture_id = .Tile_Bace,
+		// texture_face_index = cast(u16)add_texture_face(.Tile_Bace,DF_FACE_TYPE),
+		texture_data = {sides = fill_sides_all_1_t(tid)},
 		model_data = g.cube_face_geometry,
+		
 		// texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
 	}
-	sand_hd=reg.add(&g.item_reg,sand_info,{1,1})
+	df_item_info:=creae_df_items_info()
+	sand_hd=reg.add(&g.item_reg,sand_info,reg.id(DF_Items.dirt))
+	
 }
+
 reg_materials::proc(){
 
 }
 
 
 create_cube_face_geometry :: proc() -> Model_Data {
+
 	result: Model_Data
-
-	// result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
-	// 	&g.geometry_facees,
-	// 	tg.Vert_Face_Geometry{
-	// 		pos = {
-	// 			{1, 0, 0, 1},
-	// 			{1, 0, 1, 1},
-	// 			{1, 1, 1, 1},
-	// 			{1, 1, 0, 1},
-	// 		},
-	// 	},
-	// )
-
-	// result.cube_indices[.neg_x] = tg.add_indexed_gpu_data(
-	// 	&g.geometry_facees,
-	// 	tg.Vert_Face_Geometry{
-	// 		pos = {
-	// 			{0, 0, 1, 1},
-	// 			{0, 0, 0, 1},
-	// 			{0, 1, 0, 1},
-	// 			{0, 1, 1, 1},
-	// 		},
-	// 	},
-	// )
-
-	// result.cube_indices[.pos_y] = tg.add_indexed_gpu_data(
-	// 	&g.geometry_facees,
-	// 	tg.Vert_Face_Geometry{
-	// 		pos = {
-	// 			{0, 1, 0, 1},
-	// 			{1, 1, 0, 1},
-	// 			{1, 1, 1, 1},
-	// 			{0, 1, 1, 1},
-	// 		},
-	// 	},
-	// )
-
-	// result.cube_indices[.neg_y] = tg.add_indexed_gpu_data(
-	// 	&g.geometry_facees,
-	// 	tg.Vert_Face_Geometry{
-	// 		pos = {
-	// 			{0, 0, 1, 1},
-	// 			{1, 0, 1, 1},
-	// 			{1, 0, 0, 1},
-	// 			{0, 0, 0, 1},
-	// 		},
-	// 	},
-	// )
-
-	// result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
-	// 	&g.geometry_facees,
-	// 	tg.Vert_Face_Geometry{
-	// 		pos = {
-	// 			{1, 0, 1, 1},
-	// 			{0, 0, 1, 1},
-	// 			{0, 1, 1, 1},
-	// 			{1, 1, 1, 1},
-	// 		},
-	// 	},
-	// )
-
-	// result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
-	// 	&g.geometry_facees,
-	// 	tg.Vert_Face_Geometry{
-	// 		pos = {
-	// 			{0, 0, 0, 1},
-	// 			{1, 0, 0, 1},
-	// 			{1, 1, 0, 1},
-	// 			{0, 1, 0, 1},
-	// 		},
-	// 	},
-	// )
-// 
-//___________________________________
-
-	result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			pos = {
-				{ 0,  0,  0, 1},
-				{ 0, -1,  0, 1},
-				{ 1, -1,  0, 1},
-				{ 1,  0,  0, 1},
-			},
-			starting_shade = .9
-		},
-	)
-
-	result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			pos = {
-				{ 1,  0, -1, 1},
-				{ 1, -1, -1, 1},
-				{ 0, -1, -1, 1},
-				{ 0,  0, -1, 1},
-			},
-			starting_shade = .9
-		},
-	)
-
 	result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
@@ -416,6 +381,31 @@ create_cube_face_geometry :: proc() -> Model_Data {
 		},
 	)
 	
+	result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 0,  0,  0, 1},
+				{ 0, -1,  0, 1},
+				{ 1, -1,  0, 1},
+				{ 1,  0,  0, 1},
+			},
+			starting_shade = .9
+		},
+	)
+
+	result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
+		&g.geometry_facees,
+		tg.Vert_Face_Geometry{
+			pos = {
+				{ 1,  0, -1, 1},
+				{ 1, -1, -1, 1},
+				{ 0, -1, -1, 1},
+				{ 0,  0, -1, 1},
+			},
+			starting_shade = .9
+		},
+	)
 	tg.update_indexed_gpu_data(&g.geometry_facees)
 
 	return result

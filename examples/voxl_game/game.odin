@@ -25,6 +25,7 @@ s:^tg.State
 g:^Game
 Game::struct{
 	
+	df_items:[DF_Items]Item_HD,
 	item_reg:		Item_Reg,
 	material_reg:	Material_Reg,
 	texture_facees:	tg.Indexed_GPU_Data,
@@ -104,7 +105,8 @@ init::proc(){
 	tg.init_networking_instance(&g.server,pros_server_cmd,start_server)
 	tg.set_defalt_networking_instance(&g.server)
 	tg.reg_input_events()
-
+	tg.reg_all_texture_from_loaded_directory_enum(Textures_Dir,&Textures_Dat)
+	tg.gen_mipmaps()
 	init_defalt_ui_boxes()
 
 	tg.update_steam_friend_info()
@@ -164,6 +166,8 @@ main :: proc(){
 		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
 		for ev in &tg.s.events {
 		}
+
+
 
 		if s.time.is_60_hz{
 			manage_all_w_map_q(&g.w_map)

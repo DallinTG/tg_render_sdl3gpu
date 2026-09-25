@@ -17,6 +17,9 @@ struct Face {
 struct Face_Texure {
     uint   img_index;
     uint   layer;
+   	uint _padding_1;
+	uint _padding_2;
+    float4 tint;
 	float2 uv0;  float2 uv1;  float2 uv2;  float2 uv3;  
 };
 
@@ -128,10 +131,13 @@ Output main(
 	output.position = mul(mvp, final_pos);
 	output.uv = final_uv;
 
+
 	output.img_index = tex.img_index;
 	output.layer = tex.layer;
 
-	output.color = float4(1.0, 1.0, 1.0, 1.0);
+	output.color = tex.tint;
+	// output.color = float4(1, 1, 1, 1);
+
 	output.color2 = float4(0.0, 0.0, 0.0, 0.0);
 
 	output.normal = geometry.normal.xyz;
@@ -140,27 +146,3 @@ Output main(
 	output.shading = geometry.sarting_shade;
 	return output;
 }
-
-
-
-// Output main(uint vid : SV_VertexID) {
-//     Output output;
-
-//     float4 positions[3] = {
-//         float4(-0.5, -0.5, 0, 1),
-//         float4( 0.5, -0.5, 0, 1),
-//         float4( 0.0,  0.5, 0, 1)
-//     };
-
-//     output.position = positions[vid % 3];
-
-//     output.color = float4(1, 1, 1, 1);
-//     output.uv = float2(0, 0);
-//     output.img_index = 0;
-//     output.layer = 0;
-//     output.color2 = float4(0, 0, 0, 0);
-//     output.normal = float3(0, 0, 1);
-//     output.draw_index = 0;
-
-//     return output;
-// }

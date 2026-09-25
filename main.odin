@@ -250,7 +250,6 @@ init :: proc(state:^State=nil,init_settings:Init_Settings=DF_INIT_SETTINGS, allo
 	}
 	new_state = s
 	
-	init_steam()
 	s.frame_allocator = runtime.arena_allocator(&s.frame_arena)
 	s.allocator = allocator
 	ok = sdl.Init(init_settings.init_flags)
@@ -258,8 +257,8 @@ init :: proc(state:^State=nil,init_settings:Init_Settings=DF_INIT_SETTINGS, allo
 	for i in 0..<sdl.GetNumGPUDrivers() {
 		log.log(.Info,i, sdl.GetGPUDriver(i))
 	}
-
 	assert(ok , "SDL init failed")
+
 	if !init_settings.force_vulkin {
 		s.gpu_device = sdl.CreateGPUDevice(init_settings.suported_shaders ,init_settings.debug_mode, nil)
 		assert(s.gpu_device != nil,"SDL CreateGPUDevice failed gen_gpu")
@@ -309,6 +308,8 @@ init :: proc(state:^State=nil,init_settings:Init_Settings=DF_INIT_SETTINGS, allo
 		}
 	}
 	log.log(.Info, "GPU driver:", sdl.GetGPUDeviceDriver(s.gpu_device))
+
+	init_steam()
 
 	try_depth_format::proc(format: sdl.GPUTextureFormat){
 		if sdl.GPUTextureSupportsFormat(s.gpu_device, format, .D2, {.DEPTH_STENCIL_TARGET}){

@@ -25,7 +25,7 @@ import "core:image/jpeg"
 import "core:image/bmp"
 import "core:image/png"
 import "core:image/tga"
-
+import reg "registry"
 
 
 Steam_Info::struct{
@@ -191,41 +191,57 @@ _update_steam_player_groop::proc(groop:^Player_Groop){
 		info.status_string = status_to_string(plat.status)
 		info.lev = cast(int)steam.Friends_GetFriendSteamLevel(i_friends,plat.cs_id)
 		update_steam_prof_pic(i_friends,&info, &plat)
-	
 		append(&groop.player,Player{platform = plat, info = info, endpoint = endpoint})
 	}
+	// gpu_idle_ok:=sdl.WaitForGPUIdle(s.gpu_device)
+	gen_mipmap(.tex_256x256) // TODO MAKE ANUTHER TEXTUR GROOP THAT IS ONLY FOR STEAM PROFILE PICKS
+
+	// gen_mipmaps()
+
 }
 
 update_steam_prof_pic::proc(i_friends: ^steam.IFriends,info: ^Player_Info, plat:^Player_Platform_Steam){
-		if s.gpu_device != nil{
-			info.l_player_icon_id = steam.Friends_GetLargeFriendAvatar(i_friends, plat.cs_id)
-			w,h:u32
-			steam.Utils_GetImageSize(
-				s.steam.i_utils,
-				info.l_player_icon_id,
-				&w,
-				&h,
-			)
-			if w != 0 && h != 0{
-				buffer := make([]u8, w * h * 4)
-				ok:=steam.Utils_GetImageRGBA(
-					s.steam.i_utils,
-					info.l_player_icon_id,
-					raw_data(buffer),
-					cast(i32)len(buffer),
-				)
-				if ok{
-					raw_buff:=mem.slice_data_cast([][4]u8,buffer)
-					// player.l_player_icon_gpu_id = load_texture_from_bytes_raw(buffer,cast(int)w,cast(int)h,.R8G8B8A8_UNORM)
-					img,image_ok:=image.pixels_to_image(raw_buff,cast(int)w,cast(int)h)
-					if image_ok{
+	if s.gpu_device == nil {
+		log.log(.Warning,"NO GPU DEVICE")
+		return
+	}
+	info.l_player_icon_id = steam.Friends_GetLargeFriendAvatar(i_friends, plat.cs_id)
+	w,h:u32
+	image_size_ok:=steam.Utils_GetImageSize(
+		s.steam.i_utils,
+		info.l_player_icon_id,
+		&w,
+		&h,
+	)
+	if !image_size_ok {
+		log.log(.Error,"steam.Utils_GetImageSize() has failed on","{steam_player_icon_l",info.name,"}")
+		return
+	}
+	if w == 0 && h == 0{
+		log.log(.Error,"steam.Utils_GetImageSize() has returned {0,0} on","{steam_player_icon_l",info.name,"}")
+		return
+	}
 
-						info.l_player_icon_gpu_hd,info.l_player_icon_gpu_id = reg_texture_from_bits(&img,[2]string{"steam_player_icon_l",info.name})
-					}
-				}
-				delete(buffer)
-			}
-		}
+	buffer := make([]u8, w * h * 4)
+	image_rgba_ok:=steam.Utils_GetImageRGBA(
+		s.steam.i_utils,
+		info.l_player_icon_id,
+		raw_data(buffer),
+		cast(i32)len(buffer),
+	)
+	if !image_rgba_ok{
+		log.log(.Error,"steam.Utils_GetImageRGBA() has failed on","{steam_player_icon_l",info.name,"}")
+		return
+	}
+	raw_buff:=mem.slice_data_cast([][4]u8,buffer)
+	img,image_ok:=image.pixels_to_image(raw_buff,cast(int)w,cast(int)h)
+	if !image_ok{
+		log.log(.Error,"pixels_to_image() has failed on","{steam_player_icon_l",info.name,"}")
+		return
+	}
+	new_id:=reg.id([2]string{"steam_player_icon_l",info.name})
+	info.l_player_icon_gpu_hd, info.l_player_icon_gpu_id = reg_texture_from_bits(&img,new_id)
+	delete(buffer)
 }
 
 
@@ -424,7 +440,6 @@ onGetNumberOfCurrentPlayers :: proc(data: ^steam.NumberOfCurrentPlayers, ioFailu
 
 get_number_of_current_players :: proc() {
 	if s.steam.is_using_steam != true {return}
-	log.log(.Info,"\n[get_number_of_current_players] Getting number of current players.\n")
 	hSteamApiCall := steam.UserStats_GetNumberOfCurrentPlayers(steam.UserStats())
 }
 

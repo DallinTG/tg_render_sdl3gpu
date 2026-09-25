@@ -73,14 +73,14 @@ Texture_Setup::struct{
 	format:sdl.GPUTextureFormat,
 }
 
-Texture_ID_Types::union{
-	string,
-	[2]string,
-	u32,
-	[2]u32,
-	Textures_E,
-	Icons_E,
-}
+// Texture_ID_Types::union{
+// 	string,
+// 	[2]string,
+// 	u32,
+// 	[2]u32,
+// 	Textures_E,
+// 	Icons_E,
+// }
 
 Texture :: struct {
 	handle: Texture_HD,
@@ -130,8 +130,8 @@ reg_texture_from_file::proc(filename: string,mod_name: string = "")->(hd:Texture
 	img, img_err:=load_cpu_texture_file(filename)
 	tex_id:=str.trim_suffix(filename,".png")
 	tex_id=str.to_lower(tex_id,s.frame_allocator)
-	id:[2]string={tex_id,mod_name}
-	hd,raw_id=reg_texture_from_bits(img,id)
+	id:[2]string={mod_name,tex_id}
+	hd,raw_id=reg_texture_from_bits(img,reg.id(id))
 	return hd,raw_id
 }
 
@@ -162,11 +162,30 @@ reg_all_texture_from_loaded_directory::proc(all_fil_info: []runtime.Load_Directo
 			assert(err == nil, fmt.tprint("image.load_from_bytes() has faild on file:",fil.name,err,"\n\n"))
 			continue
 		}
-		hd,id:=reg_texture_from_bits(img,[2]string{mod_name,fil.name})
+		hd,id:=reg_texture_from_bits(img,reg.id([2]string{mod_name,fil.name}))
 		enum_v,ok:=reflect.enum_from_name(Enum_T,format_string(fil.name,".png"))
 
 		if ok{
 
+			extra_info[enum_v].hd = hd
+			extra_info[enum_v].id = id
+		}else{
+			log.log(.Warning,"bad Enum",fil.name,"\n",str.trim_suffix(fil.name,".png"),"\n")
+		}
+	}
+	return
+}
+
+reg_all_texture_from_loaded_directory_enum::proc(all_fil_info: []runtime.Load_Directory_File,extra_info:^[$Enum_T]Image){
+	for &fil in all_fil_info{
+		img,err:=image.load_from_bytes(fil.data,{},context.temp_allocator)
+		if err != nil{
+			assert(err == nil, fmt.tprint("image.load_from_bytes() has faild on file:",fil.name,err,"\n\n"))
+			continue
+		}
+		enum_v,ok:=reflect.enum_from_name(Enum_T,format_string(fil.name,".png"))
+		if ok{
+			hd,id:=reg_texture_from_bits(img,reg.id(enum_v))
 			extra_info[enum_v].hd = hd
 			extra_info[enum_v].id = id
 		}else{
@@ -183,45 +202,49 @@ format_string::proc(str_:string, remove_suffix:string="")->(new_str:string){
 }
 
 // This adds the img data to the gpu and then lets you draw it whith {tex_id:Texture_ID_Types}
-reg_texture_from_bits::proc(img: ^image.Image,tex_id:Texture_ID_Types, format: sdl.GPUTextureFormat = .R8G8B8A8_UNORM,)->(hd:Texture_HD,raw_id:[2]u32,){
-	assert(img != nil,fmt.tprint("img data is nil"," tex_id:",tex_id))
-	id:=get_texture_id(tex_id)
+reg_texture_from_bits::proc(img: ^image.Image,id:reg.Reg_ID, format: sdl.GPUTextureFormat = .R8G8B8A8_UNORM,)->(hd:Texture_HD,raw_id:[2]u32,){
+	assert(img != nil,fmt.tprint("img data is nil"," tex_id:",id))
+	// id:=get_texture_id(tex_id)
 	ARR_INFO:=TEXTURE_ARR_INFO
 	// tex_map:=&s.texture_arr_map
 	tex_groop:=&s.texture_arr_groop
 	for &tex, i in tex_groop{
-		if cast(u32)img.width <= ARR_INFO[i].w_h.x && cast(u32)img.height <= ARR_INFO[i].w_h.y && ARR_INFO[i].format == format{
+		if !(cast(u32)img.width <= ARR_INFO[i].w_h.x && cast(u32)img.height <= ARR_INFO[i].w_h.y && ARR_INFO[i].format == format){
+			continue
+		}
+		chanle_count:=4
+		if format == .R8_UNORM{
+			chanle_count = 1
+		}
+		if  reg.has_id(&s.textures_reg,id) {	//check if somthing is allredy using that id if so replace it insted of making a new one
+			hd=reg.get_hd(&s.textures_reg,id)
+			text:=reg.get(&s.textures_reg,hd)
+			uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = text.layer, chanle_count = chanle_count)
+			raw_id = id
 
-			chanle_count:=4
-			if format == .R8_UNORM{
-				chanle_count = 1
-			}
-			if  reg.has_id(&s.textures_reg,id) {	//check if somthing is allredy using that id if so replace it insted of making a new one
-				hd=reg.get_hd(&s.textures_reg,id)
-				text:=reg.get(&s.textures_reg,hd)
-				uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = text.layer, chanle_count = chanle_count)
-				raw_id = id
-			}else{
-				if tex.layers_used + 1 >ARR_INFO[i].layer_count{ // Stops the game frome alocating more than the max textures
-					fmt.print(an.ansy("max Number of textures reached for:",col = .red),cast(Texture_Arr_Groop)i,"count:",tex.layers_used,"Max Count:",ARR_INFO[i].layer_count," \n")
-					return Texture_HD{0,0},[2]u32{0,0}
-				}
-				uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = tex.layers_used, chanle_count = chanle_count)
-				value:=Texture{
-					id = id,
-					hd = tex.tex_hd,
-					layer = tex.layers_used,
-					groop_index = i,
-					w_h = {cast(i32)img.width,cast(i32)img.height},
-					offset = {cast(i32)ARR_INFO[i].w_h.x- cast(i32)img.width ,cast(i32)ARR_INFO[i].w_h.x-cast(i32)img.width },
-				}
-				hd=reg.add(&s.textures_reg,value,id)
-				raw_id = id
-				tex.layers_used += 1
-			}
 			return hd, raw_id
 		}
+		if tex.layers_used + 1 >ARR_INFO[i].layer_count{ // Stops the game frome alocating more than the max textures
+			log.log(.Error, an.ansy("max Number of textures reached for:",col = .red),cast(Texture_Arr_Groop)i,"count:",tex.layers_used,"Max Count:",ARR_INFO[i].layer_count," \n")
+			return Texture_HD{0,0},[2]u32{0,0}
+		}
+
+		uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = tex.layers_used, chanle_count = chanle_count)
+		value:=Texture{
+			id = id,
+			hd = tex.tex_hd,
+			layer = tex.layers_used,
+			groop_index = i,
+			w_h = {cast(i32)img.width,cast(i32)img.height},
+			offset = {cast(i32)ARR_INFO[i].w_h.x- cast(i32)img.width ,cast(i32)ARR_INFO[i].w_h.x-cast(i32)img.width },
+		}
+		hd=reg.add(&s.textures_reg,value,id)
+		raw_id = id
+		tex.layers_used += 1
+		
+		return hd, raw_id
 	}
+	log.log(.Warning,"no textures added")
 	return Texture_HD{0,0},[2]u32{0,0}
 }
 reg_bad_defalt_texture::proc(){
@@ -258,11 +281,11 @@ reg_white_defalt_texture::proc(){
 }
 
 //this is slow and you should use get_texture_by_hd() insted
-get_texture_by_id::proc(tex_id:Texture_ID_Types)->(tex:^Texture){//TODO THIS NEEDS TO BE REWORKED
+get_texture_by_id::proc(id:reg.Reg_ID)->(tex:^Texture){//TODO THIS NEEDS TO BE REWORKED
 	ok:bool
-	tex = reg.get_by_id(&s.textures_reg,get_texture_id(tex_id))
+	tex = reg.get_by_id(&s.textures_reg,reg.id(id))
 	if tex == nil{
-		tex = reg.get_by_id(&s.textures_reg,get_texture_id([2]u32{0,1}))
+		tex = reg.get_by_id(&s.textures_reg,reg.id(reg.Reg_ID{0,1}))
 	}
 	return
 }
@@ -274,34 +297,7 @@ get_texture::proc(tex_hd:Texture_HD)->(tex:^Texture){//TODO THIS NEEDS TO BE REW
 	}
 	return
 }
-get_texture_id::proc(tex_id:Texture_ID_Types)->(new_tex_id:[2]u32){
-	mod_id_u32:u32
-	tex_id_u32:u32
-	switch id in tex_id {
-	case string:
-		tex_id_u32 = hash.murmur32(transmute([]u8)id)
-	case [2]string:
-		tex_id_u32 = hash.murmur32(transmute([]u8)id.y)
-		if id.x == ""{
-			mod_id_u32 = 0
-		}else{
-			mod_id_u32 = hash.murmur32(transmute([]u8)id.x)
-		}
-	case u32:
-		tex_id_u32 = id
-	case [2]u32:
-		tex_id_u32 = id.y
-		mod_id_u32 = id.x
-	case Icons_E:
-		mod_id_u32 =Icons_Data[id].id.x
-		tex_id_u32 =Icons_Data[id].id.y
-	case Textures_E:
-		mod_id_u32 =Textures_Data[id].id.x
-		tex_id_u32 =Textures_Data[id].id.y 
-	}
-	new_tex_id = {mod_id_u32,tex_id_u32}
-	return
-}
+
 
 // THIS is a internal helper proc you shiuld problobly us 
 // reg_texture_from_bits() or reg_texture_from_file()
@@ -462,7 +458,7 @@ create_gpu_texture::proc(
 	}
 	assert(width > 0 && height > 0,"create_gpu_texture failed w_h must be width > 0 && height > 0")
 	num_levels := 1 + cast(u32)math.log2(cast(f32)max(width, height))
-	log.log(.Debug,"num_levels",num_levels,"wh",width,height)
+
 	tex := sdl.CreateGPUTexture(s.gpu_device,createinfo={
 		type = type,
 		format=format,
@@ -487,6 +483,7 @@ create_gpu_texture::proc(
 // THIS is a internal helper proc you shiuld problobly us 
 // reg_texture_from_bits() or reg_texture_from_file()
 uplode_data_to_gpu_texture::proc(texture:Texture_GPU_Handle,	bytes: []u8, width: int, height: int, layer:u32 = 0,chanle_count:int = 4){
+
 	tex_ptr := get_gpu_texture(texture)
 	assert(cast(u32)width<=tex_ptr.w && cast(u32)height<=tex_ptr.h,"texture data must be = or < texture ")
 	assert(s.gpu_device != nil, "s.gpu_device dos not exsist")
@@ -495,9 +492,13 @@ uplode_data_to_gpu_texture::proc(texture:Texture_GPU_Handle,	bytes: []u8, width:
 		usage = .UPLOAD,
 		size = cast(u32)(pixels_byte_size),
 	})
-	tex_transfer_mem := sdl.MapGPUTransferBuffer(s.gpu_device, tex_transfer_buf, false)
+
+	tex_transfer_mem := sdl.MapGPUTransferBuffer(s.gpu_device, tex_transfer_buf, true)
+
 	mem.copy(tex_transfer_mem, raw_data(bytes), pixels_byte_size)
+
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, tex_transfer_buf)
+
 	copy_cmd_buf := sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
 
@@ -513,12 +514,13 @@ uplode_data_to_gpu_texture::proc(texture:Texture_GPU_Handle,	bytes: []u8, width:
 			h = cast(u32)height, 
 			d = 1
 		},
-		true,
+		false,
 	)
 	sdl.EndGPUCopyPass(copy_pass)
 	// sdl.GenerateMipmapsForGPUTexture(copy_cmd_buf, tex_ptr.data) 
 	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 	sdl.ReleaseGPUTransferBuffer(s.gpu_device, tex_transfer_buf)
+	// gpu_idle_ok:=sdl.WaitForGPUIdle(s.gpu_device)
 }
 
 destroy_texture :: proc(th: Texture_GPU_Handle, texture_groop:^Texture_Groop = nil) {

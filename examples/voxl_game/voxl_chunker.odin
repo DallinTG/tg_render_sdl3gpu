@@ -147,11 +147,6 @@ Model_Sides::enum{
 	extra,
 }
 
-Model_Data :: struct {
-	cube_indices:[Model_Sides]int,
-	extra_count:int,
-}
-
 get_chunk_mesh_data::proc(w_map:^Map, mesh_data_hd:Chunk_Mesh_Data_HD)->(mesh_data:^Chunk_Mesh_Data,ok:bool){
 	mesh_data,ok=hm.get(&w_map.chunks_mesh_data,mesh_data_hd)
 	return mesh_data,ok
@@ -900,7 +895,7 @@ mesh_by_side_all::proc(
 				face:tg.Vert_Face
 				packed_pos := pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z})
 				face.block_pos = packed_pos
-				face.texture_face_index = cast(u32)item.texture_face_index
+				face.texture_face_index = cast(u32)item.texture_data.sides[side]
 				face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
 				// append(&mesh.data,face)
 				mesh.data[face_count] = face
@@ -1037,7 +1032,7 @@ mesh_by_bit_mask :: proc(
                 face: tg.Vert_Face
 
                 face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
-                face.texture_face_index = cast(u32)item.texture_face_index
+                face.texture_face_index = cast(u32)item.texture_data.sides[side]
                 face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
                 // log.log(.Debug,"do append",x,y,z,side,face,"\n")
                 // append(&mesh.data, face)

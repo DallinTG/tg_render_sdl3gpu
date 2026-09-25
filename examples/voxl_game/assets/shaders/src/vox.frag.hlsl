@@ -41,25 +41,13 @@ float4 main(Input input) : SV_Target0 {
 	    float3(input.uv, input.layer)
 	);
 
-    float4 tint;
+
     if (all(color ==float4(0, 0, 0, 0))){
     	discard;
     }
 
-    if (input.draw_index == 0) {
-        tint = float4(1, 0, 0, 1);
-    }
-    else if (input.draw_index == 1) {
-        tint = float4(0, 1, 0, 1);
-    }
-    else if (input.draw_index == 2) {
-        tint = float4(0, 0, 1, 1);
-    }
-    else {
-        tint = float4(0, 1, 0, 1);
-    }
     
-    return color * input.color * tint  *  float4(input.shading,input.shading,input.shading,1);
+    return color * input.color   *  float4(input.shading,input.shading,input.shading,1);
 
     // uint w, h, layers, levels;
 	// tex.GetDimensions(5, w, h, layers, levels);

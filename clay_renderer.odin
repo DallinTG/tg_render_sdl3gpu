@@ -8,90 +8,9 @@ import cl "clay-odin"
 import "core:c"
 import "core:math"
 import "core:strings"
+import "core:log"
 // import hm "handle_map_static_virtual"
 import hm "core:container/handle_map"
-// import rl "vendor:raylib"
-
-// Raylib_Font :: struct {
-//     fontId: u16,
-//     // font:   rl.Font,
-// }
-
-// clay_color_to_rl_color :: proc(color: cl.Color) -> rl.Color {
-//     return {u8(color.r), u8(color.g), u8(color.b), u8(color.a)}
-// }
-
-// raylib_fonts := [dynamic]Raylib_Font{}
-
-// Alias for compatibility, default to ascii support
-
-
-// measure_text_unicode :: proc "c" (text: cl.StringSlice, config: ^cl.TextElementConfig, userData: rawptr) -> cl.Dimensions {
-//     // Needed for grapheme_count
-//     context = runtime.default_context()
-    
-// 	line_width: f32 = 0
-    
-// 	// font := raylib_fonts[config.fontId].font
-// 	text_str := string(text.chars[:text.length])
-
-//     // This function seems somewhat expensive, if you notice performance issues, you could assume
-//     // - 1 codepoint per visual character (no grapheme clusters), where you can get the length from the loop
-//     // - 1 byte per visual character (ascii), where you can get the length with `text.length`
-//     // see `measure_text_ascii`
-//     grapheme_count, _, _ := utf8.grapheme_count(text_str)
-
-// 	for letter, byte_idx in text_str {
-// 		glyph_index := rl.GetGlyphIndex(font, letter)
-
-//         glyph := font.glyphs[glyph_index]
-
-// 		if glyph.advanceX != 0 {
-// 			line_width += f32(glyph.advanceX)
-// 		} else {
-// 			line_width += font.recs[glyph_index].width + f32(font.glyphs[glyph_index].offsetX)
-// 		}
-// 	}
-
-// 	scaleFactor := f32(config.fontSize) / f32(font.baseSize)
-
-//     // Note: 
-//     //   I'd expect this to be `grapheme_count - 1`, 
-//     //   but that seems to be one letterSpacing too small
-//     //   maybe that's a raylib bug, maybe that's Clay?
-// 	total_spacing := f32(grapheme_count) * f32(config.letterSpacing)
-
-// 	return {width = line_width * scaleFactor + total_spacing, height = f32(config.fontSize)}
-// }
-
-// measure_text_ascii :: proc "c" (text: cl.StringSlice, config: ^cl.TextElementConfig, userData: rawptr) -> cl.Dimensions {    
-// 	line_width: f32 = 0
-    
-// 	font := raylib_fonts[config.fontId].font
-// 	text_str := string(text.chars[:text.length])
-
-// 	for i in 0..<len(text_str) {
-// 		glyph_index := text_str[i] - 32
-
-//         glyph := font.glyphs[glyph_index]
-
-// 		if glyph.advanceX != 0 {
-// 			line_width += f32(glyph.advanceX)
-// 		} else {
-// 			line_width += font.recs[glyph_index].width + f32(font.glyphs[glyph_index].offsetX)
-// 		}
-// 	}
-
-// 	scaleFactor := f32(config.fontSize) / f32(font.baseSize)
-
-//     // Note: 
-//     //   I'd expect this to be `len(text_str) - 1`, 
-//     //   but that seems to be one letterSpacing too small
-//     //   maybe that's a raylib bug, maybe that's Clay?
-// 	total_spacing := f32(len(text_str)) * f32(config.letterSpacing)
-
-// 	return {width = line_width * scaleFactor + total_spacing, height = f32(config.fontSize)}
-// }
 
 UI_Vertex_Data :: struct #align(16){
 	pos:Vec4,
@@ -159,14 +78,14 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
 		    	pos = {bounds.x,bounds.y*-1,0+inst.z_offset},
 		     	w_h = {bounds.width,bounds.height}
 		    }
-			// draw_rect_clay(inst, mesh,bounds.x, bounds.y, bounds.width, bounds.height, config.backgroundColor,imageTexture^)
+			if imageTexture == nil{
+				log.log(.Error,"bad textur hd")
+			}
+
 			draw_rect(mesh,get_texture(imageTexture^),DEFALT_UI_VERTEX_DATA,tint,rect, scissor_rect = get_true_scissor(scissor_stack[:]))
-			// rl.DrawTextureEx(imageTexture^, {bounds.x, bounds.y}, 0, bounds.width / f32(imageTexture.width), clay_color_to_rl_color(tint))
 
         case .ScissorStart:
         	append(&scissor_stack ,Vec4{bounds.x, bounds.y, bounds.width+bounds.x, bounds.height+ bounds.y})
-            // rl.BeginScissorMode(i32(math.round(bounds.x)), i32(math.round(bounds.y)), i32(math.round(bounds.width)), i32(math.round(bounds.height)))
-            // fmt.print("start_skisers\n",i32(math.round(bounds.x)), i32(math.round(bounds.y)), i32(math.round(bounds.width)), i32(math.round(bounds.height)),"\n")
         case .ScissorEnd:
         	pop(&scissor_stack)
             // rl.EndScissorMode()

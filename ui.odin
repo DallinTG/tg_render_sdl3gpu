@@ -18,6 +18,7 @@ import "core:encoding/json"
 import "core:os"
 import "core:strconv"
 import steam "steamworks"
+import reg"/registry"
 
 UI_Info::struct{
 	style:		UI_Style,
@@ -1807,7 +1808,9 @@ draw_steam_friends::proc(location:cl.LayoutAlignmentX = .Right){
 		icon_box_dec.border.width.right = 0
 	
 		if cl.UI(cl.ID("Player_friends_icon_box"))(icon_box_dec) {
-			img:=get_texture_by_id(.Travel_Person_People_Three)
+			// img:=get_texture_by_id(reg.id(Icons_E.Travel_Person_People_Three))
+			img:=get_texture_by_id(reg.id(Icons_E.Travel_Person_People_Three))
+
 			//TODO this needs to use a textur handle insted
 			// img:=get_texture(.Travel_Person_People_Three)
 			if cl.UI(cl.ID("Player_friends_icon",))(defalt_img_box_dec(cast(rawptr)&img.handle,border_size_id=.non,padding_size_id=.non,size = .normal,img_color = .info)) {
@@ -1892,9 +1895,8 @@ draw_steam_lobby_ui::proc(location:cl.LayoutAlignmentX = .Right){
 		icon_box_dec.layout.padding.right = 0
 		icon_box_dec.border.width.right = 0
 		if cl.UI(cl.ID("Player_lobby_icon_box"))(icon_box_dec) {
-			img:=get_texture_by_id(.Travel_Person_People_Three)
-			//TODO this part needs to be fixed
-			// img:=get_texture(.Travel_Person_People_Three)
+			// img:=get_texture_by_id(reg.id(Icons_E.Travel_Person_People_Three))
+			img:=get_texture_by_id(reg.id(Icons_E.Travel_Person_People_Three))
 			if cl.UI(cl.ID("Player_lobby_icon",))(defalt_img_box_dec(cast(rawptr)&img.handle,border_size_id=.non,padding_size_id=.non,size = .normal,img_color = .info)) {
 			}
 		}
@@ -1922,6 +1924,7 @@ draw_player_panel::proc(
 	if player == nil {return}
 	if cl.UI(cl.ID("Player_Card", cast(u32)player.info.l_player_icon_id+index))(defalt_box_dec(border_size_id=border_size,layout_direction = .LeftToRight,child_alignment = {.Left,.Top})) {
 		if cl.UI(cl.ID("Player_larg_icon", cast(u32)player.info.l_player_icon_id+index))(defalt_img_box_dec(cast(rawptr)&player.info.l_player_icon_gpu_hd,size = player_icon_size)) {
+
 		}
 		if cl.UI(cl.ID("Player_Card_info", cast(u32)player.info.l_player_icon_id+index))(defalt_seperator_dec(layout_direction = .TopToBottom,child_alignment = {.Left,.Top},padding_size_id = .normal,child_gap=.small)) {
 			defalt_txt_dynamic(player.info.name)
@@ -2202,8 +2205,8 @@ enum_drop_down_menu::proc(
 			enum_index,ok:=reflect.as_i64(enum_any)
 			if ok{
 				cl.Text(reflect.enum_field_names(enum_any.id)[enum_index],text_dec(text_size_id = text_size_id,text_col_id = text_col_id,style_overide=style_overide))
-				texture:=get_texture_by_id(.Arrows_Pointer_Down_South)
-				if huv{texture=get_texture_by_id(.Arrows_Media_Controls_Stop)}
+				texture:=get_texture_by_id(reg.id(Icons_E.Arrows_Pointer_Down_South))
+				if huv{texture=get_texture_by_id(reg.id(Icons_E.Arrows_Media_Controls_Stop))}
 				if cl.UI(cl.ID("enum_drop_down_menu_options_box",id))(defalt_img_box_dec(texture,border_size_id = .non,img_color = .element_selected,padding_size_id = .non,size = .normal)){}
 			}
 		}

@@ -208,6 +208,7 @@ append_to_mesh::proc(mesh:^Mesh_CPU,indices:[]u32,vertices:$T/[]$E, shift_indice
 	vertices_byte_size:= len(vertices) * attribute_size
 	// fmt.println("APPEND: ",mesh.name,len(vertices),attribute_size,vertices_byte_size)
 	buffer_write_slice(&mesh.vertex_buf,vertices)
+	// fmt.println(mesh.vertex_buf.buffer.buf[:16],"\n\n\n\n")
 	// fmt.println("AFTER APPEND: ",len(mesh.vertex_buf.buffer.buf))
 	append(&mesh.index_buf, ..indices)
 

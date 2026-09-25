@@ -4,8 +4,66 @@ import hm "core:container/handle_map"
 import "base:runtime"
 import "base:builtin"
 import "base:intrinsics"
+import rft"core:reflect"
+import "core:hash"
+import "core:log"
+
 
 Reg_ID::[2]u32 // defalt reg id
+
+id::proc{
+	reg_id_to_reg_id,
+	string_to_reg_id,
+	enum_to_reg_id,
+}
+reg_id_to_reg_id::proc(id:Reg_ID)->(reg_id:Reg_ID){
+	return id
+}
+string_to_reg_id::proc(id:[2]string)->(reg_id:Reg_ID){
+	reg_id.x = hash.murmur32(transmute([]u8)id.x)
+	if id.x == ""{
+		reg_id = 0
+	}else{
+		reg_id.y = hash.murmur32(transmute([]u8)id.y)
+	}
+	return
+}
+
+enum_to_reg_id :: proc(ENUM: $ID, loc := #caller_location) -> (reg_id: Reg_ID)
+	where intrinsics.type_is_enum(ID)
+{
+	enum_string := rft.enum_string(ENUM)
+	id_string := ""
+
+	type_info := type_info_of(typeid_of(ID))
+
+	#partial switch info in type_info.variant {
+	case runtime.Type_Info_Named:
+		id_string = info.name
+	}
+	// log.log(.Debug,id_string,enum_string)
+	
+	return string_to_reg_id({id_string,enum_string})
+}
+// enum_to_reg_id_runtime :: proc(
+// 	enum_type: typeid,
+// 	enum_value: any,
+// 	loc := #caller_location,
+// ) -> (reg_id: Reg_ID)
+// {
+// 	enum_string := rft.enum_string(enum_value)
+// 	id_string := ""
+
+// 	type_info := type_info_of(enum_type)
+
+// 	#partial switch info in type_info.variant {
+// 	case runtime.Type_Info_Named:
+// 		id_string = info.name
+// 	}
+
+// 	return string_to_reg_id({enum_string, id_string})
+// }
+
 Registry::struct($T: typeid, $Handle_Type: typeid)
 	where
 		intrinsics.type_has_field(T, "reg_id")
@@ -13,11 +71,6 @@ Registry::struct($T: typeid, $Handle_Type: typeid)
 	list:map[u64]Handle_Type,
 	data:hm.Dynamic_Handle_Map(T,Handle_Type),
 }
-
-
-// create::proc(){
-
-// }
 
 destroy::proc(r: ^$D/Registry($T, $Handle_Type),){
 	delete(r.list)

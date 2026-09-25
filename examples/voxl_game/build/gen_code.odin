@@ -20,6 +20,8 @@ import "core:path/slashpath"
 import "core:image/png"
 import "core:image"
 import "core:hash"
+import "core:encoding/cbor"
+import "core:path/filepath"
 
 // Avoids 'unused import' error: "core:image/png" needs to be imported in order
 // to make `img.load_from_bytes` understand PNG format.
@@ -27,6 +29,7 @@ _ :: png
 
 INPUT_DIR :: "../assets/textures"
 OUTPUT_FILE :: "../gen_code.odin"
+
 F_Info::struct{
 	suffix:string,
 	mod_name:string,
@@ -36,9 +39,12 @@ F_Info::struct{
 D_Info::struct{
 	files:[dynamic]F_Info,
 	dir_name:string,
+	path:string,
 }
 
+
 all_dir_info:[dynamic]D_Info
+
 create_enum_info_frome_dir_recers::proc(path:string, mod_name:string,recer_count:int=0){
 	info:=new(D_Info)
 
@@ -49,6 +55,7 @@ create_enum_info_frome_dir_recers::proc(path:string, mod_name:string,recer_count
 	for i in input_files {
 
 		new_info:F_Info
+		is_dir:bool
 		switch {
 		case strings.has_suffix(i.name, ".ttf"):
 		new_info.suffix = ".ttf"
@@ -59,14 +66,18 @@ create_enum_info_frome_dir_recers::proc(path:string, mod_name:string,recer_count
 		case i.type == .Directory:
 			fmt.print(i.fullpath,i.name,"\n")
 			create_enum_info_frome_dir_recers(i.fullpath,i.name,recer_count+1)
-			continue
+			is_dir = true
+	
 		case:
 			continue
 		}
-
+		
+		info.path = path
 		new_info.mod_name = mod_name
 		new_info.file_info = i
-		append(&info.files, new_info)
+		if !is_dir{
+			append(&info.files, new_info)
+		}
 	}
 	if len(info.files) > 0{
 		append(&all_dir_info,info^)
@@ -107,30 +118,37 @@ start_code_gen_main :: proc() {
 //	odin run generate_image_info
 package voxl_game
 
+import tg"../../../tg_render_sdl3gpu"
+
 Image :: struct {
 	width: int,
 	height: int,
 	id:[2]u32,
+	hd:tg.Texture_HD,//this will be set at runtime
 	data: []u8,
 }
 
 `//Image_Name :: enum {`,
 )
 	for &dir in all_dir_info{
-		fmt.fprintfln(f,"%v_E :: enum {{",strings.to_ada_case(slashpath.name(dir.dir_name)))
+		fmt.fprintfln(f,"%v :: enum {{",strings.to_ada_case(slashpath.name(dir.dir_name)))
 		for file in dir.files{
 			// new_string,ok:=strings.replace_all(strings.trim_suffix( strings.to_ada_case(slashpath.name(file.file_info.name)),file.suffix),".","_")
+			
 			fmt.fprint(f,"	",format_string(file.file_info.name,file.suffix),",\n")
 		}
 		fmt.fprintfln(f,"}}")
 		fmt.fprintfln(f,"")
 
-		switch dir.dir_name{
-			case "textures":
-			print_img_data(f,&dir,"assets/textures")
-			case "icons":
-			print_img_data(f,&dir,"assets/textures/icons")
-			case:
+		if dir.dir_name !="src"{
+			base_path, _ := filepath.abs(".")
+			target_path, _ := filepath.abs(dir.path)
+
+			rel_path, err := filepath.rel(base_path, target_path)
+			true_rel_path := strings.trim_prefix(rel_path, "../")
+			assert(err == .None)
+
+			print_img_data(f,&dir,true_rel_path)
 		}
 	}
 	
@@ -162,7 +180,7 @@ Image :: struct {
 print_img_data::proc(f:^os.File,dir:^D_Info,load_path:string){
 	
 	fmt.fprintfln(f,"%v_Dir  := #load_directory(\"%v\")",strings.to_ada_case(slashpath.name(dir.dir_name)),load_path)
-	fmt.fprintfln(f,"%v_Data := [%v_E]Image {{",strings.to_ada_case(slashpath.name(dir.dir_name)),strings.to_ada_case(slashpath.name(dir.dir_name)))
+	fmt.fprintfln(f,"%v_Dat := [%v]Image {{",strings.to_ada_case(slashpath.name(dir.dir_name)),strings.to_ada_case(slashpath.name(dir.dir_name)))
 	for file in dir.files{
 	img, img_err := image.load_from_file(file.file_info.fullpath)
 		if img_err == nil {

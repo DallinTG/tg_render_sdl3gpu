@@ -18,7 +18,7 @@ import stbrp "vendor:stb/rect_pack"
 
 // import hm "handle_map_static_virtual"
 import hm "core:container/handle_map"
-
+import reg "/registry"
 font_bitmap_w :: 64*8
 font_bitmap_h :: 64*8
 char_count :: 96
@@ -28,7 +28,7 @@ Font_Handle :: distinct Handle
 Font :: struct {
 	handle:Font_Handle,
 	char_data: [char_count]tt.bakedchar,
-	sg_image: Texture_ID_Types,
+	sg_image: reg.Reg_ID,
 	texture_hd:Texture_HD,
 	info:tt.fontinfo,
 	height:f32,
@@ -65,7 +65,8 @@ load_font_from_data :: proc(font_id:string ,height:f32, ttf_data:[]u8 = DEFALT_F
 		new_bitmap[i].a = bit.x
 	}
 	img ,ok:= image.pixels_to_image(pixels = new_bitmap[:],width = font_bitmap_w, height = font_bitmap_h,)
-	id :=[2]string{"font",font_id}
+
+	id := reg.id([2]string{"font",font_id})
 	hd,new_id:=reg_texture_from_bits(&img,id, format = .R8G8B8A8_UNORM)
 	font.sg_image = id
 	font.texture_hd = hd
