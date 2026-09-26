@@ -25,13 +25,14 @@ s:^tg.State
 g:^Game
 Game::struct{
 	
+	w_map:Map,
+	debug_info:Vox_Render_Debug_Info,
 	df_items:[DF_Items]Item_HD,
 	item_reg:		Item_Reg,
 	material_reg:	Material_Reg,
 	texture_facees:	tg.Indexed_GPU_Data,
 	geometry_facees:tg.Indexed_GPU_Data,
 	
-	w_map:Map,
 	
 	//TODO temp
 	cube_face_geometry:Model_Data,
@@ -170,6 +171,7 @@ main :: proc(){
 
 
 		if s.time.is_60_hz{
+			q_up_chunks_around_pos(&g.w_map,g.cam.pos)
 			manage_all_w_map_q(&g.w_map)
 			sink_game_info(&g.server,&g.info)
 			g.clay_render_comands=create_layout()

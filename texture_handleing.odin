@@ -247,6 +247,7 @@ reg_texture_from_bits::proc(img: ^image.Image,id:reg.Reg_ID, format: sdl.GPUText
 	log.log(.Warning,"no textures added")
 	return Texture_HD{0,0},[2]u32{0,0}
 }
+BAD_TEX_ID:[2]u32:{0,0}
 reg_bad_defalt_texture::proc(){
 	per:[4]u8:{255,0,255,255}
 	pixles:[][4]u8={
@@ -260,9 +261,10 @@ reg_bad_defalt_texture::proc(){
 		per, per, per, per, per, per, per, per,
 	}
 	img,ok:=image.pixels_to_image(pixles[:],8,8)
-	hd,_:=reg_texture_from_bits(&img,[2]u32{0,0})
+	hd,_:=reg_texture_from_bits(&img,BAD_TEX_ID)
 	s.bad_texture_hd = hd
 }
+WHITE_TEX_ID:[2]u32:{0,1}
 reg_white_defalt_texture::proc(){
 	per:[4]u8:{255,255,255,255}
 	pixles:[][4]u8={
@@ -276,8 +278,26 @@ reg_white_defalt_texture::proc(){
 		per, per, per, per, per, per, per, per,
 	}
 	img,ok:=image.pixels_to_image(pixles[:],8,8)
-	hd,_:=reg_texture_from_bits(&img,[2]u32{0,1})
+	hd,_:=reg_texture_from_bits(&img,WHITE_TEX_ID)
 	s.white_texture_hd = hd
+}
+
+BLANK_TEX_ID:[2]u32:{0,3}
+reg_blank_defalt_texture::proc(){
+	per:[4]u8:{0,0,0,0}
+	pixles:[][4]u8={
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+		per, per, per, per, per, per, per, per,
+	}
+	img,ok:=image.pixels_to_image(pixles[:],8,8)
+	hd,_:=reg_texture_from_bits(&img,BLANK_TEX_ID)
+	s.blank_texture_hd = hd
 }
 
 //this is slow and you should use get_texture_by_hd() insted
@@ -285,7 +305,7 @@ get_texture_by_id::proc(id:reg.Reg_ID)->(tex:^Texture){//TODO THIS NEEDS TO BE R
 	ok:bool
 	tex = reg.get_by_id(&s.textures_reg,reg.id(id))
 	if tex == nil{
-		tex = reg.get_by_id(&s.textures_reg,reg.id(reg.Reg_ID{0,1}))
+		tex = reg.get_by_id(&s.textures_reg,reg.id(BAD_TEX_ID))
 	}
 	return
 }

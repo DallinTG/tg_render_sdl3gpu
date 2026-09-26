@@ -196,6 +196,7 @@ get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){
 append_to_mesh::proc(mesh:^Mesh_CPU,indices:[]u32,vertices:$T/[]$E, shift_indices:bool=true){
 
 	attribute_size:=size_of(E)
+
 	assert(mesh.attribute_size == attribute_size, "mesh vertex data size must == incoming vertices size")
 	indices:=indices
 	if shift_indices{

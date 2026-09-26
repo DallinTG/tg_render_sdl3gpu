@@ -217,8 +217,8 @@ init_all_item_data::proc(){
 	reg_materials()
 	reg_items()
 	
-	update_texture_facees()
 	update_geometry_facees()
+	update_texture_facees()
 }
 init_texture_facees::proc(){
 	g.texture_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Texure,"texture_facees_gpu_data")
@@ -233,25 +233,27 @@ update_texture_facees::proc(){
 update_geometry_facees::proc(){
 	tg.update_indexed_gpu_data(&g.geometry_facees)
 }
-add_texture_face::proc(id:reg.Reg_ID, $T:typeid,tint:[4]f32={1,1,1,1})->(index:int){
-	texture:=tg.get_texture_by_id(id)
-	data:T
-	when intrinsics.type_has_field(T, "img_index"){
-		data.img_index = cast(u32)texture.groop_index
-	}
-	when intrinsics.type_has_field(T, "layer"){
-		data.layer = texture.layer
-	}
-	when intrinsics.type_has_field(T, "layer"){
-		data.uv[0] =  {0,0}
-		data.uv[1] =  {0,1}
-		data.uv[2] =  {1,1}
-		data.uv[3] =  {1,0}
-	}
-	when intrinsics.type_has_field(T, "tint"){
-		data.tint = tint
+add_texture_face::proc(tex_id:reg.Reg_ID,tint:[4]f32={1,1,1,1},tex_id_2:reg.Reg_ID=tg.BLANK_TEX_ID,tint_2:[4]f32={0,0,0,0})->(index:int){
+	data:DF_FACE_TYPE
 
-	}
+	data.uv[0] =  {0,0}
+	data.uv[1] =  {0,1}
+	data.uv[2] =  {1,1}
+	data.uv[3] =  {1,0}
+
+	texture:=tg.get_texture_by_id(tex_id)
+
+	data.img_index = cast(u32)texture.groop_index
+	data.layer = texture.layer
+	data.tint = tint
+
+	texture_2:=tg.get_texture_by_id(tex_id_2)
+
+	data.img_index_2 = cast(u32)texture_2.groop_index
+	data.layer_2 = texture_2.layer
+	data.tint_2 = tint_2
+
+
 
 	index=tg.add_indexed_gpu_data(&g.texture_facees,data)
 	return
@@ -270,27 +272,31 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 	i[.air] = Item_Info{
 
 	}
-	dirt_t_id:=add_texture_face(reg.id(Textures.Dirt),DF_FACE_TYPE)
+	dirt_t_id:=add_texture_face(reg.id(Textures.Dirt))
 	i[.dirt] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(dirt_t_id)},
+		model_data = g.cube_face_geometry,
 	}
-	grass_t_id:=add_texture_face(reg.id(Textures.Grass_Overlay),DF_FACE_TYPE)
+	grass_t_id:=add_texture_face(reg.id(Textures.Grass_Overlay),{.2,.7,.3,1})
+	grass_side_t_id:=add_texture_face(reg.id(Textures.Dirt),{1,1,1,1},reg.id(Textures.Grass_Side_Overlay),{.2,.7,.3,1})
 	i[.grass] = Item_Info{
 		texture_data = {
 			sides = [Model_Sides]int{
-				.pos_x = dirt_t_id,
-				.neg_x = dirt_t_id,
-				.pos_y = {},
+				.pos_x = grass_side_t_id,
+				.neg_x = grass_side_t_id,
+				.pos_y = grass_t_id,
 				.neg_y = dirt_t_id,
-				.pos_z = dirt_t_id,
-				.neg_z = dirt_t_id,
+				.pos_z = grass_side_t_id,
+				.neg_z = grass_side_t_id,
 				.extra = {},
 			}
 		},
+		model_data = g.cube_face_geometry,
 	}
-	stone_slate_t_id:=add_texture_face(reg.id(Textures.Stone_Slate),DF_FACE_TYPE)
+	stone_slate_t_id:=add_texture_face(reg.id(Textures.Stone_Slate),{1,1,1,1})
 	i[.stone_slate] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(stone_slate_t_id)},
+		model_data = g.cube_face_geometry,
 	}
 	return
 }
@@ -304,20 +310,26 @@ fill_sides_all_1_t::proc(index:int) -> (sides:[Model_Sides]int){
 	return
 }
 
-sand_hd:Item_HD
+// sand_hd:Item_HD
 DF_FACE_TYPE::tg.Vert_Face_Texure
 reg_items::proc(){
-	tid:= add_texture_face(reg.id(Textures.Stone_Slate),DF_FACE_TYPE,tint = {1,1,1,1})
-	sand_info:Item_Info={
-		// texture_id = .Tile_Bace,
-		// texture_face_index = cast(u16)add_texture_face(.Tile_Bace,DF_FACE_TYPE),
-		texture_data = {sides = fill_sides_all_1_t(tid)},
-		model_data = g.cube_face_geometry,
-		
-		// texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
+	// tid:= add_texture_face(reg.id(Textures.Stone_Slate),DF_FACE_TYPE,tint = {1,1,1,1})
+	df_items:=creae_df_items_info()
+	for item, i in df_items{
+		g.df_items[i] = reg.add(&g.item_reg,item,reg.id(i))
+		log.log(.Debug,"test 1")
+		// sand_hd=reg.add(&g.item_reg,sand_info,reg.id(DF_Items.dirt))
 	}
-	df_item_info:=creae_df_items_info()
-	sand_hd=reg.add(&g.item_reg,sand_info,reg.id(DF_Items.dirt))
+	// sand_info:Item_Info={
+	// 	// texture_id = .Tile_Bace,
+	// 	// texture_face_index = cast(u16)add_texture_face(.Tile_Bace,DF_FACE_TYPE),
+	// 	texture_data = {sides = fill_sides_all_1_t(tid)},
+	// 	model_data = g.cube_face_geometry,
+		
+	// 	// texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
+	// }
+	// df_item_info:=creae_df_items_info()
+	// sand_hd=reg.add(&g.item_reg,sand_info,reg.id(DF_Items.dirt))
 	
 }
 

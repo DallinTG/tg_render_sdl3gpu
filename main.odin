@@ -55,6 +55,7 @@ State :: struct{
 	textures_reg:reg.Registry(Texture, Texture_HD),
 	white_texture_hd:Texture_HD,
 	bad_texture_hd:Texture_HD,
+	blank_texture_hd:Texture_HD,
 	// textures:hm.Dynamic_Handle_Map(Texture, Texture_HD),
 	// texture_arr_map:map[u64]Texture_HD,
 	texture_arr_groop:[Texture_Arr_Groop]Texture_Arr_Data,
@@ -394,9 +395,9 @@ create_render_pass :: proc (
 	pass.frame_data = frame_data
 	pass.name = name // This is just for debuging
 	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{
-		min_filter = .NEAREST,
+		min_filter = .LINEAR,
 		mag_filter = .NEAREST,
-		mipmap_mode = .NEAREST,
+		mipmap_mode = .LINEAR,
 	
 	    address_mode_u = .REPEAT,
 	    address_mode_v = .REPEAT,

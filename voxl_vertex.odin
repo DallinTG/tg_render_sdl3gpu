@@ -29,12 +29,18 @@ Vert_Face::struct{
 	texture_face_index:u32,
 }
 Vert_Face_Texure::struct{
+	uv:[4][2]f32,
 	img_index:u32,
 	layer:u32,
 	pad_1:u32,
 	pad_2:u32,
 	tint:[4]f32,
-	uv:[4][2]f32,
+
+	img_index_2:u32,
+	layer_2:u32,
+	pad_1_2:u32,
+	pad_2_2:u32,
+	tint_2:[4]f32,
 }
 Vert_Face_Geometry::struct{
 	pos:[4][4]f32,

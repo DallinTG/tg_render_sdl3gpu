@@ -33,7 +33,28 @@ DF_VOX_RENDER_SETTINGS:Vox_Render_Settings:{
 	do_chunk_back_face_culling = true,
 	do_chunk_frustum_culling = true,
 }
+Vox_Render_Debug_Info::struct{
 
+	chunks_map_len:			int,
+	chunks_len:				int,
+	chunks_voxel_data_len:	int,
+	chunks_mesh_data_len:	int,
+
+	// draw_cmd_buf_hd:tg.Mesh_Handle,
+	// map_mesh_hd:tg.Mesh_Handle,
+	// chunk_shader_data:tg.Indexed_GPU_Data,
+
+
+	// Map Qs_____________________________________
+	gen_chunk_q_len:		int,
+	destroy_chunk_q_len:	int,
+	gen_vox_data_q_len:		int,
+	destroy_vox_data_q_len:	int,
+	gen_mesh_data_q_len:	int,
+	destroy_mesh_data_q_len:int,
+	upload_mesh_data_q_len:	int,
+
+}
 
 // CHUNK_SIZE::32
 // MAX_NUM_CHUNKS::1000 * 7
@@ -170,10 +191,25 @@ init_map::proc(w_map:^Map){
 		usage = .UPLOAD,
 		size = cast(u32)(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * size_of(tg.Vert_Face)),
 	})
-	for x in -26..=26{
-		for y in -1..=1{
-			for z in -26..=26{
-				add_to_gen_chunk_q(w_map,{x,y,z})
+	// for x in -26..=26{
+	// 	for y in -1..=1{
+	// 		for z in -26..=26{
+	// 			add_to_gen_chunk_q(w_map,{x,y,z})
+	// 		} 
+	// 	} 
+	// } 
+}
+
+q_up_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,rad:int=6,){
+	chunck_pos:=pos_to_chunck_pos(pos)
+	for x in (-1*rad) + chunck_pos.x ..=rad + chunck_pos.x{
+		for y in (-1*rad) + chunck_pos.y ..=rad + chunck_pos.y{
+			for z in (-1*rad) + chunck_pos.z ..=rad + chunck_pos.z{
+				key:[3]int={x,y,z}
+				ok := key in w_map.chunks_map
+				if !ok{
+					add_to_gen_chunk_q(w_map,{x,y,z})
+				}
 			} 
 		} 
 	} 
@@ -199,7 +235,7 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 	view_mat, proj_mat:=tg.make_view_mat_proj_mat(cam)
 	frustum:=make_frustum(view_mat, proj_mat)
 	loop:for chunk, chunk_hd in hm.iterate(&itor) {
-		cam_chunk_pos:=cam_pos_to_chunck_pos(cam.pos)
+		cam_chunk_pos:=pos_to_chunck_pos(cam.pos)
 
 		if should_cull_chunk(&frustum,chunk.chunk_shader_data.pos.xyz){
 			continue
@@ -255,10 +291,10 @@ should_cull_chunk_side::proc(side:Model_Sides, chunk_pos:[3]i32, cam_chunk_pos:[
 
     return cull
 }
-cam_pos_to_chunck_pos::proc(cam_pos:[3]f32)->(cam_chunk_pos:[3]int){	
-	cam_chunk_pos.x = cast(int)math.floor(cam_pos.x / CHUNK_SIZE)
-	cam_chunk_pos.y = cast(int)math.floor(cam_pos.y / CHUNK_SIZE)
-	cam_chunk_pos.z = cast(int)math.floor(cam_pos.z / CHUNK_SIZE)
+pos_to_chunck_pos::proc(pos:[3]f32)->(chunk_pos:[3]int){	
+	chunk_pos.x = cast(int)math.floor(pos.x / CHUNK_SIZE)
+	chunk_pos.y = cast(int)math.floor(pos.y / CHUNK_SIZE)
+	chunk_pos.z = cast(int)math.floor(pos.z / CHUNK_SIZE)
 	return
 }
 
@@ -408,12 +444,15 @@ Q_State::enum{
 	finished,
 }
 manage_all_w_map_q::proc(w_map:^Map){
+
+	get_w_map_debug_info(w_map)
+
 	manage_gen_chunk_q(w_map)
 	manage_Destroy_chunk_q(w_map)
 	manage_gen_vox_data_q(w_map)
 	manage_Destroy_vox_data_q(w_map)
 	manage_gen_mesh_data_q(w_map)
-	manage_Destroy_mesh_data_q(w_map)
+	manage_destroy_mesh_data_q(w_map)
 	manage_upload_mesh_data_q(w_map)
 	manage_unload_mesh_data_q(w_map)
 	// log.log(.Debug,"\n",
@@ -427,6 +466,19 @@ manage_all_w_map_q::proc(w_map:^Map){
 	// )
 }
 
+get_w_map_debug_info::proc(w_map:^Map){
+	g.debug_info.gen_chunk_q_len 		= cast(int)hm.len(w_map.gen_chunk_q)
+	g.debug_info.gen_vox_data_q_len 	= cast(int)hm.len(w_map.gen_vox_data_q)
+	g.debug_info.gen_mesh_data_q_len 	= cast(int)hm.len(w_map.gen_mesh_data_q)
+	g.debug_info.destroy_mesh_data_q_len= cast(int)hm.len(w_map.destroy_mesh_data_q)
+	g.debug_info.upload_mesh_data_q_len = cast(int)hm.len(w_map.upload_mesh_data_q)
+
+	g.debug_info.chunks_map_len			= cast(int)len(w_map.chunks_map)
+	g.debug_info.chunks_len				= cast(int)hm.len(w_map.chunks)
+	g.debug_info.chunks_voxel_data_len	= cast(int)hm.len(w_map.chunks_voxel_data)
+	g.debug_info.chunks_mesh_data_len	= cast(int)hm.len(w_map.chunks_mesh_data)
+}
+
 Gen_Chunk_Q::hm.Dynamic_Handle_Map(Gen_Chunk_Q_Data,Gen_Chunk_Q_HD)
 Gen_Chunk_Q_HD::distinct hm.Handle32
 Gen_Chunk_Q_Data::struct{
@@ -435,7 +487,7 @@ Gen_Chunk_Q_Data::struct{
 	q_state:Q_State,
 }
 manage_gen_chunk_q::proc(w_map:^Map){
-	
+
 	it := hm.iterator_make(&w_map.gen_chunk_q)
 	for q, q_hd in hm.iterate(&it) {
 		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
@@ -503,6 +555,7 @@ Gen_Vox_Data_Q_Data::struct{
 	q_state:Q_State,
 }
 manage_gen_vox_data_q::proc(w_map:^Map){
+
 	it := hm.iterator_make(&w_map.gen_vox_data_q)
 	for q, q_hd in hm.iterate(&it) {
 		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
@@ -576,6 +629,7 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[3]int){
 			key += {0,0,-1}
 			opposite_side = .pos_z
 		case .extra:
+			return //TODO NOT USING EXTRA Sides yet
 		}
 		neighbor_chunk_hd, ok := w_map.chunks_map[key]
 		if !ok{
@@ -766,7 +820,7 @@ gen_vox_data :: proc(
 			}
 
 			for y := 0; y < solid_height; y += 1 {
-				vox_chunk.data[x][y][z].item_hd = sand_hd
+				vox_chunk.data[x][y][z].item_hd = g.df_items[.grass]
 				vox_chunk.is_solid_mask[y][z] |=  {u32(x)}
 			}
 		}
@@ -796,6 +850,7 @@ Gen_Mesh_Data_Q_Data::struct{
 	q_state:Q_State,
 }
 manage_gen_mesh_data_q::proc(w_map:^Map){
+
 	it := hm.iterator_make(&w_map.gen_mesh_data_q)
 	for q, q_hd in hm.iterate(&it) {
 		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
@@ -820,6 +875,9 @@ add_to_gen_mesh_data_q::proc(w_map:^Map,chunk_hd:Chunk_HD,vox_data_hd:Chunk_Vox_
 }
 do_a_gen_mesh_data_q::proc(w_map:^Map,hd:Gen_Mesh_Data_Q_HD){
 	q,ok:=hm.get(&w_map.gen_mesh_data_q,hd)
+	if !ok{
+		log.log(.Warning,"invalid",hd)
+	}
 	if ok{
 		mesh_chunk_side(w_map = w_map, chunk_hd=q.data_hd, vox_data_hd=q.vox_data_hd, neighbor_vox_hd = q.neighbor_vox_data_hd,side = q.side)
 		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
@@ -859,7 +917,12 @@ mesh_chunk_side::proc(
 	}
 	mesh_data,mesh_data_ok:=get_chunk_mesh_data(w_map,chunk.mesh_data[side])
 	if !mesh_data_ok{
-		chunk.mesh_data[side] = hm.add(&w_map.chunks_mesh_data,Chunk_Mesh_Data{})
+		err:runtime.Allocator_Error
+		chunk.mesh_data[side],err= hm.add(&w_map.chunks_mesh_data,Chunk_Mesh_Data{})
+		if err != .None{
+			log.log(.Error,"failed to add mesh_hd to chunk.mesh_data[side] err = {",err,"}",chunk.mesh_data[side])
+			return
+		}
 		mesh_data,mesh_data_ok=get_chunk_mesh_data(w_map,chunk.mesh_data[side],)
 		if !mesh_data_ok {
 			log.log(.Error,"failed, mesh_hd not valid",chunk.mesh_data[side])
@@ -870,7 +933,10 @@ mesh_chunk_side::proc(
 
 	// face_count:=mesh_by_side_all(w_map,chunk_vox,mesh_data,side)
 	face_count:=mesh_by_bit_mask(w_map,chunk_vox,neighbor_vox,mesh_data,side)
-	if face_count <= 0 {return}
+	if face_count <= 0 {
+		add_to_destroy_mesh_data_q(w_map,chunk.mesh_data[side])
+		return
+	}
 	add_to_upload_mesh_data_q(w_map,chunk_hd,chunk.mesh_data[side],side)
 }
 
@@ -1049,12 +1115,53 @@ Destroy_Mesh_Data_Q::hm.Dynamic_Handle_Map(Destroy_Mesh_Data_Q_Data,Destroy_Mesh
 Destroy_Mesh_Data_Q_HD::distinct hm.Handle32
 Destroy_Mesh_Data_Q_Data::struct{
 	handle:Destroy_Mesh_Data_Q_HD,
-	pos:[3]int,
+	mesh_data_hd:Chunk_Mesh_Data_HD,
 	q_state:Q_State,
 }
-manage_Destroy_mesh_data_q::proc(w_map:^Map){}
-add_to_destroy_mesh_data_q::proc(w_map:^Map){}
-do_a_destroy_mesh_data_q::proc(w_map:^Map,hd:Destroy_Mesh_Data_Q_HD){}
+manage_destroy_mesh_data_q::proc(w_map:^Map){
+
+	it := hm.iterator_make(&w_map.destroy_mesh_data_q)
+	for q, q_hd in hm.iterate(&it) {
+		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
+			hm.remove(&w_map.destroy_mesh_data_q,q_hd)
+		}
+	}
+
+	it_2 := hm.iterator_make(&w_map.destroy_mesh_data_q)
+	for q, q_hd in hm.iterate(&it_2) {
+		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable {
+			do_a_destroy_mesh_data_q(w_map, q_hd)
+		}
+	}
+}
+add_to_destroy_mesh_data_q::proc(w_map:^Map,mesh_data_hd:Chunk_Mesh_Data_HD)->(q_hd:Destroy_Mesh_Data_Q_HD){
+	err:runtime.Allocator_Error
+	q_hd,err=hm.add(&w_map.destroy_mesh_data_q, Destroy_Mesh_Data_Q_Data{mesh_data_hd = mesh_data_hd})
+	q,q_ok:=hm.get(&w_map.destroy_mesh_data_q,q_hd)
+	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
+	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+	return
+}
+do_a_destroy_mesh_data_q::proc(w_map:^Map,hd:Destroy_Mesh_Data_Q_HD){
+	q,ok:=hm.get(&w_map.destroy_mesh_data_q,hd)
+	if ok{
+		destroy_mesh_data(w_map,q.mesh_data_hd)
+		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
+	}
+
+}
+destor_count:int
+destroy_mesh_data::proc(w_map:^Map,hd:Chunk_Mesh_Data_HD){
+
+	found,err:=hm.remove(&w_map.chunks_mesh_data,hd)
+	if err != .None{
+		log.log(.Error,"destroy_mesh_data() err",err,hd)
+	}
+	
+	if !found{
+		log.log(.Warning,"cant find mesh data to destroy",hd)
+	}
+}
 
 Upload_Mesh_Data_Q::hm.Dynamic_Handle_Map(Upload_Mesh_Data_Q_Data,Upload_Mesh_Data_Q_HD)
 Upload_Mesh_Data_Q_HD::distinct hm.Handle32
@@ -1103,7 +1210,6 @@ do_a_upload_mesh_data_q::proc(w_map:^Map,hd:Upload_Mesh_Data_Q_HD, copy_pass: ^s
 	q,ok:=hm.get(&w_map.upload_mesh_data_q,hd)
 	if ok{
 		upload_chunk_side_to_gpu(w_map,q.data_hd,q.mesh_hd,q.side,copy_pass)
-		// mesh_chunk_side(w_map = w_map, chunk_hd=q.data_hd, vox_data_hd=q.vox_data_hd, neighbor_vox_hd = q.neighbor_vox_data_hd,side = q.side)
 		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
 	}
 }
@@ -1142,19 +1248,23 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 		return
 	}
 	mesh,mesh_ok:=get_chunk_mesh_data(w_map,mesh_hd)
-	if !mesh_ok {return}
+	if !mesh_ok {
+		log.log(.Warning,"no mesh data found",mesh_hd)
+		return
+	}
 
 	if mesh.face_count == 0{
 		// log.log(.Error, "cant upload a mesh whith 0 data")
+		add_to_destroy_mesh_data_q(w_map,mesh_hd)
 		return
 	}
 	num_of_gpu_mesh_slots:=cast(u32)math.ceil(cast(f32)mesh.face_count/CHUNK_MAX_FACE_NUM)
 	range,ok:=tg.free_list_alloc(&w_map.chunks_in_mesh, num_of_gpu_mesh_slots)
-
 	if !ok{
 		log.log(.Error, "failed tg.free_list_alloc(&w_map.chunks_in_mesh) !ok mega mesh problobly full")
 		return
 	}
+
 
 	chunk.range_in_map_mesh[side] = range
 	first_face:=cast(u32) range.start * CHUNK_MAX_FACE_NUM
@@ -1163,6 +1273,7 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 	chunk.draw_cmd[side].num_vertices = cast(u32)mesh.face_count*6
 	chunk.draw_cmd[side].first_vertex = first_face *6
 	chunk.draw_cmd[side].num_instances = 1 
+	add_to_destroy_mesh_data_q(w_map,mesh_hd)
 }
 
 upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.GPUTransferBuffer,vertices:$T/[]$E,offset:u32, copy_pass: ^sdl.GPUCopyPass){
@@ -1193,7 +1304,6 @@ upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.
 			cycle = false,
 		)
 	}
-
 	// sdl.EndGPUCopyPass(copy_pass)
 	// ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 	// ok2:=sdl.WaitForGPUIdle(s.gpu_device)

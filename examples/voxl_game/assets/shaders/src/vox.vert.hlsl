@@ -15,12 +15,19 @@ struct Face {
 };
 
 struct Face_Texure {
+	float2 uv0;  float2 uv1;  float2 uv2;  float2 uv3;  
+
     uint   img_index;
     uint   layer;
    	uint _padding_1;
 	uint _padding_2;
     float4 tint;
-	float2 uv0;  float2 uv1;  float2 uv2;  float2 uv3;  
+
+    uint   img_index_2;
+    uint   layer_2;
+   	uint _padding_1_2;
+	uint _padding_2_2;
+    float4 tint_2;
 };
 
 struct Face_Geometry {
@@ -52,12 +59,19 @@ struct Output{
 	float4 position : SV_Position;
 	float4 color : TEXCOORD0;
 	float2 uv : TEXCOORD1;
+
 	uint   img_index : TEXCOORD2;
 	uint   layer: TEXCOORD3;
-	float4 color2 : TEXCOORD4;
-	float3 normal : TEXCOORD5;
-	uint   draw_index : TEXCOORD6;
-	float   shading: TEXCOORD7;
+	float4 img_1_tint : TEXCOORD4;
+
+	uint   img_index_2 : TEXCOORD5;
+	uint   layer_2: TEXCOORD6;
+	float4 img_2_tint : TEXCOORD7;
+
+
+	float3 normal : TEXCOORD8;
+	uint   draw_index : TEXCOORD9;
+	float   shading: TEXCOORD10;
 };
 
 Output main(
@@ -134,11 +148,13 @@ Output main(
 
 	output.img_index = tex.img_index;
 	output.layer = tex.layer;
+	output.img_1_tint = tex.tint;
 
-	output.color = tex.tint;
-	// output.color = float4(1, 1, 1, 1);
+	output.img_index_2 = tex.img_index_2;
+	output.layer_2 = tex.layer_2;
+	output.img_2_tint = tex.tint_2;
 
-	output.color2 = float4(0.0, 0.0, 0.0, 0.0);
+	output.color = float4(1, 1, 1, 1);
 
 	output.normal = geometry.normal.xyz;
 
