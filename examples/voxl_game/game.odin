@@ -165,14 +165,11 @@ main :: proc(){
 		tg.gather_input_info()
 		tg.run_steam_callbacks()
 		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
-		for ev in &tg.s.events {
-		}
-
 
 
 		if s.time.is_60_hz{
-			q_up_chunks_around_pos(&g.w_map,g.cam.pos)
-			manage_all_w_map_q(&g.w_map)
+			
+			// manage_all_w_map_q(&g.w_map)
 			sink_game_info(&g.server,&g.info)
 			g.clay_render_comands=create_layout()
 			wh:=tg.get_window_size(g.window)
@@ -276,6 +273,7 @@ do_rendering::proc(){
 	rendering_loop:for !s.app_should_close {
 		tg.start_frame(&g.frame_data)
 		// tg.upload_face_indirect_commands(&g.vox_pass)
+		manage_all_w_map_q(&g.w_map)
 		update_w_map_draw_cmds_buff(&g.w_map, &g.cam)
 		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
 		// render_chunck(&g.t_chuck,)

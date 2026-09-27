@@ -317,7 +317,6 @@ reg_items::proc(){
 	df_items:=creae_df_items_info()
 	for item, i in df_items{
 		g.df_items[i] = reg.add(&g.item_reg,item,reg.id(i))
-		log.log(.Debug,"test 1")
 		// sand_hd=reg.add(&g.item_reg,sand_info,reg.id(DF_Items.dirt))
 	}
 	// sand_info:Item_Info={
