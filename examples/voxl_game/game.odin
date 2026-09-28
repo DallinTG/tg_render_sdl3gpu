@@ -16,6 +16,7 @@ import lin"core:math/linalg"
 import cl"../../clay-odin"
 import st"core:strings"
 import steam "../../steamworks"
+import atom "core:sync"
 
 // USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
 MAX_PLAYERS::20
@@ -67,6 +68,7 @@ Game::struct{
 
 
 	render_thread:^thread.Thread,
+	chunker_thread:^thread.Thread,
 	server:tg.Networking_Instance,
 	// input_events:event_data,
 	// game_should_close:bool,
@@ -116,6 +118,7 @@ init::proc(){
 	// mesh_map(&g.w_map)
 	// upload_chunks_to_gpu(&g.w_map)
 	init_rendering_thread()
+	init_chunker_thread()
 	// s.ind_cmd_buff = tg.init_face_indirect_buffers()
 
 	
@@ -207,6 +210,8 @@ cleane_up_game::proc(){
 
 	thread.join(g.render_thread)
 	thread.destroy(g.render_thread)
+	thread.join(g.chunker_thread)
+	thread.destroy(g.chunker_thread)
 	thread.join(g.server.net_thread)
 	thread.destroy(g.server.net_thread)
 	tg.cleane_up_input_handling(&s.input_events)
@@ -271,10 +276,23 @@ do_rendering::proc(){
 
 	// mesh_map(&g.w_map)
 	rendering_loop:for !s.app_should_close {
+
+
 		tg.start_frame(&g.frame_data)
 		// tg.upload_face_indirect_commands(&g.vox_pass)
-		manage_all_w_map_q(&g.w_map)
-		update_w_map_draw_cmds_buff(&g.w_map, &g.cam)
+		// manage_all_w_map_q(&g.w_map)
+		if atom.atomic_load_explicit(&g.w_map.did_work, .Acquire) {
+            
+            // Reset the flag so we don't re-process next frame.
+            // (Using relaxed or release depending on who writes next)
+            atom.atomic_store_explicit(&g.w_map.did_work, false, .Relaxed)
+
+            // 2. Safe to read the freshly cached data and update buffers!
+        }
+
+        update_w_map_draw_cmds_buff(&g.w_map, &g.cam)
+
+		// update_w_map_draw_cmds_buff(&g.w_map, &g.cam)
 		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
 		// render_chunck(&g.t_chuck,)
 		render_map(&g.w_map)
