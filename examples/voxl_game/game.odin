@@ -1,5 +1,6 @@
 package voxl_game
 
+import "base:runtime"
 import "core:time"
 import tg"../../../tg_render_sdl3gpu"
 import sdl "vendor:sdl3"
@@ -17,6 +18,8 @@ import cl"../../clay-odin"
 import st"core:strings"
 import steam "../../steamworks"
 import atom "core:sync"
+import "core:sync"
+import "core:prof/spall"
 
 // USE_TRACKING_ALLOCATOR :: #config(USE_TRACKING_ALLOCATOR, true)
 MAX_PLAYERS::20
@@ -126,12 +129,25 @@ init::proc(){
 
 }
 
+
 main :: proc(){
 	tracking_allocator:mem.Tracking_Allocator
 	context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
 	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
 	defer tg.end_tracking_allocator(&tracking_allocator)
 	tg.name_thread("Main")
+
+	// spall_ctx = spall.context_create("trace_test.spall")
+	// defer spall.context_destroy(&spall_ctx)
+
+	// buffer_backing := make([]u8, spall.BUFFER_DEFAULT_SIZE)
+	// defer delete(buffer_backing)
+
+	// spall_buffer = spall.buffer_create(buffer_backing, u32(sync.current_thread_id()))
+	// defer spall.buffer_destroy(&spall_ctx, &spall_buffer)
+
+	// spall.SCOPED_EVENT(&spall_ctx, &spall_buffer, #procedure)
+
 	g = new(Game)
 	s=tg.init(init_settings=tg.DF_VULKIN_ONLY_INIT_SETTINGS)
 	
@@ -273,6 +289,15 @@ do_rendering::proc(){
 	defer tg.end_tracking_allocator(&tracking_allocator)
 	// mesh_map(&g.w_map)
 	// upload_chunks_to_gpu(&g.w_map)
+// 
+
+
+
+
+
+
+
+
 
 	// mesh_map(&g.w_map)
 	rendering_loop:for !s.app_should_close {
@@ -308,6 +333,7 @@ do_rendering::proc(){
 
 	}
 	log.logf(.Info,"closeing Render Thread",)
+
 }
 
 init_tg_inputs::proc(){
