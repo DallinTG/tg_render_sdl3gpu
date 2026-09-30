@@ -89,6 +89,7 @@ Map::struct{
 	vox_chunk_hm:Vox_Chunk_Data_HM,
 	vox_mask_hm:Vox_Mask_HM,
 	chunks_mesh_data:Chunks_Mesh_Data_Handle_Map,
+	gpu_mesh_data_hm:GPU_Mesh_Data_HM,
 
 	draw_cmd_buf_hd:tg.Mesh_Handle,
 	map_mesh_hd:tg.Mesh_Handle,
@@ -120,10 +121,11 @@ Chunk::struct{
 	handle:				Chunk_HD,
 	pos:				[3]int,
 	vox_data_hd:		Vox_Chunk_Data_HD,
-	draw_cmd:			[Model_Sides]sdl.GPUIndirectDrawCommand,
 	// offset_in_map_mesh:	[Model_Sides]int,
-	range_in_map_mesh:	[Model_Sides]tg.Free_List_Range,
-	mesh_data:			[Model_Sides]Chunk_Mesh_Data_HD,
+	// draw_cmd:			[Model_Sides]sdl.GPUIndirectDrawCommand,
+	// range_in_map_mesh:	[Model_Sides]tg.Free_List_Range,
+	gpu_mesh_data_hd:GPU_Mesh_Data_HD,
+	mesh_data:		 [Model_Sides]Chunk_Mesh_Data_HD,
 	chunk_shader_data:Chunk_Shader_Data,
 	// chunk_shader_data_index:int,
 	// is_solid_mask: [CHUNK_SIZE][CHUNK_SIZE]bit_set[u32(0)..<CHUNK_SIZE; u32],//TODO THIS NEEDS TO BE MOVED INTO THE PALET CHUNK ? VOX DATA
@@ -143,6 +145,16 @@ Chunk_Mesh_Data::struct{
 }
 
 Chunk_Mesh_Data_Raw::[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE]tg.Vert_Face
+
+GPU_Mesh_Data_HM::hm.Dynamic_Handle_Map(GPU_Mesh_Data,GPU_Mesh_Data_HD)
+GPU_Mesh_Data_HD::distinct hm.Handle64
+GPU_Mesh_Data::struct{
+	handle:GPU_Mesh_Data_HD,
+	chunk_shader_data:Chunk_Shader_Data,
+	draw_cmd:			[Model_Sides]sdl.GPUIndirectDrawCommand,
+	range_in_map_mesh:	[Model_Sides]tg.Free_List_Range,
+	face_count:int
+}
 
 
 // Chunks_Vox_Data_Handle_Map::hm.Dynamic_Handle_Map(Chunk_Vox_Data,Chunk_Vox_Data_HD)
@@ -214,15 +226,16 @@ init_map::proc(w_map:^Map){
 	// 	} 
 	// } 
 }
-MAX_CHUNKS_TO_Q_AT_ONE_TIME::10
-adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=30,y_rad:int=2)->(did_work:bool){
+
+MAX_CHUNKS_TO_Q_AT_ONE_TIME :: 100
+adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=100,y_rad:int=5)->(did_work:bool){
 
 	chunk_pos:=pos_to_chunck_pos(pos)
-	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
+	// if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
 	
-	}else{
-		return
-	}
+	// }else{
+	// 	return
+	// }
 
 	min_x:=(-1*xz_rad) + chunk_pos.x
 	max_x:=xz_rad + chunk_pos.x
@@ -231,27 +244,63 @@ adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=30,y_rad:int=2)-
 	min_z:=(-1*xz_rad) + chunk_pos.z
 	max_z:=xz_rad + chunk_pos.z
 
-
 	q_count:int
-	for x in min_x ..= max_x{
-		for y in min_y ..= max_y{
-			for z in min_z ..= max_z{
-				key:[3]int={x,y,z}
-				ok := key in w_map.chunks_map
-				if !ok{
-					add_to_gen_chunk_q(w_map,{x,y,z})
-					did_work = true
-					// q_count+=1
-					// if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME{return}
 
+	// for x in min_x ..= max_x{
+	// 	for y in min_y ..= max_y{
+	// 		for z in min_z ..= max_z{
+	// 			key:[3]int={x,y,z}
+	// 			ok := key in w_map.chunks_map
+	// 			if !ok{
+	// 				q_count+=1
+	// 				log.log(.Debug,q_count)
+	// 				vox_q:=hm.len(g.w_map.gen_vox_data_q)
+	// 				mesh_q:=hm.len(g.w_map.gen_mesh_data_q)
+	// 				up_q:=hm.len(g.w_map.upload_mesh_data_q)
+	// 				add_to_gen_chunk_q(w_map,{x,y,z})
+	// 				did_work = true
+	// 				if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME{
+	// 					return
+	// 				}
+	// 			}
+	// 		} 
+	// 	} 
+	// }
+
+	for radius:=0; radius<=max(xz_rad,y_rad); radius+=1 {
+		for x:=-radius; x<=radius; x+=1 {
+			for y:=-min(radius,y_rad); y<=min(radius,y_rad); y+=1 {
+				for z:=-radius; z<=radius; z+=1 {
+					if abs(x)!=radius && abs(y)!=radius && abs(z)!=radius {
+						continue
+					}
+	
+					key:[3]int={
+						chunk_pos.x+x,
+						chunk_pos.y+y,
+						chunk_pos.z+z,
+					}
+	
+					if ok:=key in w_map.chunks_map; !ok {
+						add_to_gen_chunk_q(w_map,key)
+						did_work=true
+						q_count+=1
+	
+						if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
+							return
+						}
+					}
 				}
-			} 
-		} 
-	} 
+			}
+		}
+	}
+
+
+
 	return
 }
 
-removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=30,y_rad:int=2)->(did_work:bool){
+removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=100,y_rad:int=5)->(did_work:bool){
 
 	chunk_pos:=pos_to_chunck_pos(pos)
 	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
@@ -301,33 +350,57 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 	view_mat, proj_mat:=tg.make_view_mat_proj_mat(cam)
 	frustum:=make_frustum(view_mat, proj_mat)
 
-	itor:=hm.iterator_make(&w_map.chunks)
-	loop:for chunk, chunk_hd in hm.iterate(&itor) {
+
+
+	itor:=hm.iterator_make(&w_map.gpu_mesh_data_hm)
+	loop:for gpu_mesh, gpu_mesh_hd in hm.iterate(&itor) {
 		cam_chunk_pos:=pos_to_chunck_pos(cam.pos)
-
-
-		if should_cull_chunk(&frustum,chunk.chunk_shader_data.pos.xyz){
+		if should_cull_chunk(&frustum,gpu_mesh.chunk_shader_data.pos.xyz){
 			continue
 		}
-
-		for draw_cmd, side in chunk.draw_cmd{
+		for draw_cmd, side in gpu_mesh.draw_cmd{
 
 			tmep_full_count+=1
 			if draw_cmd.num_vertices == 0{
 				continue
 			}
-			if should_cull_chunk_side(side,chunk.chunk_shader_data.pos.xyz, cast([3]i32)cam_chunk_pos){
+			if should_cull_chunk_side(side,gpu_mesh.chunk_shader_data.pos.xyz, cast([3]i32)cam_chunk_pos){
 				continue
 			}
 			draw_cmd_:[1]sdl.GPUIndirectDrawCommand=draw_cmd
 			tg.append_to_mesh(&mesh.cpu,{},draw_cmd_[:])
-			chunck_shader_data_:[1]Chunk_Shader_Data=chunk.chunk_shader_data
+			chunck_shader_data_:[1]Chunk_Shader_Data=gpu_mesh.chunk_shader_data
 			tg.append_to_mesh(&chunck_shader_data.cpu,{},chunck_shader_data_[:])
 			// log.log(.Debug,"draw_cmd",draw_cmd,)
 			w_map.chunk_shader_data.count+=1
 
 		}
 	}
+
+	// itor:=hm.iterator_make(&w_map.chunks)
+	// loop:for chunk, chunk_hd in hm.iterate(&itor) {
+	// 	cam_chunk_pos:=pos_to_chunck_pos(cam.pos)
+	// 	if should_cull_chunk(&frustum,chunk.chunk_shader_data.pos.xyz){
+	// 		continue
+	// 	}
+	// 	for draw_cmd, side in chunk.draw_cmd{
+
+	// 		tmep_full_count+=1
+	// 		if draw_cmd.num_vertices == 0{
+	// 			continue
+	// 		}
+	// 		if should_cull_chunk_side(side,chunk.chunk_shader_data.pos.xyz, cast([3]i32)cam_chunk_pos){
+	// 			continue
+	// 		}
+	// 		draw_cmd_:[1]sdl.GPUIndirectDrawCommand=draw_cmd
+	// 		tg.append_to_mesh(&mesh.cpu,{},draw_cmd_[:])
+	// 		chunck_shader_data_:[1]Chunk_Shader_Data=chunk.chunk_shader_data
+	// 		tg.append_to_mesh(&chunck_shader_data.cpu,{},chunck_shader_data_[:])
+	// 		// log.log(.Debug,"draw_cmd",draw_cmd,)
+	// 		w_map.chunk_shader_data.count+=1
+
+	// 	}
+	// }
 	// log.log(.Debug,"cmd count",w_map.chunk_shader_data.count,"tmep_full_count",tmep_full_count)
 	tg.update_mesh(w_map.draw_cmd_buf_hd)
 	tg.update_mesh(w_map.chunk_shader_data.mesh_hd)
@@ -696,14 +769,11 @@ destroy_chunck::proc(w_map:^Map,hd:Chunk_HD){
 			add_to_destroy_mesh_data_q(w_map, mesh_hd)
 		}
 	}
-	for range,i in chunk.range_in_map_mesh{
-    	if range.count > 0 {
-
-			add_to_unload_mesh_data_q(w_map,range)
-     	}
+	
+	valid:=hm.is_valid(&w_map.gpu_mesh_data_hm,chunk.gpu_mesh_data_hd)
+	if valid{
+		add_to_unload_mesh_data_q(w_map,chunk.gpu_mesh_data_hd)
 	}
-    chunk.range_in_map_mesh = {}
-	chunk.draw_cmd = {}
 
 	delete_key(&w_map.chunks_map, chunk.pos)
 	found,err:=hm.remove(&w_map.chunks,hd)
@@ -1765,11 +1835,19 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 		add_to_destroy_mesh_data_q(w_map,mesh_hd)
 		return
 	}
-
-	old_range := chunk.range_in_map_mesh[side]
-	if old_range.count > 0 {
-		add_to_unload_mesh_data_q(w_map,old_range)
+	gpu_data,gpu_data_ok:=hm.get(&w_map.gpu_mesh_data_hm,chunk.gpu_mesh_data_hd)
+	if !gpu_data_ok{
+		// err:runtime.Allocator_Error
+		gpu_data_hd,err:=hm.dynamic_add(&w_map.gpu_mesh_data_hm,GPU_Mesh_Data{chunk_shader_data=chunk.chunk_shader_data})
+		if err != .None{log.log(.Warning,"bad aloc");return}
+		gpu_data,gpu_data_ok=hm.get(&w_map.gpu_mesh_data_hm,gpu_data_hd)
+		assert(gpu_data_ok," i do not know how this hapend problobly hm full or somthing stupid like that this hould never triger")
+		chunk.gpu_mesh_data_hd = gpu_data_hd
 	}
+	// old_range := gpu_data.range_in_map_mesh[side]
+	// if old_range.count > 0 {
+	// 	add_to_unload_mesh_data_q(w_map,old_range)
+	// }
 	num_of_gpu_mesh_slots:=cast(u32)math.ceil(cast(f32)mesh.face_count/CHUNK_MAX_FACE_NUM)
 
 	range,ok:=tg.free_list_alloc(&w_map.chunks_in_mesh, num_of_gpu_mesh_slots)
@@ -1778,17 +1856,17 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 		return
 	}
 
-
 	// if chunk.range_in_map_mesh[side].count < 0{
 	// 	tg.free_list_free(&w_map.chunks_in_mesh,chunk.range_in_map_mesh[side])
 	// }
-	chunk.range_in_map_mesh[side] = range
+
+	gpu_data.range_in_map_mesh[side] = range
 	first_face:=cast(u32) range.start * CHUNK_MAX_FACE_NUM
 
 	upload_data_to_mesh_by_offset(w_map.map_mesh_hd,w_map.chunck_transfer_buffer,mesh.data[:mesh.face_count],first_face, copy_pass)
-	chunk.draw_cmd[side].num_vertices = cast(u32)mesh.face_count*6
-	chunk.draw_cmd[side].first_vertex = first_face *6
-	chunk.draw_cmd[side].num_instances = 1 
+	gpu_data.draw_cmd[side].num_vertices = cast(u32)mesh.face_count*6
+	gpu_data.draw_cmd[side].first_vertex = first_face *6
+	gpu_data.draw_cmd[side].num_instances = 1 
 	add_to_destroy_mesh_data_q(w_map,mesh_hd)
 }
 
@@ -1829,7 +1907,8 @@ Unload_Mesh_Data_Q::hm.Dynamic_Handle_Map(Unload_Mesh_Data_Q_Data,Unload_Mesh_Da
 Unload_Mesh_Data_Q_HD::distinct hm.Handle64
 Unload_Mesh_Data_Q_Data::struct{
 	handle:Unload_Mesh_Data_Q_HD,
-	range:tg.Free_List_Range,
+	gpu_mesh_hd:GPU_Mesh_Data_HD,
+	// range:tg.Free_List_Range,
 	q_state:Q_State,
 }
 manage_unload_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
@@ -1850,9 +1929,9 @@ manage_unload_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
 	}
 	return
 }
-add_to_unload_mesh_data_q::proc(w_map:^Map,range:tg.Free_List_Range)->(q_hd:Unload_Mesh_Data_Q_HD){
+add_to_unload_mesh_data_q::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD)->(q_hd:Unload_Mesh_Data_Q_HD){
 	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.unload_mesh_data_q, Unload_Mesh_Data_Q_Data{range = range})
+	q_hd,err=hm.add(&w_map.unload_mesh_data_q, Unload_Mesh_Data_Q_Data{gpu_mesh_hd=gpu_mesh_hd})
 	q,q_ok:=hm.get(&w_map.unload_mesh_data_q,q_hd)
 	if err != .None{
 		log.log(.Error, err )
@@ -1870,12 +1949,23 @@ do_a_unload_mesh_data_q::proc(w_map:^Map,hd:Unload_Mesh_Data_Q_HD){
 		log.log(.Warning,hd,q)
 	}
 	if ok{
-		unload_mesh_data(w_map,q.range)
+		unload_mesh_data(w_map,q.gpu_mesh_hd)
 		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
 	}
 }
-unload_mesh_data::proc(w_map:^Map,range:tg.Free_List_Range){
-	tg.free_list_free(&w_map.chunks_in_mesh,range)
+unload_mesh_data::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD){
+	gpu_mesh,gpu_mesh_ok:=hm.get(&w_map.gpu_mesh_data_hm,gpu_mesh_hd)
+	if gpu_mesh_ok{
+		for side in Model_Sides{
+			range:=&gpu_mesh.range_in_map_mesh[side]
+			if range.count>0{
+				tg.free_list_free(&w_map.chunks_in_mesh,range^)
+			}
+		}
+		gpu_mesh.range_in_map_mesh = {}
+		gpu_mesh.draw_cmd = {}
+		gpu_mesh.face_count =0
+	}
 }
 
 init_chunker_thread::proc(){
@@ -1901,7 +1991,7 @@ do_chunkering::proc(){
 		}
 		// }else{
 		// }
-            time.sleep(100 * time.Millisecond)
+            time.sleep(1 * time.Millisecond)
 	
 		
 		// if did_work {
@@ -1914,17 +2004,3 @@ do_chunkering::proc(){
 		// time.sleep(50000000)
 	}
 }
-
-
-spall_ctx: spall.Context
-@(thread_local) spall_buffer: spall.Buffer
-
-// @(instrumentation_enter)
-// spall_enter :: proc "contextless" (proc_address, call_site_return_address: rawptr, loc: runtime.Source_Code_Location) {
-// 	spall._buffer_begin(&spall_ctx, &spall_buffer, "", "", loc)
-// }
-
-// @(instrumentation_exit)
-// spall_exit :: proc "contextless" (proc_address, call_site_return_address: rawptr, loc: runtime.Source_Code_Location) {
-// 	spall._buffer_end(&spall_ctx, &spall_buffer)
-// }

@@ -550,7 +550,7 @@ make_view_mat_proj_mat::proc(cam:^Camera)->(view_mat:Mat4,proj_mat:Mat4){
 			lin.to_radians(cast(f32)90 * cam.zoom), 
 			cast(f32)cam.texture_size.x / cast(f32)cam.texture_size.y,
 			0.1, 
-			1000,
+			10000,
 		)
 	case .orthographic:
 		pos:=cam.pos
