@@ -826,16 +826,17 @@ Camera ::struct {
 	pos:[3]f32,
 	target:[3]f32,
 	zoom:f32,
-	look: struct {
-		yaw: f32,
-		pitch: f32,
-	},
+	look:Look_Dir,
 	texture_size:[2]i32,
 	type:Camera_Types,
 	depth_texture_createinfo : sdl.GPUTextureCreateInfo,
 	depth_texture: ^sdl.GPUTexture,
 	// msaa_depth_texture: ^sdl.GPUTexture,
 } 
+Look_Dir::struct{
+	yaw: f32,
+	pitch: f32,
+}
 
 create_camera::proc(
 	type:Camera_Types = .perspective,

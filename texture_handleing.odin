@@ -218,7 +218,7 @@ reg_texture_from_bits::proc(img: ^image.Image,id:reg.Reg_ID, format: sdl.GPUText
 		}
 		if  reg.has_id(&s.textures_reg,id) {	//check if somthing is allredy using that id if so replace it insted of making a new one
 			hd=reg.get_hd(&s.textures_reg,id)
-			text:=reg.get(&s.textures_reg,hd)
+			text,_:=reg.get(&s.textures_reg,hd)
 			uplode_data_to_gpu_texture(tex.tex_hd, img.pixels.buf[:], img.width, img.height, layer = text.layer, chanle_count = chanle_count)
 			raw_id = id
 
@@ -303,16 +303,16 @@ reg_blank_defalt_texture::proc(){
 //this is slow and you should use get_texture_by_hd() insted
 get_texture_by_id::proc(id:reg.Reg_ID)->(tex:^Texture){//TODO THIS NEEDS TO BE REWORKED
 	ok:bool
-	tex = reg.get_by_id(&s.textures_reg,reg.id(id))
+	tex,_ = reg.get_by_id(&s.textures_reg,reg.id(id))
 	if tex == nil{
-		tex = reg.get_by_id(&s.textures_reg,reg.id(BAD_TEX_ID))
+		tex,_ = reg.get_by_id(&s.textures_reg,reg.id(BAD_TEX_ID))
 	}
 	return
 }
 get_texture::proc(tex_hd:Texture_HD)->(tex:^Texture){//TODO THIS NEEDS TO BE REWORKED
-	tex = reg.get(&s.textures_reg,tex_hd)
+	tex,_ = reg.get(&s.textures_reg,tex_hd)
 	if tex==nil{
-		tex = reg.get(&s.textures_reg,s.bad_texture_hd)
+		tex,_ = reg.get(&s.textures_reg,s.bad_texture_hd)
 		assert(tex!=nil,"bad get_texture()")
 	}
 	return

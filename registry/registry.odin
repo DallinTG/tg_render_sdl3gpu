@@ -119,12 +119,12 @@ get_hd::proc(r: ^$D/Registry($T, $Handle_Type), id:Reg_ID, loc := #caller_locati
 	return
 }
 
-get::proc(r: ^$D/Registry($T, $Handle_Type), hd:Handle_Type, loc := #caller_location) -> (data:^T) {
-	data=hm.dynamic_get(&r.data,hd)
+get::proc(r: ^$D/Registry($T, $Handle_Type), hd:Handle_Type, loc := #caller_location) -> (data:^T,ok:bool) {
+	data,ok=hm.dynamic_get(&r.data,hd)
 	return
 }
 
 //warning ths is far slower than just get()
-get_by_id::proc(r: ^$D/Registry($T, $Handle_Type), id:Reg_ID, loc := #caller_location) -> (data:^T) {
+get_by_id::proc(r: ^$D/Registry($T, $Handle_Type), id:Reg_ID, loc := #caller_location) -> (data:^T,ok:bool) {
 	return get(r,get_hd(r,id))
 }

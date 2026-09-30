@@ -123,7 +123,12 @@ Item_Info::struct{
 	texture_data:Texture_Data,
 
 	tier:		Item_Tier,
-	rarity:		Item_Rarity
+	rarity:		Item_Rarity,
+	
+	is_solid: bool,//used for psicks
+	is_occupied:bool,//if false will not render
+	is_opaque:bool,////if false will not hide nabers faces basickly it lets it be transperint
+
 }
 
 Material_Tags :: bit_set[Material_Tag]
@@ -270,12 +275,15 @@ DF_Items::enum{
 creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 	i:=&df_items_info
 	i[.air] = Item_Info{
-
+		
 	}
 	dirt_t_id:=add_texture_face(reg.id(Textures.Dirt))
 	i[.dirt] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(dirt_t_id)},
 		model_data = g.cube_face_geometry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
 	}
 	grass_t_id:=add_texture_face(reg.id(Textures.Grass_Overlay),{.2,.7,.3,1})
 	grass_side_t_id:=add_texture_face(reg.id(Textures.Dirt),{1,1,1,1},reg.id(Textures.Grass_Side_Overlay),{.2,.7,.3,1})
@@ -292,11 +300,17 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 			}
 		},
 		model_data = g.cube_face_geometry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
 	}
 	stone_slate_t_id:=add_texture_face(reg.id(Textures.Stone_Slate),{1,1,1,1})
 	i[.stone_slate] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(stone_slate_t_id)},
 		model_data = g.cube_face_geometry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
 	}
 	return
 }

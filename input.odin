@@ -88,7 +88,7 @@ input_e_id::enum{
     alt_fire_p,
     fire_p,
     test,
-    
+    ESC,
 }
 input_event_data::struct{
     input:[max_key_combo]struct{
@@ -139,6 +139,7 @@ reg_input_events::proc(){
     reg_event(input_e_id.ui_t_select_down,{{{data=   {id= sdl.Scancode.LSHIFT,          pressed= false,down= true , released= false}, consum_press= true , consum_down= true ,},{data=       {id= sdl.Scancode.DOWN, pressed= true ,down= true , released= false}, consum_press= true , consum_down= true ,},{},{}}})
     reg_event(input_e_id.ui_t_select_all,{{{data=    {id= sdl.Scancode.LCTRL,           pressed= false,down= true , released= false}, consum_press= true , consum_down= true ,},{data=       {id= sdl.Scancode.A,    pressed= true ,down= true , released= false}, consum_press= true , consum_down= true ,},{},{}}})
     reg_event(input_e_id.ui_move_lin_up,{{{data=     {id= sdl.Scancode.LCTRL,           pressed= false,down= true , released= false}, consum_press= true , consum_down= true ,},{data=       {id= sdl.Scancode.UP,   pressed= true ,down= true , released= false}, consum_press= true , consum_down= true ,},{},{}}})
+	reg_event(input_e_id.ESC,{{{data=                {id= sdl.Scancode.ESCAPE,          pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(input_e_id.enter,{{{data=              {id= sdl.Scancode.RETURN,          pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
 }
 reg_event::proc(i_event:$T,i_e_data:input_event_data){

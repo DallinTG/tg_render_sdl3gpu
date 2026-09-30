@@ -155,7 +155,8 @@ main :: proc(){
 
 	g.cam = tg.create_camera(type = .perspective)
 	g.cam_ui = tg.create_camera(type = .orthographic)
-	// g.cam_ui.pos.z = 10
+
+	
 
 	g.vert_shader = tg.load_shader_file(file_path = "shader.vert")
 	g.frag_shader = tg.load_shader_file(file_path = "shader.frag")
@@ -185,8 +186,10 @@ main :: proc(){
 		tg.run_steam_callbacks()
 		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
 
-
 		if s.time.is_60_hz{
+			tg.toggle_mouse_mode_on_input_event(g.window,.ESC)
+			log.log(.Info,get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look,))
+
 			
 			// manage_all_w_map_q(&g.w_map)
 			sink_game_info(&g.server,&g.info)

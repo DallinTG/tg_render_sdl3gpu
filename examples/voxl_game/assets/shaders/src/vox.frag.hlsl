@@ -108,6 +108,9 @@ float4 main(Input input) : SV_Target0 {
 
     color1 *= input.img_1_tint;
 
+    if (color1.a <= 0.0) {
+        discard;
+    }
 
     // Start with image 1
     float4 color = color1;
@@ -126,13 +129,11 @@ float4 main(Input input) : SV_Target0 {
         color2 *= input.img_2_tint;
 
         // Image 2 over image 1
-        color = lerp(color1, color2, color2.a);
+		color.rgb = lerp(color1.rgb, color2.rgb, color2.a);
+		color.a = color1.a;
     }
 
 
-    if (color.a <= 0.0) {
-        discard;
-    }
 
     return color
         * input.color

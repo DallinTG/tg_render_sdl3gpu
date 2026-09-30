@@ -27,6 +27,7 @@ import atom "core:sync"
 import nos "core:math/noise"
 import "core:sync"
 import "core:prof/spall"
+import "core:math/bits"
 
 Vox_Render_Settings::struct{
 	do_chunk_back_face_culling:bool,
@@ -86,7 +87,7 @@ Map::struct{
 	chunks:Chunks_Handle_Map,
 	backing_world_vox_data:Backing_Vox_World_Data, 
 	vox_chunk_hm:Vox_Chunk_Data_HM,
-	// chunks_voxel_data:Chunks_Vox_Data_Handle_Map,
+	vox_mask_hm:Vox_Mask_HM,
 	chunks_mesh_data:Chunks_Mesh_Data_Handle_Map,
 
 	draw_cmd_buf_hd:tg.Mesh_Handle,
@@ -125,7 +126,7 @@ Chunk::struct{
 	mesh_data:			[Model_Sides]Chunk_Mesh_Data_HD,
 	chunk_shader_data:Chunk_Shader_Data,
 	// chunk_shader_data_index:int,
-	is_solid_mask: [CHUNK_SIZE][CHUNK_SIZE]bit_set[u32(0)..<CHUNK_SIZE; u32],//TODO THIS NEEDS TO BE MOVED INTO THE PALET CHUNK ? VOX DATA
+	// is_solid_mask: [CHUNK_SIZE][CHUNK_SIZE]bit_set[u32(0)..<CHUNK_SIZE; u32],//TODO THIS NEEDS TO BE MOVED INTO THE PALET CHUNK ? VOX DATA
 }
 
 Chunk_Shader_Data::struct{
@@ -147,11 +148,11 @@ Chunk_Mesh_Data_Raw::[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE]tg.Vert_Face
 // Chunks_Vox_Data_Handle_Map::hm.Dynamic_Handle_Map(Chunk_Vox_Data,Chunk_Vox_Data_HD)
 // Chunk_Vox_Data_HD::distinct hm.Handle32
 // Chunk_Vox_Data_HD::Palett_Chunk_HD
-Chunk_Vox_Data_Raw::[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE]Voxel
+// Chunk_Vox_Data_Raw::[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE]Voxel
 
-Voxel::struct{
-	item_hd:Item_HD,
-}
+// Voxel::struct{
+// 	item_hd:Item_HD,
+// }
 
 // Chunk_Vox_Data::struct{
 // 	handle:Chunk_Vox_Data_HD,
@@ -194,13 +195,6 @@ get_chunk_mesh_data::proc(w_map:^Map, mesh_data_hd:Chunk_Mesh_Data_HD)->(mesh_da
 	return mesh_data,ok
 }
 
-pack_block_pos :: proc(pos: [3]u16) -> u16 {
-    assert(pos.x < 32)
-    assert(pos.y < 32)
-    assert(pos.z < 32)
-
-	return pos.x | (pos.y << 5) | (pos.z << 10)
-}
 
 init_map::proc(w_map:^Map){
 	// xar.freelist_init(&w_map.chunks_in_mesh)
@@ -221,7 +215,7 @@ init_map::proc(w_map:^Map){
 	// } 
 }
 MAX_CHUNKS_TO_Q_AT_ONE_TIME::10
-adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=15,y_rad:int=5)->(did_work:bool){
+adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=35,y_rad:int=2)->(did_work:bool){
 
 	chunk_pos:=pos_to_chunck_pos(pos)
 	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
@@ -257,7 +251,7 @@ adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=15,y_rad:int=5)-
 	return
 }
 
-removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=15,y_rad:int=5)->(did_work:bool){
+removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=35,y_rad:int=2)->(did_work:bool){
 
 	chunk_pos:=pos_to_chunck_pos(pos)
 	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
@@ -265,8 +259,6 @@ removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=15,y_rad:i
 	}else{
 		return
 	}
-
-
 	min_x:=(-1*xz_rad) + chunk_pos.x
 	max_x:=xz_rad + chunk_pos.x
 	min_y:=(-1*y_rad) + chunk_pos.y
@@ -368,12 +360,7 @@ should_cull_chunk_side::proc(side:Model_Sides, chunk_pos:[3]i32, cam_chunk_pos:[
 
     return cull
 }
-pos_to_chunck_pos::proc(pos:[3]f32)->(chunk_pos:[3]int){	
-	chunk_pos.x = cast(int)math.floor(pos.x / CHUNK_SIZE)
-	chunk_pos.y = cast(int)math.floor(pos.y / CHUNK_SIZE)
-	chunk_pos.z = cast(int)math.floor(pos.z / CHUNK_SIZE)
-	return
-}
+
 
 Frustum_Plane :: struct {
     normal: [3]f32,
@@ -970,9 +957,9 @@ gen_vox_data :: proc(
 				cast(u8)solid_height,
 			)
 			
-			for y := 0; y < solid_height; y += 1 {
-				chunk.is_solid_mask[y][z] |= {u32(x)}
-			}
+			// for y := 0; y < solid_height; y += 1 {
+			// 	vox_chunk.is_solid_mask[y][z] |= {u32(x)}
+			// }
 		}
 	}
 }
@@ -1334,6 +1321,119 @@ mesh_chunk_side::proc(
 // }
  
 
+// mesh_by_bit_mask :: proc(
+//     w_map: 			^Map,
+//     chunk_hd:		Chunk_HD,
+//     neighbor_chunk_hd:		Chunk_HD,
+//     vox_data_hd: 	Vox_Chunk_Data_HD,
+// 	neighbor_vox_hd:Vox_Chunk_Data_HD,
+//     mesh: 			^Chunk_Mesh_Data,
+//     side: 			Model_Sides,
+// )->(face_count:int) {
+    
+
+// 	chunk, ok := get_chunk(w_map,chunk_hd)
+// 	if !ok{log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")");return}
+// 	neighbor_chunk, neighbor_chunk_ok := get_chunk(w_map,neighbor_chunk_hd)
+// 	if !neighbor_chunk_ok{log.log(.Error, "failed invalid chunk_hd(",neighbor_chunk_hd,")");return}
+
+// 	chunk_vox_data,vox_ok:=get_vox_chunk_data(w_map, vox_data_hd)
+// 	if !vox_ok {log.log(.Error,"failed, vox_data_hd not valid",vox_data_hd);return}
+
+// 	neighbor_vox,neighbor_vox_ok:=get_vox_chunk_data(w_map,neighbor_vox_hd)
+// 	if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",neighbor_vox_hd);return}
+
+
+
+//     // clear(&mesh.data)
+// 	mesh.face_count = 0
+//     for y in 0..<CHUNK_SIZE {
+//         for z in 0..<CHUNK_SIZE {
+//             current := chunk_vox_data.is_solid_mask[y][z]
+//             visible: bit_set[u32(0)..<CHUNK_SIZE; u32]
+// 		switch side {
+// 		case .pos_x:
+	        
+// 		    current_u32 := transmute(u32)current
+// 		    neighbor_u32 := current_u32 >> 1
+// 		    neighbor_edge := transmute(u32)neighbor_vox.is_solid_mask[y][z]
+// 		    neighbor_u32 |= (neighbor_edge & 1) << 31
+// 		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
+// 		        current_u32 &~ neighbor_u32
+// 		    )
+
+// 		case .neg_x:
+// 		    current_u32 := transmute(u32)current
+// 		    neighbor_u32 := current_u32 << 1
+// 		    neighbor_edge := transmute(u32)neighbor_vox.is_solid_mask[y][z]
+// 		    neighbor_u32 |= neighbor_edge >> 31
+// 		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
+// 		        current_u32 &~ neighbor_u32
+// 		    )
+		
+// 		case .pos_y:
+// 		    if y == CHUNK_SIZE - 1 {
+// 		        neighbor := neighbor_vox.is_solid_mask[0][z]
+// 		        visible = current - neighbor
+// 		    } else {
+// 		        neighbor := chunk_vox_data.is_solid_mask[y + 1][z]
+// 		        visible = current - neighbor
+// 		    }
+		
+// 		case .neg_y:
+// 		    if y == 0 {
+// 		        neighbor := neighbor_vox.is_solid_mask[CHUNK_SIZE - 1][z]
+// 		        visible = current - neighbor
+// 		    } else {
+// 		        neighbor := chunk_vox_data.is_solid_mask[y - 1][z]
+// 		        visible = current - neighbor
+// 		    }
+		
+// 		case .pos_z:
+// 		    if z == CHUNK_SIZE - 1 {
+// 		        neighbor := neighbor_vox.is_solid_mask[y][0]
+// 		        visible = current - neighbor
+// 		    } else {
+// 		        neighbor := chunk_vox_data.is_solid_mask[y][z + 1]
+// 		        visible = current - neighbor
+// 		    }
+
+// 		case .neg_z:
+// 		    if z == 0 {
+// 		        neighbor := neighbor_vox.is_solid_mask[y][CHUNK_SIZE - 1]
+// 		        visible = current - neighbor
+// 		    } else {
+// 		        neighbor := chunk_vox_data.is_solid_mask[y][z - 1]
+// 		        visible = current - neighbor
+// 		    }
+		
+// 		case .extra:
+// 			log.log(.Warning,"ono")
+// 		    return
+// 		}
+
+//             for x in visible {
+//                 vox := get_vox_in_chunk(chunk_vox_data, {cast(u8)x,cast(u8)y,cast(u8)z})
+//                 item := reg.get(&g.item_reg, vox)
+//                 if item == nil {
+//                     continue
+//                 }
+
+//                 face: tg.Vert_Face
+
+//                 face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
+//                 face.texture_face_index = cast(u32)item.texture_data.sides[side]
+//                 face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
+
+//                 mesh.data[face_count] = face
+//                 face_count+=1
+//             }
+//         }
+//     }
+//     mesh.face_count = face_count
+//     return face_count
+// }
+
 mesh_by_bit_mask :: proc(
     w_map: 			^Map,
     chunk_hd:		Chunk_HD,
@@ -1360,92 +1460,203 @@ mesh_by_bit_mask :: proc(
 
     // clear(&mesh.data)
 	mesh.face_count = 0
-    for y in 0..<CHUNK_SIZE {
-        for z in 0..<CHUNK_SIZE {
-            current := chunk.is_solid_mask[y][z]
-            visible: bit_set[u32(0)..<CHUNK_SIZE; u32]
-		switch side {
-		case .pos_x:
-	        
-		    current_u32 := transmute(u32)current
-		    neighbor_u32 := current_u32 >> 1
-		    neighbor_edge := transmute(u32)neighbor_chunk.is_solid_mask[y][z]
-		    neighbor_u32 |= (neighbor_edge & 1) << 31
-		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
-		        current_u32 &~ neighbor_u32
-		    )
 
-		case .neg_x:
-		    current_u32 := transmute(u32)current
-		    neighbor_u32 := current_u32 << 1
-		    neighbor_edge := transmute(u32)neighbor_chunk.is_solid_mask[y][z]
-		    neighbor_u32 |= neighbor_edge >> 31
-		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
-		        current_u32 &~ neighbor_u32
-		    )
-		
-		case .pos_y:
-		    if y == CHUNK_SIZE - 1 {
-		        neighbor := neighbor_chunk.is_solid_mask[0][z]
-		        visible = current - neighbor
-		    } else {
-		        neighbor := chunk.is_solid_mask[y + 1][z]
-		        visible = current - neighbor
-		    }
-		
-		case .neg_y:
-		    if y == 0 {
-		        neighbor := neighbor_chunk.is_solid_mask[CHUNK_SIZE - 1][z]
-		        visible = current - neighbor
-		    } else {
-		        neighbor := chunk.is_solid_mask[y - 1][z]
-		        visible = current - neighbor
-		    }
-		
-		case .pos_z:
-		    if z == CHUNK_SIZE - 1 {
-		        neighbor := neighbor_chunk.is_solid_mask[y][0]
-		        visible = current - neighbor
-		    } else {
-		        neighbor := chunk.is_solid_mask[y][z + 1]
-		        visible = current - neighbor
-		    }
+	chunk_mask,chunk_mask_ok:=hm.get(chunk_vox_data.backing_mask_data,chunk_vox_data.vox_mask_hd)
+	neighbor_mask,neighbor_mask_ok:=hm.get(neighbor_vox.backing_mask_data,neighbor_vox.vox_mask_hd)
 
-		case .neg_z:
-		    if z == 0 {
-		        neighbor := neighbor_chunk.is_solid_mask[y][CHUNK_SIZE - 1]
-		        visible = current - neighbor
-		    } else {
-		        neighbor := chunk.is_solid_mask[y][z - 1]
-		        visible = current - neighbor
-		    }
-		
-		case .extra:
-			log.log(.Warning,"ono")
-		    return
+	current_masks:[CHUNK_SIZE*CHUNK_SIZE]u32
+	neighbor_masks:[CHUNK_SIZE*CHUNK_SIZE]u32
+
+	switch side {
+	case .pos_x:
+		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
+			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
+				index:=x+z*CHUNK_SIZE
+
+				if chunk_mask_ok {
+					current_masks[index]=chunk_mask.is_occupied_mask[index]
+				}else{
+					current_masks[index]=~u32(0)
+				}
+
+				if x == CHUNK_SIZE-1 {
+					if neighbor_mask_ok {
+						neighbor_masks[index]=neighbor_mask.is_opaque_mask[z*CHUNK_SIZE]
+					}else{
+						neighbor_masks[index]=~u32(0)
+					}
+				}else{
+					if chunk_mask_ok {
+						neighbor_masks[index]=chunk_mask.is_opaque_mask[index+1]
+					}else{
+						neighbor_masks[index]=~u32(0)
+					}
+				}
+			}
 		}
 
-            for x in visible {
-                vox := get_vox_in_chunk(chunk_vox_data, {cast(u8)x,cast(u8)y,cast(u8)z})
-                item := reg.get(&g.item_reg, vox)
-                if item == nil {
-                    continue
-                }
+	case .neg_x:
+		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
+			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
+				index:=x+z*CHUNK_SIZE
 
-                face: tg.Vert_Face
+				if chunk_mask_ok {
+					current_masks[index]=chunk_mask.is_occupied_mask[index]
+				}else{
+					current_masks[index]=~u32(0)
+				}
 
-                face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
-                face.texture_face_index = cast(u32)item.texture_data.sides[side]
-                face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
+				if x == 0 {
+					if neighbor_mask_ok {
+						neighbor_masks[index]=neighbor_mask.is_opaque_mask[CHUNK_SIZE-1+z*CHUNK_SIZE]
+					}else{
+						neighbor_masks[index]=~u32(0)
+					}
+				}else{
+					if chunk_mask_ok {
+						neighbor_masks[index]=chunk_mask.is_opaque_mask[index-1]
+					}else{
+						neighbor_masks[index]=~u32(0)
+					}
+				}
+			}
+		}
 
-                mesh.data[face_count] = face
-                face_count+=1
-            }
-        }
-    }
-    mesh.face_count = face_count
-    return face_count
+	case .pos_y:
+		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
+			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
+				index:=x+z*CHUNK_SIZE
+
+				if chunk_mask_ok {
+					current_masks[index]=chunk_mask.is_occupied_mask[index]
+					neighbor_masks[index]=chunk_mask.is_opaque_mask[index]>>1
+				}else{
+					current_masks[index]=~u32(0)
+					neighbor_masks[index]=~u32(0)
+				}
+
+				if neighbor_mask_ok {
+					neighbor_masks[index]|=(neighbor_mask.is_opaque_mask[index]&1)<<31
+				}else{
+					neighbor_masks[index]|=u32(1)<<31
+				}
+			}
+		}
+
+	case .neg_y:
+		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
+			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
+				index:=x+z*CHUNK_SIZE
+
+				if chunk_mask_ok {
+					current_masks[index]=chunk_mask.is_occupied_mask[index]
+					neighbor_masks[index]=chunk_mask.is_opaque_mask[index]<<1
+				}else{
+					current_masks[index]=~u32(0)
+					neighbor_masks[index]=~u32(0)
+				}
+
+				if neighbor_mask_ok {
+					neighbor_masks[index]|=neighbor_mask.is_opaque_mask[index]>>31
+				}else{
+					neighbor_masks[index]|=1
+				}
+			}
+		}
+
+	case .pos_z:
+		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
+			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
+				index:=x+z*CHUNK_SIZE
+
+				if chunk_mask_ok {
+					current_masks[index]=chunk_mask.is_occupied_mask[index]
+				}else{
+					current_masks[index]=~u32(0)
+				}
+
+				if z == CHUNK_SIZE-1 {
+					if neighbor_mask_ok {
+						neighbor_masks[index]=neighbor_mask.is_opaque_mask[x]
+					}else{
+						neighbor_masks[index]=~u32(0)
+					}
+				}else{
+					if chunk_mask_ok {
+						neighbor_masks[index]=chunk_mask.is_opaque_mask[index+CHUNK_SIZE]
+					}else{
+						neighbor_masks[index]=~u32(0)
+					}
+				}
+			}
+		}
+
+	case .neg_z:
+		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
+			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
+				index:=x+z*CHUNK_SIZE
+
+				if chunk_mask_ok {
+					current_masks[index]=chunk_mask.is_occupied_mask[index]
+				}else{
+					current_masks[index]=~u32(0)
+				}
+
+				if z == 0 {
+					if neighbor_mask_ok {
+						neighbor_masks[index]=neighbor_mask.is_opaque_mask[x+(CHUNK_SIZE-1)*CHUNK_SIZE]
+					}else{
+						neighbor_masks[index]=~u32(0)
+					}
+				}else{
+					if chunk_mask_ok {
+						neighbor_masks[index]=chunk_mask.is_opaque_mask[index-CHUNK_SIZE]
+					}else{
+						neighbor_masks[index]=~u32(0)
+					}
+				}
+			}
+		}
+
+	case .extra:
+		log.log(.Warning,"ono")
+		return
+	}
+
+	for z:=u32(0); z<CHUNK_SIZE; z+=1 {
+		for x:=u32(0); x<CHUNK_SIZE; x+=1 {
+			index:=x+z*CHUNK_SIZE
+
+			visible_mask:=current_masks[index]&~neighbor_masks[index]
+
+			for visible_mask!=0 {
+				y:=bits.count_trailing_zeros(visible_mask)
+				visible_mask&=visible_mask-1
+
+				vox_index:=cast(u16)(y+x*CHUNK_SIZE+z*CHUNK_SIZE*CHUNK_SIZE)
+
+				vox:=get_vox_in_chunk_index(chunk_vox_data,vox_index)
+				item,i_ok:=reg.get(&g.item_reg,vox)
+				if !i_ok {
+					continue
+				}
+
+				face:tg.Vert_Face
+
+				face.block_pos=pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z})
+				face.texture_face_index=cast(u32)item.texture_data.sides[side]
+				face.geometry_face_index=cast(u16)item.model_data.cube_indices[side]
+
+				mesh.data[face_count]=face
+				face_count+=1
+			}
+		}
+	}
+
+	mesh.face_count=face_count
+	return face_count
 }
+
 
 Destroy_Mesh_Data_Q::hm.Dynamic_Handle_Map(Destroy_Mesh_Data_Q_Data,Destroy_Mesh_Data_Q_HD)
 Destroy_Mesh_Data_Q_HD::distinct hm.Handle64

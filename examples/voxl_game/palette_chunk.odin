@@ -136,13 +136,12 @@ Backing_Vox_World_Data::struct{
 Palette_Data::struct{
 	item:Item_HD,
 	count:u16,
+	is_solid:bool,
+	is_opaque:bool,
+	is_occupied:bool,
 }
 
 Backing_Vox_Chunk_Data_HD::distinct hm.Handle64
-// Palett_Chunk_HD::struct{
-// 	hd:Palett_Chunk_Data_HD,
-// 	size:Palette_Sizes,
-// }
 
 U0_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u0].max_pal_size]	Palette_Data, pal_count:u16,}
 U1_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u1].max_pal_size]	Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u1].u32_per_chunk]u32,}
@@ -158,6 +157,12 @@ U4_Backing_Chunk_Data_HM::	hm.Dynamic_Handle_Map(U4_Chunk_Data,	Backing_Vox_Chun
 U8_Backing_Chunk_Data_HM::	hm.Dynamic_Handle_Map(U8_Chunk_Data,	Backing_Vox_Chunk_Data_HD)
 U16_Backing_Chunk_Data_HM::	hm.Dynamic_Handle_Map(U16_Chunk_Data,	Backing_Vox_Chunk_Data_HD)
 
+Backing_Chunk_Data_Abstract::struct{
+	pal:[]Palette_Data,
+	pal_count:^u16,
+	data:[]u32,
+	palette_size:Palette_Sizes,
+}
 Vox_Chunk_Data_HD::distinct hm.Handle64
 Vox_Chunk_Data_HM::hm.Dynamic_Handle_Map(Vox_Chunk_Data,Vox_Chunk_Data_HD)
 Vox_Chunk_Data::struct{
@@ -165,18 +170,20 @@ Vox_Chunk_Data::struct{
 	backing_world_data:^Backing_Vox_World_Data,
 	backing_chunk_data_hd:Backing_Vox_Chunk_Data_HD,
 	backing_chunk_data_abstract:Backing_Chunk_Data_Abstract,
-	// size:Palette_Sizes,
 
-	is_solid_mask: [CHUNK_SIZE][CHUNK_SIZE]bit_set[u32(0)..<CHUNK_SIZE; u32],
+	backing_mask_data:^Vox_Mask_HM,
+	vox_mask_hd:Vox_Mask_HD,
 }
 
-Backing_Chunk_Data_Abstract::struct{
-	pal:[]Palette_Data,
-	pal_count:^u16,
-	data:[]u32,
-	palette_size:Palette_Sizes,
-	// palette_info:Palette_Info,
+Vox_Mask_HD::distinct hm.Handle64
+Vox_Mask_HM::hm.Dynamic_Handle_Map(Vox_Mask_Data,Vox_Mask_HD)
+Vox_Mask_Data::struct{
+	handle:Vox_Mask_HD,
+	is_occupied_mask:[CHUNK_SIZE * CHUNK_SIZE]u32,//[x][z]
+	is_solid_mask:   [CHUNK_SIZE * CHUNK_SIZE]u32,//[x][z]
+	is_opaque_mask:  [CHUNK_SIZE * CHUNK_SIZE]u32,//[x][z]
 }
+
 make_new_vox_chunk_data::proc(w_map:^Map,size:Palette_Sizes=.u0)->(vox_chunk_hd:Vox_Chunk_Data_HD){
 	// log.log(.Debug,"make_new_vox_chunk_data")
 	backing_chunk_data_hd,backing_chunk_vox_data_hd_ok:=new_backing_chunk_vox_data(&w_map.backing_world_vox_data,size)
@@ -185,11 +192,11 @@ make_new_vox_chunk_data::proc(w_map:^Map,size:Palette_Sizes=.u0)->(vox_chunk_hd:
 	backing_chunk_data,backing_chunk_data_ok:=get_backing_chunk_vox_data(&w_map.backing_world_vox_data,backing_chunk_data_hd,size)
 	assert(backing_chunk_vox_data_hd_ok,"new_backing_chunk_vox_data !ok")
 
-
 	vox_chunk:=Vox_Chunk_Data{
 		backing_world_data=&w_map.backing_world_vox_data,
 		backing_chunk_data_hd = backing_chunk_data_hd,
 		backing_chunk_data_abstract=backing_chunk_data,
+		backing_mask_data = &w_map.vox_mask_hm,
 	}
 	assert(vox_chunk.backing_chunk_data_abstract.pal_count != nil)
 	err:runtime.Allocator_Error
@@ -230,7 +237,8 @@ get_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_Chu
 		ab_chunk.pal_count = &chunk.pal_count
 		assert(ab_chunk.pal_count!=nil)
 		ab_chunk.palette_size = size
-		// ab_chunk.palette_info = palettes_info[size]
+		
+
 	case.u1:
 		chunk,ok:=hm.dynamic_get(&data.u1_chunk_data,hd)
 		if !ok{
@@ -242,7 +250,7 @@ get_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_Chu
 		ab_chunk.pal  = chunk.pal[:]
 		ab_chunk.pal_count = &chunk.pal_count
 		ab_chunk.palette_size = size
-		// ab_chunk.palette_info = palettes_info[size]
+
 	case.u2:
 		chunk,ok:=hm.dynamic_get(&data.u2_chunk_data,hd)
 		if !ok{
@@ -254,7 +262,7 @@ get_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_Chu
 		ab_chunk.pal  = chunk.pal[:]
 		ab_chunk.pal_count = &chunk.pal_count
 		ab_chunk.palette_size = size
-		// ab_chunk.palette_info = palettes_info[size]
+
 	case.u4:
 		chunk,ok:=hm.dynamic_get(&data.u4_chunk_data,hd)
 		if !ok{
@@ -266,7 +274,7 @@ get_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_Chu
 		ab_chunk.pal  = chunk.pal[:]
 		ab_chunk.pal_count = &chunk.pal_count
 		ab_chunk.palette_size = size
-		// ab_chunk.palette_info = palettes_info[size]
+
 	case.u8:
 		chunk,ok:=hm.dynamic_get(&data.u8_chunk_data,hd)
 		if !ok{
@@ -278,7 +286,7 @@ get_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_Chu
 		ab_chunk.pal  = chunk.pal[:]
 		ab_chunk.pal_count = &chunk.pal_count
 		ab_chunk.palette_size = size
-		// ab_chunk.palette_info = palettes_info[size]
+
 	case.u16:
 		chunk,ok:=hm.dynamic_get(&data.u16_chunk_data,hd)
 		if !ok{
@@ -290,7 +298,7 @@ get_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_Chu
 		ab_chunk.pal  = chunk.pal[:]
 		ab_chunk.pal_count = &chunk.pal_count
 		ab_chunk.palette_size = size
-		// ab_chunk.palette_info = palettes_info[size]
+
 	}
 	ok = true
 	return
@@ -429,6 +437,17 @@ get_vox_in_chunk :: proc(vox_chunk_data:^Vox_Chunk_Data,pos:[3]u8)->(item_hd:Ite
 
 	return ab_chunk.pal[pal_index].item
 }
+get_vox_in_chunk_index :: proc(vox_chunk_data:^Vox_Chunk_Data,vox_index:u16)->(item_hd:Item_HD){
+	// log.log(.Debug,"get_vox_in_chunk")
+	ab_chunk:=vox_chunk_data.backing_chunk_data_abstract
+	// palettes_info:=&ab_chunk.palette_info
+	// bits:=ab_chunk.palette_info.bits_per_vox
+
+
+	pal_index:=get_palette_index(vox_chunk_data,vox_index)
+
+	return ab_chunk.pal[pal_index].item
+}
 
 get_palette_index_by_pos::proc(chunk:^Vox_Chunk_Data,pos:[3]u8)->(palette_index:u16){
 	// log.log(.Debug,"get_palette_index_by_pos")
@@ -454,14 +473,19 @@ get_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16)->u16{
 }
 
 
-set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16){
+set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16,){
 	ab:=&chunk.backing_chunk_data_abstract
 	size:=chunk.backing_chunk_data_abstract.palette_size
 	pinfo:=&PAL_INFO[size]
 
+	old_pal_index:=get_palette_index(chunk,vox_index)
 	if size == .u0{
 		return
 	}
+
+	ab.pal[old_pal_index].count -= 1
+	ab.pal[pal_index].count += 1
+
 
 	word_index:=vox_index>>pinfo.index_shift
 	bit_offset:=(vox_index&pinfo.field_mask)<<pinfo.shift
@@ -470,6 +494,34 @@ set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16){
 	value:=u32(pal_index&u16(pinfo.mask))<<u32(bit_offset)
 
 	ab.data[word_index]=(ab.data[word_index]&~mask)|value
+
+	mask_data,ok:=hm.get(chunk.backing_mask_data,chunk.vox_mask_hd)
+	if !ok{
+		// no maskes so no need to update them
+		return
+	}
+
+	pal:=&ab.pal[pal_index]
+	mask_index:=vox_index>>5
+	bit:=u32(1)<<(vox_index&31)
+
+	if pal.is_occupied{
+		mask_data.is_occupied_mask[mask_index]|=bit
+	}else{
+		mask_data.is_occupied_mask[mask_index]&=~bit
+	}
+
+	if pal.is_solid{
+		mask_data.is_solid_mask[mask_index]|=bit
+	}else{
+		mask_data.is_solid_mask[mask_index]&=~bit
+	}
+
+	if pal.is_opaque{
+		mask_data.is_opaque_mask[mask_index]|=bit
+	}else{
+		mask_data.is_opaque_mask[mask_index]&=~bit
+	}
 }
 
 // set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16){
@@ -607,6 +659,8 @@ promote_palette_chunk::proc(chunk:^Vox_Chunk_Data,preserve_data:bool=true){
 	new_chunk,new_chunk_ok:=get_backing_chunk_vox_data(chunk.backing_world_data,new_hd,new_size)
 	assert(new_chunk_ok)
 
+
+
 	new_chunk.pal_count^=ab_chunk.pal_count^
 
 	for i in 0..<ab_chunk.pal_count^{
@@ -631,6 +685,25 @@ promote_palette_chunk::proc(chunk:^Vox_Chunk_Data,preserve_data:bool=true){
 				new_chunk.data[new_word]|=pal_index<<new_shift
 			}
 		}
+
+		if !hm.is_valid(chunk.backing_mask_data,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
+			mask_data:Vox_Mask_Data
+			item,item_ok:=reg.get(&g.item_reg,ab_chunk.pal[0].item)
+			if item_ok{ // if !ok is air
+				mask_data.is_occupied_mask = 1
+				if item.is_opaque{
+					mask_data.is_opaque_mask = 1
+				}
+				if item.is_solid{
+					mask_data.is_solid_mask = 1
+				}
+			}
+			chunk.vox_mask_hd = hm.dynamic_add(chunk.backing_mask_data, mask_data)
+		}
+	}else{
+		if !hm.is_valid(chunk.backing_mask_data,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
+			chunk.vox_mask_hd = hm.dynamic_add(chunk.backing_mask_data, Vox_Mask_Data{})
+		}
 	}
 
 	chunk.backing_chunk_data_hd=new_hd
@@ -646,10 +719,10 @@ set_block_in_chunk::proc(
 ){
 
 	vox_index:=pos_to_vox_index(pos)
-
 	pal_index:=get_or_add_palette_index(chunk,item_hd)
-	chunk.backing_chunk_data_abstract.pal[pal_index].count += 1
 	set_palette_index(chunk,vox_index,pal_index)
+
+
 }
 
 // set_blocks_in_chunk_by_col_pal_index::proc(
@@ -850,6 +923,37 @@ set_blocks_in_chunk_by_col_pal_index::proc(
 		mask:=(u32(1)<<shift)-1
 		ab.data[word_index+full_words]=(ab.data[word_index+full_words]&~mask)|(value*pinfo.fill_mask&mask)
 	}
+
+	mask_data,ok:=hm.get(chunk.backing_mask_data,chunk.vox_mask_hd)
+	if !ok{
+		// no maskes so no need to update them
+		return
+	}
+	mask_index:=cast(u32)xz[0]+cast(u32)xz[1]*CHUNK_SIZE
+	pal:=&ab.pal[pal_index]
+
+	mask_bits:u32
+	if count == 32 {
+		mask_bits = ~u32(0)
+	} else {
+		mask_bits = (u32(1)<<u32(count))-1
+	}
+
+	if pal.is_occupied {
+		mask_data.is_occupied_mask[mask_index]|=mask_bits
+	} else {
+		mask_data.is_occupied_mask[mask_index]&=~mask_bits
+	}
+	if pal.is_solid {
+		mask_data.is_solid_mask[mask_index]|=mask_bits
+	} else {
+		mask_data.is_solid_mask[mask_index]&=~mask_bits
+	}
+	if pal.is_opaque {
+		mask_data.is_opaque_mask[mask_index]|=mask_bits
+	} else {
+		mask_data.is_opaque_mask[mask_index]&=~mask_bits
+	}
 }
 // set_block_in_chunk::proc(
 // 	chunk:^Vox_Chunk_Data,
@@ -935,10 +1039,25 @@ get_or_add_palette_index::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,preserve_da
 		promote_palette_chunk(chunk,preserve_data)
 		ad_chunk=&chunk.backing_chunk_data_abstract
 	}
-
+	is_occupied:bool
+	is_opaque:bool
+	is_solid:bool
+	item,item_ok:=reg.get(&g.item_reg,item_hd)
+	if item_ok{
+		is_occupied = item.is_occupied
+		is_opaque = item.is_opaque
+		is_solid = item.is_solid
+	}else{
+		is_occupied = false
+		is_opaque = false
+		is_solid = false
+	}
 	ad_chunk.pal[pal_count]=Palette_Data{
 		item=item_hd,
 		count=0,
+		is_occupied=is_occupied,
+		is_opaque=is_opaque,
+		is_solid=is_solid,
 	}
 	ad_chunk.pal_count^+=1
 
