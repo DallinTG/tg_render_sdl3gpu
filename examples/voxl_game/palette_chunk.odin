@@ -438,14 +438,8 @@ get_vox_in_chunk :: proc(vox_chunk_data:^Vox_Chunk_Data,pos:[3]u8)->(item_hd:Ite
 	return ab_chunk.pal[pal_index].item
 }
 get_vox_in_chunk_index :: proc(vox_chunk_data:^Vox_Chunk_Data,vox_index:u16)->(item_hd:Item_HD){
-	// log.log(.Debug,"get_vox_in_chunk")
 	ab_chunk:=vox_chunk_data.backing_chunk_data_abstract
-	// palettes_info:=&ab_chunk.palette_info
-	// bits:=ab_chunk.palette_info.bits_per_vox
-
-
 	pal_index:=get_palette_index(vox_chunk_data,vox_index)
-
 	return ab_chunk.pal[pal_index].item
 }
 
@@ -460,11 +454,11 @@ get_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16)->u16{
 
 	ab:=&chunk.backing_chunk_data_abstract
 	size:=chunk.backing_chunk_data_abstract.palette_size
-	pinfo:=&PAL_INFO[size]
 
 	if size == .u0 {
 		return 0
 	}
+	pinfo:=&PAL_INFO[size]
 	word_index:=vox_index>>pinfo.index_shift
 	bit_offset:=(vox_index&pinfo.field_mask)<<pinfo.shift
 
@@ -524,125 +518,6 @@ set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16,){
 	}
 }
 
-// set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16){
-// 	ab_chunk:=&chunk.backing_chunk_data_abstract
-// 	bits:=ab_chunk.palette_info.bits_per_vox
-
-// 	if bits == 0{
-// 		return
-// 	}
-	
-// 	if bits == 1{
-// 		u64_index:=vox_index>>6
-// 		bit_offset:=vox_index&31
-// 		mask:=u32(1)<<u32(bit_offset)
-
-// 		if pal_index == 0{
-// 			ab_chunk.data[u64_index]&=~mask
-// 		}else{
-// 			ab_chunk.data[u64_index]|=mask
-// 		}
-// 		return
-// 	}
-
-// 	if bits == 2{
-// 		u64_index:=vox_index>>5
-// 		bit_offset:=(vox_index&15)<<1
-// 		mask:=u32(3)<<u32(bit_offset)
-// 		value:=u32(pal_index&3)<<u32(bit_offset)
-
-// 		ab_chunk.data[u64_index]=(ab_chunk.data[u64_index]&~mask)|value
-// 		return
-// 	}
-
-// 	if bits == 4{
-// 		u64_index:=vox_index>>4
-// 		bit_offset:=(vox_index&7)<<2
-// 		mask:=u32(15)<<u32(bit_offset)
-// 		value:=u32(pal_index&15)<<u32(bit_offset)
-
-// 		ab_chunk.data[u64_index]=(ab_chunk.data[u64_index]&~mask)|value
-// 		return
-// 	}
-
-// 	if bits == 8{
-// 		u64_index:=vox_index>>3
-// 		bit_offset:=(vox_index&3)<<3
-// 		mask:=u32(255)<<u32(bit_offset)
-// 		value:=u32(pal_index&255)<<u32(bit_offset)
-
-// 		ab_chunk.data[u64_index]=(ab_chunk.data[u64_index]&~mask)|value
-// 		return
-// 	}
-
-// 	u64_index:=vox_index>>2
-// 	bit_offset:=(vox_index&1)<<4
-// 	mask:=u32(65535)<<u32(bit_offset)
-// 	value:=u32(pal_index&65535)<<u32(bit_offset)
-
-// 	ab_chunk.data[u64_index]=(ab_chunk.data[u64_index]&~mask)|value
-// }
-
-
-// promote_palette_chunk::proc(chunk:^Vox_Chunk_Data,preserve_data:bool=true){
-// 	ab_chunk:=&chunk.backing_chunk_data_abstract
-// 	old_size:=ab_chunk.palette_size	
-// 	old_pinfo:=&PAL_INFO[old_size]
-// 	new_size:=get_next_palett_size(old_size)
-// 	new_pinfo:=&PAL_INFO[new_size]
-
-
-// 	old_chunk:=&chunk.backing_chunk_data_abstract
-// 	old_hd:=chunk.backing_chunk_data_hd
-
-// 	new_hd,new_hd_ok:=new_backing_chunk_vox_data(chunk.backing_world_data,new_size)
-// 	assert(new_hd_ok)
-
-// 	new_chunk,new_chunk_ok:=get_backing_chunk_vox_data(chunk.backing_world_data,new_hd,new_size)
-// 	assert(new_chunk_ok)
-
-
-// 	new_chunk.pal_count^=old_chunk.pal_count^
-
-// 	for i in 0..<old_chunk.pal_count^{
-// 		new_chunk.pal[i]=old_chunk.pal[i]
-// 	}
-
-// 	old_bits:=old_pinfo.bits_per_vox
-// 	new_bits:=new_pinfo.bits_per_vox
-
-// 	if preserve_data{
-// 		if old_bits > 0{
-// 			fields_per_u64:=32/old_bits
-	
-// 			for i in 0..<len(old_chunk.data){
-// 				old_data:=old_chunk.data[i]
-	
-// 				new_data_0:u32=0
-// 				new_data_1:u32=0
-	
-// 				for field in 0..<fields_per_u64{
-// 					old_shift:=field*old_bits
-// 					new_shift:=field*new_bits
-	
-// 					value:=(old_data>>u32(old_shift))&((u32(1)<<u32(old_bits))-1)
-	
-// 					if new_shift < 32{
-// 						new_data_0|=value<<u32(new_shift)
-// 					}else{
-// 						new_data_1|=value<<u32(new_shift-32)
-// 					}
-// 				}
-	
-// 				new_chunk.data[i*2]=new_data_0
-// 				new_chunk.data[i*2+1]=new_data_1
-// 			}
-// 		}
-// 	}
-// 	chunk.backing_chunk_data_hd = new_hd
-// 	chunk.backing_chunk_data_abstract = new_chunk
-// 	remove_backing_vox_chunk_data(chunk.backing_world_data,old_hd,old_size)
-// }
 
 promote_palette_chunk::proc(chunk:^Vox_Chunk_Data,preserve_data:bool=true){
 	ab_chunk:=&chunk.backing_chunk_data_abstract
@@ -725,171 +600,6 @@ set_block_in_chunk::proc(
 
 }
 
-// set_blocks_in_chunk_by_col_pal_index::proc(
-// 	chunk:^Vox_Chunk_Data,
-// 	pal_index:u16,
-// 	xz:[2]u8,
-// 	start_top:u8=0,
-// 	end_bot:u8=31
-// ){
-// 	ab_chunk:=&chunk.backing_chunk_data_abstract
-// 	size:=ab_chunk.palette_size	
-// 	pinfo:=&PAL_INFO[size]
-// 	bits:=pinfo.bits_per_vox
-
-// 	if bits == 0{
-// 		return
-// 	}
-
-// 	base_index:=cast(u16)xz.x*CHUNK_SIZE + cast(u16)xz.y*CHUNK_SIZE*CHUNK_SIZE
-
-// 	if bits == 1{
-// 		start:=cast(u32)start_top
-// 		end:=cast(u32)end_bot
-
-// 		word_index:=int((base_index+cast(u16)start_top)>>5)
-// 		start_bit:=start&31
-// 		end_bit:=end&31
-
-// 		mask:u32
-// 		if start_bit <= end_bit{
-// 			mask=((u32(1)<<(end_bit-start_bit+1))-1)<<start_bit
-// 		}else{
-// 			mask=~u32(0)<<start_bit
-// 		}
-
-// 		value:=mask&u32(pal_index&1)<<start_bit
-// 		ab_chunk.data[word_index]=(ab_chunk.data[word_index]&~mask)|value
-
-// 		if start_bit > end_bit{
-// 			word_index+=1
-// 			end_mask:=(u32(1)<<(end_bit+1))-1
-// 			end_value:=end_mask&u32(pal_index&1)
-// 			ab_chunk.data[word_index]=(ab_chunk.data[word_index]&~end_mask)|end_value
-// 		}
-// 		return
-// 	}
-
-// 	if bits == 2{
-// 		base_word:=int(base_index>>4)
-// 		start_field:=int(start_top>>4)
-// 		end_field:=int(end_bot>>4)
-// 		value:=u32(pal_index&3)
-
-// 		for word:=base_word+start_field; word<=base_word+end_field; word+=1{
-// 			first:=0
-// 			last:=15
-
-// 			if word == base_word+start_field{
-// 				first=int(start_top&15)
-// 			}
-// 			if word == base_word+end_field{
-// 				last=int(end_bot&15)
-// 			}
-
-// 			mask:u32=0
-// 			for field:=first; field<=last; field+=1{
-// 				mask|=u32(3)<<u32(field*2)
-// 			}
-
-// 			new_value:u32=0
-// 			for field:=first; field<=last; field+=1{
-// 				new_value|=value<<u32(field*2)
-// 			}
-
-// 			ab_chunk.data[word]=(ab_chunk.data[word]&~mask)|new_value
-// 		}
-// 		return
-// 	}
-
-// 	if bits == 4{
-// 		base_word:=int(base_index>>3)
-// 		start_field:=int(start_top>>3)
-// 		end_field:=int(end_bot>>3)
-// 		value:=u32(pal_index&15)
-
-// 		for word:=base_word+start_field; word<=base_word+end_field; word+=1{
-// 			first:=0
-// 			last:=7
-
-// 			if word == base_word+start_field{
-// 				first=int(start_top&7)
-// 			}
-// 			if word == base_word+end_field{
-// 				last=int(end_bot&7)
-// 			}
-
-// 			mask:u32=0
-// 			new_value:u32=0
-// 			for field:=first; field<=last; field+=1{
-// 				shift:=u32(field*4)
-// 				mask|=u32(15)<<shift
-// 				new_value|=value<<shift
-// 			}
-
-// 			ab_chunk.data[word]=(ab_chunk.data[word]&~mask)|new_value
-// 		}
-// 		return
-// 	}
-
-// 	if bits == 8{
-// 		base_word:=int(base_index>>2)
-// 		start_field:=int(start_top>>2)
-// 		end_field:=int(end_bot>>2)
-// 		value:=u32(pal_index&255)
-
-// 		for word:=base_word+start_field; word<=base_word+end_field; word+=1{
-// 			first:=0
-// 			last:=3
-
-// 			if word == base_word+start_field{
-// 				first=int(start_top&3)
-// 			}
-// 			if word == base_word+end_field{
-// 				last=int(end_bot&3)
-// 			}
-
-// 			mask:u32=0
-// 			new_value:u32=0
-// 			for field:=first; field<=last; field+=1{
-// 				shift:=u32(field*8)
-// 				mask|=u32(255)<<shift
-// 				new_value|=value<<shift
-// 			}
-
-// 			ab_chunk.data[word]=(ab_chunk.data[word]&~mask)|new_value
-// 		}
-// 		return
-// 	}
-
-// 	base_word:=int(base_index>>1)
-// 	start_field:=int(start_top>>1)
-// 	end_field:=int(end_bot>>1)
-// 	value:=u32(pal_index)
-
-// 	for word:=base_word+start_field; word<=base_word+end_field; word+=1{
-// 		first:=0
-// 		last:=1
-
-// 		if word == base_word+start_field{
-// 			first=int(start_top&1)
-// 		}
-// 		if word == base_word+end_field{
-// 			last=int(end_bot&1)
-// 		}
-
-// 		mask:u32=0
-// 		new_value:u32=0
-// 		for field:=first; field<=last; field+=1{
-// 			shift:=u32(field*16)
-// 			mask|=u32(65535)<<shift
-// 			new_value|=value<<shift
-// 		}
-
-// 		ab_chunk.data[word]=(ab_chunk.data[word]&~mask)|new_value
-// 	}
-// }
-
 
 set_blocks_in_chunk_by_col_pal_index::proc(
 	chunk:^Vox_Chunk_Data,
@@ -955,74 +665,7 @@ set_blocks_in_chunk_by_col_pal_index::proc(
 		mask_data.is_opaque_mask[mask_index]&=~mask_bits
 	}
 }
-// set_block_in_chunk::proc(
-// 	chunk:^Vox_Chunk_Data,
-// 	pos:[3]u8,
-// 	item_hd:Item_HD,
-// )->bool{
-// 	// if pos.x < 0 || pos.x >= CHUNK_SIZE || pos.y < 0 || pos.y >= CHUNK_SIZE || pos.z < 0 || pos.z >= CHUNK_SIZE {
-// 	// 	log.log(.Warning,"position outside chunk = ",pos," p_hd = ",p_hd^,)
-// 	// 	return false
-// 	// }
-// 	vox_index:=pos_to_vox_index(pos)
 
-
-// 	for {
-// 		ab_chunk:=&chunk.backing_chunk_data_abstract
-
-// 		if ab_chunk.palette_size == .u0{
-// 			if ab_chunk.pal[0].item == item_hd{
-// 				return true
-// 			}
-// 			next_size:=get_next_palett_size(ab_chunk.palette_size)
-// 			promoted:=promote_palette_chunk(chunk,true)
-// 			assert(promoted)
-// 			continue
-// 		}
-
-// 		old_pal_index:=get_palette_index(chunk,vox_index)
-
-// 		// if old_pal_index < 0 || cast(u16)old_pal_index >= cast(u16)ab_chunk.pal_count^{
-// 		// 	log.log(.Warning,"bad old palette index = ",old_pal_index," palette count = ",ab_chunk.pal_count^," pos = ",pos," p_hd = ",p_hd^,)
-// 		// 	return false
-// 		// }
-
-// 		new_pal_index,new_ok:=get_or_add_palette_index(chunk,item_hd)
-
-// 		if !new_ok{
-// 			next_size,next_ok:=get_next_palett_size(ab_chunk.palette_size)
-// 			if !next_ok{
-// 				log.log(.Error,"palette is full and cannot be promoted, p_hd = ",p_hd^,)
-// 				return false
-// 			}
-
-// 			// old_hd:=p_hd^
-// 			promoted:=promote_palette_chunk(data,p_hd)
-// 			if !promoted{
-// 				log.log(.Error,"failed promoting palette, p_hd = ",p_hd,)
-// 				return false
-// 			}
-
-// 			// p_hd^=new_hd
-// 			continue
-// 		}
-
-// 		if new_pal_index == old_pal_index{
-// 			return true
-// 		}
-
-// 		if ab_chunk.pal[old_pal_index].count == 0{
-// 			log.log(.Warning,"old palette entry has zero references, old_pal_index = ",old_pal_index," pos = ",pos," p_hd = ",p_hd^,)
-// 		}else{
-// 			ab_chunk.pal[old_pal_index].count-=1
-// 		}
-
-// 		ab_chunk.pal[new_pal_index].count+=1
-// 		set_palette_index(&ab_chunk,vox_index,new_pal_index)
-
-// 		return true
-// 	}
-// }
 
 //preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
 //if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
@@ -1063,38 +706,6 @@ get_or_add_palette_index::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,preserve_da
 
 	return pal_count
 }
-
-
-// add_palette_entry :: proc(
-// 	chunk:^Vox_Chunk_Data,
-// 	item_hd: Item_HD,
-// ) -> (pal_index: int, ok: bool) {
-
-// 	pal_count := int(chunk.pal_count^)
-
-// 	// See if the item is already in the palette.
-// 	for i in 0..<pal_count {
-// 		if chunk.pal[i].item == item_hd {
-// 			return i, true
-// 		}
-// 	}
-
-// 	// Palette is full.
-// 	if pal_count >= len(chunk.pal) {
-// 		return -1, false
-// 	}
-
-// 	pal_index = pal_count
-
-// 	chunk.pal[pal_index] = Palette_Data{
-// 		item  = item_hd,
-// 		count = 0,
-// 	}
-
-// 	chunk.pal_count^ += 1
-
-// 	return pal_index, true
-// }
 
 //returns false if there is no next size
 get_next_palett_size::proc(size:Palette_Sizes)->(next_size:Palette_Sizes){

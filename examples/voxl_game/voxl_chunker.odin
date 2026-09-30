@@ -71,7 +71,7 @@ Vox_Render_Debug_Info::struct{
 // NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
 // 
 CHUNK_SIZE::32
-MAX_NUM_CHUNKS::35000 * 7
+MAX_NUM_CHUNKS::350000 * 7
 MAX_FACE_COUNT::MAX_NUM_CHUNKS * CHUNK_MAX_FACE_NUM
 CHUNK_MAX_FACE_NUM::  CHUNK_SIZE * CHUNK_SIZE / 2
 MAX_NUM_DRAW_CMD_BUF::MAX_NUM_CHUNKS / 8
@@ -215,7 +215,7 @@ init_map::proc(w_map:^Map){
 	// } 
 }
 MAX_CHUNKS_TO_Q_AT_ONE_TIME::10
-adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=35,y_rad:int=2)->(did_work:bool){
+adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=30,y_rad:int=2)->(did_work:bool){
 
 	chunk_pos:=pos_to_chunck_pos(pos)
 	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
@@ -251,7 +251,7 @@ adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=35,y_rad:int=2)-
 	return
 }
 
-removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=35,y_rad:int=2)->(did_work:bool){
+removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=30,y_rad:int=2)->(did_work:bool){
 
 	chunk_pos:=pos_to_chunck_pos(pos)
 	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
@@ -1096,8 +1096,8 @@ mesh_chunk_side::proc(
 		return
 	}
 
-	chunk_vox,vox_ok:=get_vox_chunk_data(w_map,chunk.vox_data_hd)
-	if !vox_ok{log.log(.Warning,"get_vox_chunk_data(w_map,chunk.vox_data_hd)", chunk.vox_data_hd);return}
+	chunk_vox,vox_ok:=get_vox_chunk_data(w_map,vox_data_hd)
+	if !vox_ok{log.log(.Warning,"get_vox_chunk_data(w_map,chunk.vox_data_hd)", vox_data_hd);return}
 
 	neighbor_vox,neighbor_vox_ok:=get_vox_chunk_data(w_map,neighbor_vox_hd)
 	if !neighbor_vox_ok{log.log(.Warning,"get_vox_chunk_data(w_map,neighbor_vox_hd)",neighbor_vox_hd);return}
@@ -1119,7 +1119,7 @@ mesh_chunk_side::proc(
 	// log.log(.Debug,"starting meshiong2")
 
 	// face_count:=mesh_by_side_all(w_map,chunk_vox,mesh_data,side)
-	face_count:=mesh_by_bit_mask(w_map,chunk_hd,neighbor_chunk_hd,vox_data_hd,neighbor_vox_hd,mesh_data,side)
+	face_count:=mesh_by_bit_mask(w_map,vox_data_hd,neighbor_vox_hd,mesh_data,side)
 
 	if face_count <= 0 {
 		add_to_destroy_mesh_data_q(w_map,chunk.mesh_data[side])
@@ -1161,176 +1161,213 @@ mesh_chunk_side::proc(
 // 	return face_count
 // }
 
-// mesh_by_bit_mask :: proc(
-//     w_map: 			^Map,
-//     chunk_hd:		Chunk_HD,
-//     neighbor_chunk_hd:		Chunk_HD,
-//     vox_data_hd: 	Vox_Chunk_Data_HD,
-// 	neighbor_vox_hd:Vox_Chunk_Data_HD,
-//     mesh: 			^Chunk_Mesh_Data,
-//     side: 			Model_Sides,
-// )->(face_count:int) {
-    
 
-// 	chunk, ok := get_chunk(w_map,chunk_hd)
-// 	if !ok{log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")");return}
-// 	neighbor_chunk, neighbor_chunk_ok := get_chunk(w_map,neighbor_chunk_hd)
-// 	if !neighbor_chunk_ok{log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")");return}
+mesh_by_bit_mask :: proc(
+	w_map: ^Map,
+	vox_data_hd: Vox_Chunk_Data_HD,
+	neighbor_vox_hd: Vox_Chunk_Data_HD,
+	mesh: ^Chunk_Mesh_Data,
+	side: Model_Sides,
+) -> (face_count: int) {
 
-// 	chunk_vox_data,vox_ok:=get_vox_chunk_data(w_map, vox_data_hd)
-// 	if !vox_ok {log.log(.Error,"failed, vox_data_hd not valid",vox_data_hd);return}
+	chunk_vox_data, vox_ok := get_vox_chunk_data(w_map, vox_data_hd)
+	if !vox_ok {log.log(.Error, "failed, vox_data_hd not valid", vox_data_hd);return}
 
-// 	neighbor_vox,neighbor_vox_ok:=get_vox_chunk_data(w_map,neighbor_vox_hd)
-// 	if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",neighbor_vox_hd);return}
+	neighbor_vox, neighbor_vox_ok := get_vox_chunk_data(w_map, neighbor_vox_hd)
+	if !neighbor_vox_ok {log.log(.Error, "failed, neighbor_vox_data_hd not valid", neighbor_vox_hd);return}
+
+	chunk_ab := &chunk_vox_data.backing_chunk_data_abstract
+	chunk_pal_count := chunk_ab.pal_count^
+
+	texture_cache: []u32
+	geometry_cache: []u16
+	switch chunk_ab.palette_size{
+	case .u0, .u1, .u2, .u4, .u8:
+		t_texture_cache:[255]u32
+		t_geometry_cache:[255]u16
+		texture_cache  = t_texture_cache[:]
+		geometry_cache = t_geometry_cache[:]
+	case .u16:
+		t_texture_cache:[CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE]u32
+		t_geometry_cache:[CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE]u16
+		texture_cache  = t_texture_cache[:]
+		geometry_cache = t_geometry_cache[:]
+	}
+
+	for i in 0..<chunk_pal_count {
+		item, ok := reg.get(&g.item_reg, chunk_ab.pal[i].item)
+		if ok {
+			texture_cache[i] = cast(u32)item.texture_data.sides[side]
+			geometry_cache[i] = cast(u16)item.model_data.cube_indices[side]
+		}
+	}
+	mesh.face_count = 0
+	chunk_mask, chunk_mask_ok := hm.get(chunk_vox_data.backing_mask_data,chunk_vox_data.vox_mask_hd,)
+	neighbor_mask, neighbor_mask_ok := hm.get(neighbor_vox.backing_mask_data,neighbor_vox.vox_mask_hd,)
+
+	current_masks: [CHUNK_SIZE * CHUNK_SIZE]u32
+	neighbor_masks: [CHUNK_SIZE * CHUNK_SIZE]u32
+
+
+	switch side {
+	case .pos_x:
+		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
+			current_masks[i] = chunk_mask.is_occupied_mask[i]
+
+			if i % CHUNK_SIZE == CHUNK_SIZE - 1 {
+				neighbor_masks[i] = neighbor_mask.is_opaque_mask[i-CHUNK_SIZE+1]
+			} else {
+				neighbor_masks[i] = chunk_mask.is_opaque_mask[i+1]
+			}
+		}
+
+	case .neg_x:
+		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
+			current_masks[i] = chunk_mask.is_occupied_mask[i]
+
+			if i % CHUNK_SIZE == 0 {
+				neighbor_masks[i] = neighbor_mask.is_opaque_mask[i+CHUNK_SIZE-1]
+			} else {
+				neighbor_masks[i] = chunk_mask.is_opaque_mask[i-1]
+			}
+		}
+
+	case .pos_y:
+		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
+			current_masks[i] = chunk_mask.is_occupied_mask[i]
+			neighbor_masks[i] = chunk_mask.is_opaque_mask[i] >> 1
+
+			if neighbor_mask_ok {
+				neighbor_masks[i] |= (neighbor_mask.is_opaque_mask[i] & 1) << 31
+			} else {
+				neighbor_masks[i] |= u32(1) << 31
+			}
+		}
+
+	case .neg_y:
+		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
+			current_masks[i] = chunk_mask.is_occupied_mask[i]
+			neighbor_masks[i] = chunk_mask.is_opaque_mask[i] << 1
+
+			if neighbor_mask_ok {
+				neighbor_masks[i] |= neighbor_mask.is_opaque_mask[i] >> 31
+			} else {
+				neighbor_masks[i] |= 1
+			}
+		}
+
+	case .pos_z:
+		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
+			current_masks[i] = chunk_mask.is_occupied_mask[i]
+
+			if i >= CHUNK_SIZE * (CHUNK_SIZE-1) {
+				neighbor_masks[i] = neighbor_mask.is_opaque_mask[i % CHUNK_SIZE]
+			} else {
+				neighbor_masks[i] = chunk_mask.is_opaque_mask[i+CHUNK_SIZE]
+			}
+		}
+
+	case .neg_z:
+		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
+			current_masks[i] = chunk_mask.is_occupied_mask[i]
+
+			if i < CHUNK_SIZE {
+				neighbor_masks[i] = neighbor_mask.is_opaque_mask[i + CHUNK_SIZE * (CHUNK_SIZE-1)]
+			} else {
+				neighbor_masks[i] = chunk_mask.is_opaque_mask[i-CHUNK_SIZE]
+			}
+		}
+
+	case .extra:
+		log.log(.Warning, "ono")
+		return
+	}
+
+	for index := 0; index < CHUNK_SIZE * CHUNK_SIZE; index += 1 {
+		visible_mask := current_masks[index] & ~neighbor_masks[index]
+
+		x := index % CHUNK_SIZE
+		z := index / CHUNK_SIZE
+		for visible_mask != 0 {
+			y := bits.count_trailing_zeros(visible_mask)
+			visible_mask &= visible_mask - 1
+
+
+			vox_index := cast(u16)(cast(u16)y + cast(u16)x * CHUNK_SIZE + cast(u16)z * CHUNK_SIZE * CHUNK_SIZE)
+
+			pal_index := get_palette_index(chunk_vox_data, vox_index)
+
+			face: tg.Vert_Face
+			face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
+			face.texture_face_index = texture_cache[pal_index]
+			face.geometry_face_index = geometry_cache[pal_index]
+
+			mesh.data[face_count] = face
+			face_count += 1
+		}
+	}
+
+	mesh.face_count = face_count
+	return face_count
+}
 
 
 
-//     // clear(&mesh.data)
-// 	mesh.face_count = 0
-//     for y in 0..<CHUNK_SIZE {
-//         for z in 0..<CHUNK_SIZE {
-//             current := chunk.is_solid_mask[y][z]
-//             visible: bit_set[u32(0)..<CHUNK_SIZE; u32]
-// 		switch side {
-// 		case .pos_x:
-	        
-// 		    current_u32 := transmute(u32)current
-// 		    neighbor_u32 := current_u32 >> 1
-// 		    // x = 31 has no neighbor inside this chunk.
-// 		    // If there is a neighboring chunk, use its x = 0.
-// 		    if neighbor_vox_ok {
-// 		        neighbor_u32 &= ~(u32(1) << 31)
-// 		        neighbor_edge := transmute(u32)neighbor_chunk.is_solid_mask[y][z]
-// 		        if (neighbor_edge & 1) != 0 {
-// 		            neighbor_u32 |= u32(1) << 31
-// 		        }
-// 		    } else {
-// 		        // No neighboring chunk = empty space.
-// 		        // Make sure x = 31 is considered empty.
-// 		        neighbor_u32 &= ~(u32(1) << 31)
-// 		    }
-// 		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
-// 		        current_u32 &~ neighbor_u32
-// 		    )
-
-// 		case .neg_x:
-// 		    current_u32 := transmute(u32)current
-// 		    neighbor_u32 := current_u32 << 1
-// 		    // x = 0 has no neighbor inside this chunk.
-// 		    // If there is a neighboring chunk, use its x = 31.
-// 		    if neighbor_vox_ok {
-// 		        neighbor_u32 &= ~u32(1)
-// 		        neighbor_edge := transmute(u32)neighbor_chunk.is_solid_mask[y][z]
-// 		        if (neighbor_edge & (u32(1) << 31)) != 0 {
-// 		            neighbor_u32 |= u32(1)
-// 		        }
-// 		    } else {
-// 		        // No neighboring chunk = empty space.
-// 		        neighbor_u32 &= ~u32(1)
-// 		    }
-// 		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
-// 		        current_u32 &~ neighbor_u32
-// 		    )
-		
-// 		case .pos_y:
-// 		    if y == CHUNK_SIZE - 1 {
-// 		        if !neighbor_vox_ok {
-// 		            // No +Y chunk, so boundary is exposed.
-// 		            visible = current
-// 		        } else {
-// 		            neighbor := neighbor_chunk.is_solid_mask[0][z]
-// 		            visible = current - neighbor
-// 		        }
-// 		    } else {
-// 		        neighbor := chunk.is_solid_mask[y + 1][z]
-// 		        visible = current - neighbor
-// 		    }
-		
-// 		case .neg_y:
-// 		    if y == 0 {
-// 		        if !neighbor_vox_ok {
-// 		            // No -Y chunk, so boundary is exposed.
-// 		            visible = current
-// 		        } else {
-// 		            neighbor := neighbor_chunk.is_solid_mask[CHUNK_SIZE - 1][z]
-// 		            visible = current - neighbor
-// 		        }
-// 		    } else {
-// 		        neighbor := chunk.is_solid_mask[y - 1][z]
-// 		        visible = current - neighbor
-// 		    }
-		
-// 		case .pos_z:
-// 	    if z == CHUNK_SIZE - 1 {
-// 	        if !neighbor_vox_ok {
-// 	            // No +Z chunk, so boundary is exposed.
-// 	            visible = current
-// 	        } else {
-// 	            neighbor := neighbor_chunk.is_solid_mask[y][0]
-// 	            visible = current - neighbor
-// 	        }
-// 	    } else {
-// 	        neighbor := chunk.is_solid_mask[y][z + 1]
-// 	        visible = current - neighbor
-// 	    }
-
-// 		case .neg_z:
-// 	    if z == 0 {
-// 	        if !neighbor_vox_ok {
-// 	            // No -Z chunk, so boundary is exposed.
-// 	            visible = current
-// 	        } else {
-// 	            neighbor := neighbor_chunk.is_solid_mask[y][CHUNK_SIZE - 1]
-// 	            visible = current - neighbor
-// 	        }
-// 	    } else {
-// 	        neighbor := chunk.is_solid_mask[y][z - 1]
-// 	        visible = current - neighbor
-// 	    }
-		
-// 		case .extra:
-// 			log.log(.Warning,"ono")
-// 		    return
-// 		}
-//             for x in visible {
-//                 // vox := voxls.data[x][y][z]
-//                 vox := get_vox_in_chunk(chunk_vox_data, {cast(u8)x,cast(u8)y,cast(u8)z})
-//                 // log.log(.Debug,vox)
-//                 item := reg.get(&g.item_reg, vox)
-//                 // log.log(.Debug,"do append",x,y,z,side,"\n")
-//                 if item == nil {
-//                 	// this ia air so skip
-//                     // log.log(.Error,"item == nil, invalid item or registry is borked item_hd(",vox.item_hd,")",)
-//                     continue
-//                 }
-
-//                 face: tg.Vert_Face
-
-//                 face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
-//                 face.texture_face_index = cast(u32)item.texture_data.sides[side]
-//                 face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
-//                 // log.log(.Debug,"do append",x,y,z,side,face,"\n")
-//                 // append(&mesh.data, face)
-//                 mesh.data[face_count] = face
-//                 face_count+=1
-//             }
-//         }
-//     }
-//     mesh.face_count = face_count
-//     return face_count
-// }
  
 
+
+
+
+// transpose_32x32 :: proc(m:[32]u32) -> (new_m:[32]u32) {
+// 	new_m = m
+
+// 	for block:=16; block>0; block>>=1 {
+// 		mask:u32
+// 		shift:int
+
+// 		switch block {
+// 		case 16:
+// 			mask = 0xFFFF0000
+// 			shift = 16
+// 		case 8:
+// 			mask = 0xFF00FF00
+// 			shift = 8
+// 		case 4:
+// 			mask = 0xF0F0F0F0
+// 			shift = 4
+// 		case 2:
+// 			mask = 0xCCCCCCCC
+// 			shift = 2
+// 		case 1:
+// 			mask = 0xAAAAAAAA
+// 			shift = 1
+// 		}
+
+// 		for i:=0; i<32; i+=block*2 {
+// 			for j:=0; j<block; j+=1 {
+// 				a:=i+j
+// 				b:=a+block
+
+// 				x:=(new_m[a] ~ (new_m[b] << cast(u32)shift)) & mask
+// 				new_m[a] ~= x
+// 				new_m[b] ~= x >> cast(u32)shift
+// 			}
+// 		}
+// 	}
+
+// 	return
+// }
+
+
 // mesh_by_bit_mask :: proc(
-//     w_map: 			^Map,
-//     chunk_hd:		Chunk_HD,
-//     neighbor_chunk_hd:		Chunk_HD,
-//     vox_data_hd: 	Vox_Chunk_Data_HD,
-// 	neighbor_vox_hd:Vox_Chunk_Data_HD,
-//     mesh: 			^Chunk_Mesh_Data,
-//     side: 			Model_Sides,
+// 	w_map: 				^Map,
+// 	chunk_hd:			Chunk_HD,
+// 	neighbor_chunk_hd:	Chunk_HD,
+// 	vox_data_hd:		Vox_Chunk_Data_HD,
+// 	neighbor_vox_hd:	Vox_Chunk_Data_HD,
+// 	mesh:				^Chunk_Mesh_Data,
+// 	side:				Model_Sides,
 // )->(face_count:int) {
-    
 
 // 	chunk, ok := get_chunk(w_map,chunk_hd)
 // 	if !ok{log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")");return}
@@ -1343,319 +1380,248 @@ mesh_chunk_side::proc(
 // 	neighbor_vox,neighbor_vox_ok:=get_vox_chunk_data(w_map,neighbor_vox_hd)
 // 	if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",neighbor_vox_hd);return}
 
+// 	chunk_mask,chunk_mask_ok := hm.get(chunk_vox_data.backing_mask_data,chunk_vox_data.vox_mask_hd)
+// 	if !chunk_mask_ok {
+// 		return
+// 	}
+
+// 	neighbor_mask,neighbor_mask_ok := hm.get(neighbor_vox.backing_mask_data,neighbor_vox.vox_mask_hd)
+// 	if !neighbor_mask_ok {
+// 		return
+// 	}
+	
+
+// 	//--------------------------------------------------------------------------
+// 	// Setup everything that depends on the face direction.
+// 	//--------------------------------------------------------------------------
+
+// 	do_transpose:bool
+
+// 	// Source layout.
+// 	source_low_stride:int=1
+// 	source_high_stride:int=CHUNK_SIZE
+
+// 	// Output layout.
+// 	output_low_stride:int=1
+// 	output_high_stride:int=CHUNK_SIZE
+
+// 	// Neighbor direction for X/Z.
+// 	neighbor_delta:int
+
+// 	// Coordinate reconstruction.
+// 	x_low:int
+// 	x_high:int
+// 	x_normal:int
+
+// 	y_low:int
+// 	y_high:int
+// 	y_normal:int
+
+// 	z_low:int
+// 	z_high:int
+// 	z_normal:int
 
 
-//     // clear(&mesh.data)
-// 	mesh.face_count = 0
-//     for y in 0..<CHUNK_SIZE {
-//         for z in 0..<CHUNK_SIZE {
-//             current := chunk_vox_data.is_solid_mask[y][z]
-//             visible: bit_set[u32(0)..<CHUNK_SIZE; u32]
-// 		switch side {
-// 		case .pos_x:
-	        
-// 		    current_u32 := transmute(u32)current
-// 		    neighbor_u32 := current_u32 >> 1
-// 		    neighbor_edge := transmute(u32)neighbor_vox.is_solid_mask[y][z]
-// 		    neighbor_u32 |= (neighbor_edge & 1) << 31
-// 		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
-// 		        current_u32 &~ neighbor_u32
-// 		    )
+// 	switch side {
+// 	case .pos_x,.pos_y,.pos_z:
+// 		neighbor_delta = 1
 
-// 		case .neg_x:
-// 		    current_u32 := transmute(u32)current
-// 		    neighbor_u32 := current_u32 << 1
-// 		    neighbor_edge := transmute(u32)neighbor_vox.is_solid_mask[y][z]
-// 		    neighbor_u32 |= neighbor_edge >> 31
-// 		    visible = transmute(bit_set[u32(0)..<CHUNK_SIZE; u32])(
-// 		        current_u32 &~ neighbor_u32
-// 		    )
-		
-// 		case .pos_y:
-// 		    if y == CHUNK_SIZE - 1 {
-// 		        neighbor := neighbor_vox.is_solid_mask[0][z]
-// 		        visible = current - neighbor
-// 		    } else {
-// 		        neighbor := chunk_vox_data.is_solid_mask[y + 1][z]
-// 		        visible = current - neighbor
-// 		    }
-		
-// 		case .neg_y:
-// 		    if y == 0 {
-// 		        neighbor := neighbor_vox.is_solid_mask[CHUNK_SIZE - 1][z]
-// 		        visible = current - neighbor
-// 		    } else {
-// 		        neighbor := chunk_vox_data.is_solid_mask[y - 1][z]
-// 		        visible = current - neighbor
-// 		    }
-		
-// 		case .pos_z:
-// 		    if z == CHUNK_SIZE - 1 {
-// 		        neighbor := neighbor_vox.is_solid_mask[y][0]
-// 		        visible = current - neighbor
-// 		    } else {
-// 		        neighbor := chunk_vox_data.is_solid_mask[y][z + 1]
-// 		        visible = current - neighbor
-// 		    }
+// 	case .neg_x,.neg_y,.neg_z:
+// 		neighbor_delta = -1
 
-// 		case .neg_z:
-// 		    if z == 0 {
-// 		        neighbor := neighbor_vox.is_solid_mask[y][CHUNK_SIZE - 1]
-// 		        visible = current - neighbor
-// 		    } else {
-// 		        neighbor := chunk_vox_data.is_solid_mask[y][z - 1]
-// 		        visible = current - neighbor
-// 		    }
-		
-// 		case .extra:
-// 			log.log(.Warning,"ono")
-// 		    return
+// 	case .extra:
+// 	return
+// 	}
+
+// switch side {
+// 	case .pos_x,.neg_x:
+// 		do_transpose = true
+
+// 		x_low = 0
+// 		x_high = 0
+// 		x_normal = 1
+
+// 		y_low = 1
+// 		y_high = 0
+// 		y_normal = 0
+
+// 		z_low = 0
+// 		z_high = 1
+// 		z_normal = 0
+
+// 	case .pos_y,.neg_y:
+// 		do_transpose = false
+
+
+// 		x_low = 1
+// 		x_high = 0
+// 		x_normal = 0
+
+// 		y_low = 0
+// 		y_high = 0
+// 		y_normal = 1
+
+// 		z_low = 0
+// 		z_high = 1
+// 		z_normal = 0
+
+// 	case .pos_z, .neg_z:
+// 		do_transpose = true
+
+
+// 		x_low = 1
+// 		x_high = 0
+// 		x_normal = 0
+
+// 		y_low = 0
+// 		y_high = 1
+// 		y_normal = 0
+
+// 		z_low = 0
+// 		z_high = 0
+// 		z_normal = 1
+// 	case .extra:
+// 		return
+// 	}
+
+// current_masks:[CHUNK_SIZE * CHUNK_SIZE]u32
+// 	neighbor_masks:[CHUNK_SIZE * CHUNK_SIZE]u32
+
+
+// 	if !do_transpose {
+// 		for index:=0; index<CHUNK_SIZE*CHUNK_SIZE; index+=1 {
+// 			current := chunk_mask.is_solid_mask[index]
+// 			neighbor := chunk_mask.is_solid_mask[index]
+
+// 			if side == .pos_y {
+// 				neighbor = current >> 1
+
+// 				if high == CHUNK_SIZE-1 {
+// 					neighbor = (neighbor & 0x7FFFFFFF) | ((neighbor_mask.is_solid_mask[index] & 1) << 31)
+// 				}
+// 			} else {
+// 				neighbor = current << 1
+
+// 				if high == 0 {
+// 					neighbor = (neighbor & 0xFFFFFFFE) | ((neighbor_mask.is_solid_mask[index] >> 31) & 1)
+// 				}
+// 			}
+
+// 			current_masks[index] = current
+// 			neighbor_masks[index] = neighbor
+// 		}
+// 	} else {
+// 		for plane:=0; plane<CHUNK_SIZE; plane+=1 {
+// 			current_rows:[CHUNK_SIZE]u32
+// 			neighbor_rows:[CHUNK_SIZE]u32
+
+// 			for row:=0; row<CHUNK_SIZE; row+=1 {
+// 				current_index := row*source_low_stride + plane*source_high_stride
+
+// 				current_rows[row] = chunk_mask.is_solid_mask[current_index]
+// 				neighbor_rows[row] = chunk_mask.is_solid_mask[current_index]
+
+// 				if side == .pos_x {
+// 					if row == CHUNK_SIZE-1 {
+// 						neighbor_rows[row] = neighbor_mask.is_solid_mask[plane*source_high_stride]
+// 					} else {
+// 						neighbor_rows[row] = chunk_mask.is_solid_mask[(row+1)*source_low_stride + plane*source_high_stride]
+// 					}
+// 				} else if side == .neg_x {
+// 					if row == 0 {
+// 						neighbor_rows[row] = neighbor_mask.is_solid_mask[(CHUNK_SIZE-1)*source_low_stride + plane*source_high_stride]
+// 					} else {
+// 						neighbor_rows[row] = chunk_mask.is_solid_mask[(row-1)*source_low_stride + plane*source_high_stride]
+// 					}
+// 				} else if side == .pos_z {
+// 					if plane == CHUNK_SIZE-1 {
+// 						neighbor_rows[row] = neighbor_mask.is_solid_mask[row*source_low_stride]
+// 					} else {
+// 						neighbor_rows[row] = chunk_mask.is_solid_mask[row*source_low_stride + (plane+1)*source_high_stride]
+// 					}
+// 				} else if side == .neg_z {
+// 					if plane == 0 {
+// 						neighbor_rows[row] = neighbor_mask.is_solid_mask[row*source_low_stride + (CHUNK_SIZE-1)*source_high_stride]
+// 					} else {
+// 						neighbor_rows[row] = chunk_mask.is_solid_mask[row*source_low_stride + (plane-1)*source_high_stride]
+// 					}
+// 				}
+// 			}
+
+// 			current_rows = transpose_32x32(current_rows)
+// 			neighbor_rows = transpose_32x32(neighbor_rows)
+
+// 			for row:=0; row<CHUNK_SIZE; row+=1 {
+// 				output_index := row*output_low_stride + plane*output_high_stride
+
+// 				current_masks[output_index] = current_rows[row]
+// 				neighbor_masks[output_index] = neighbor_rows[row]
+// 			}
+// 		}
+// 	}
+
+
+// 	//--------------------------------------------------------------------------
+// 	// Cache palette material data.
+// 	//--------------------------------------------------------------------------
+
+// 	texture_cache:[256]u32
+// 	geometry_cache:[256]u16
+
+// 	pal_count := chunk_vox_data.backing_chunk_data_abstract.pal_count^
+
+// 	for i:=0; i<cast(int)pal_count; i+=1 {
+// 		item,ok := reg.get(
+// 			&g.item_reg,
+// 			chunk_vox_data.backing_chunk_data_abstract.pal[i].item,
+// 		)
+
+// 		if !ok {
+// 			continue
 // 		}
 
-//             for x in visible {
-//                 vox := get_vox_in_chunk(chunk_vox_data, {cast(u8)x,cast(u8)y,cast(u8)z})
-//                 item := reg.get(&g.item_reg, vox)
-//                 if item == nil {
-//                     continue
-//                 }
+// 		texture_cache[i] = cast(u32)item.texture_data.sides[side]
+// 		geometry_cache[i] = cast(u16)item.model_data.cube_indices[side]
+// 	}
 
-//                 face: tg.Vert_Face
+// 	for index:=0; index<CHUNK_SIZE*CHUNK_SIZE; index+=1 {
+// 		visible_mask := current_masks[index] &~ neighbor_masks[index]
 
-//                 face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
-//                 face.texture_face_index = cast(u32)item.texture_data.sides[side]
-//                 face.geometry_face_index = cast(u16)item.model_data.cube_indices[side]
+// 		low := cast(u32)index & (CHUNK_SIZE-1)
+// 		high := cast(u32)index >> 5
 
-//                 mesh.data[face_count] = face
-//                 face_count+=1
-//             }
-//         }
-//     }
-//     mesh.face_count = face_count
-//     return face_count
+// 		for visible_mask != 0 {
+// 			normal := bits.count_trailing_zeros(visible_mask)
+
+// 			x := low*cast(u32)x_low + cast(u32)high*cast(u32)x_high + normal*cast(u32)x_normal
+// 			y := low*cast(u32)y_low + cast(u32)high*cast(u32)y_high + normal*cast(u32)y_normal
+// 			z := low*cast(u32)z_low + cast(u32)high*cast(u32)z_high + normal*cast(u32)z_normal
+
+// 			vox_index := y + x*CHUNK_SIZE + z*CHUNK_SIZE*CHUNK_SIZE
+// 			pal_index := get_palette_index(chunk_vox_data,cast(u16)vox_index)
+
+// 			face:tg.Vert_Face
+// 			face.block_pos = pack_block_pos({
+// 				cast(u16)x,
+// 				cast(u16)y,
+// 				cast(u16)z,
+// 			})
+// 			face.texture_face_index = texture_cache[pal_index]
+// 			face.geometry_face_index = geometry_cache[pal_index]
+
+// 			mesh.data[face_count] = face
+// 			face_count += 1
+
+// 			visible_mask &= visible_mask - 1
+// 		}
+// 	}
+
+// 	mesh.face_count = face_count
+
+// 	return
 // }
 
-mesh_by_bit_mask :: proc(
-    w_map: 			^Map,
-    chunk_hd:		Chunk_HD,
-    neighbor_chunk_hd:		Chunk_HD,
-    vox_data_hd: 	Vox_Chunk_Data_HD,
-	neighbor_vox_hd:Vox_Chunk_Data_HD,
-    mesh: 			^Chunk_Mesh_Data,
-    side: 			Model_Sides,
-)->(face_count:int) {
-    
 
-	chunk, ok := get_chunk(w_map,chunk_hd)
-	if !ok{log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")");return}
-	neighbor_chunk, neighbor_chunk_ok := get_chunk(w_map,neighbor_chunk_hd)
-	if !neighbor_chunk_ok{log.log(.Error, "failed invalid chunk_hd(",neighbor_chunk_hd,")");return}
-
-	chunk_vox_data,vox_ok:=get_vox_chunk_data(w_map, vox_data_hd)
-	if !vox_ok {log.log(.Error,"failed, vox_data_hd not valid",vox_data_hd);return}
-
-	neighbor_vox,neighbor_vox_ok:=get_vox_chunk_data(w_map,neighbor_vox_hd)
-	if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",neighbor_vox_hd);return}
-
-
-
-    // clear(&mesh.data)
-	mesh.face_count = 0
-
-	chunk_mask,chunk_mask_ok:=hm.get(chunk_vox_data.backing_mask_data,chunk_vox_data.vox_mask_hd)
-	neighbor_mask,neighbor_mask_ok:=hm.get(neighbor_vox.backing_mask_data,neighbor_vox.vox_mask_hd)
-
-	current_masks:[CHUNK_SIZE*CHUNK_SIZE]u32
-	neighbor_masks:[CHUNK_SIZE*CHUNK_SIZE]u32
-
-	switch side {
-	case .pos_x:
-		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
-			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
-				index:=x+z*CHUNK_SIZE
-
-				if chunk_mask_ok {
-					current_masks[index]=chunk_mask.is_occupied_mask[index]
-				}else{
-					current_masks[index]=~u32(0)
-				}
-
-				if x == CHUNK_SIZE-1 {
-					if neighbor_mask_ok {
-						neighbor_masks[index]=neighbor_mask.is_opaque_mask[z*CHUNK_SIZE]
-					}else{
-						neighbor_masks[index]=~u32(0)
-					}
-				}else{
-					if chunk_mask_ok {
-						neighbor_masks[index]=chunk_mask.is_opaque_mask[index+1]
-					}else{
-						neighbor_masks[index]=~u32(0)
-					}
-				}
-			}
-		}
-
-	case .neg_x:
-		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
-			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
-				index:=x+z*CHUNK_SIZE
-
-				if chunk_mask_ok {
-					current_masks[index]=chunk_mask.is_occupied_mask[index]
-				}else{
-					current_masks[index]=~u32(0)
-				}
-
-				if x == 0 {
-					if neighbor_mask_ok {
-						neighbor_masks[index]=neighbor_mask.is_opaque_mask[CHUNK_SIZE-1+z*CHUNK_SIZE]
-					}else{
-						neighbor_masks[index]=~u32(0)
-					}
-				}else{
-					if chunk_mask_ok {
-						neighbor_masks[index]=chunk_mask.is_opaque_mask[index-1]
-					}else{
-						neighbor_masks[index]=~u32(0)
-					}
-				}
-			}
-		}
-
-	case .pos_y:
-		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
-			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
-				index:=x+z*CHUNK_SIZE
-
-				if chunk_mask_ok {
-					current_masks[index]=chunk_mask.is_occupied_mask[index]
-					neighbor_masks[index]=chunk_mask.is_opaque_mask[index]>>1
-				}else{
-					current_masks[index]=~u32(0)
-					neighbor_masks[index]=~u32(0)
-				}
-
-				if neighbor_mask_ok {
-					neighbor_masks[index]|=(neighbor_mask.is_opaque_mask[index]&1)<<31
-				}else{
-					neighbor_masks[index]|=u32(1)<<31
-				}
-			}
-		}
-
-	case .neg_y:
-		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
-			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
-				index:=x+z*CHUNK_SIZE
-
-				if chunk_mask_ok {
-					current_masks[index]=chunk_mask.is_occupied_mask[index]
-					neighbor_masks[index]=chunk_mask.is_opaque_mask[index]<<1
-				}else{
-					current_masks[index]=~u32(0)
-					neighbor_masks[index]=~u32(0)
-				}
-
-				if neighbor_mask_ok {
-					neighbor_masks[index]|=neighbor_mask.is_opaque_mask[index]>>31
-				}else{
-					neighbor_masks[index]|=1
-				}
-			}
-		}
-
-	case .pos_z:
-		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
-			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
-				index:=x+z*CHUNK_SIZE
-
-				if chunk_mask_ok {
-					current_masks[index]=chunk_mask.is_occupied_mask[index]
-				}else{
-					current_masks[index]=~u32(0)
-				}
-
-				if z == CHUNK_SIZE-1 {
-					if neighbor_mask_ok {
-						neighbor_masks[index]=neighbor_mask.is_opaque_mask[x]
-					}else{
-						neighbor_masks[index]=~u32(0)
-					}
-				}else{
-					if chunk_mask_ok {
-						neighbor_masks[index]=chunk_mask.is_opaque_mask[index+CHUNK_SIZE]
-					}else{
-						neighbor_masks[index]=~u32(0)
-					}
-				}
-			}
-		}
-
-	case .neg_z:
-		for z:=u32(0); z<CHUNK_SIZE; z+=1 {
-			for x:=u32(0); x<CHUNK_SIZE; x+=1 {
-				index:=x+z*CHUNK_SIZE
-
-				if chunk_mask_ok {
-					current_masks[index]=chunk_mask.is_occupied_mask[index]
-				}else{
-					current_masks[index]=~u32(0)
-				}
-
-				if z == 0 {
-					if neighbor_mask_ok {
-						neighbor_masks[index]=neighbor_mask.is_opaque_mask[x+(CHUNK_SIZE-1)*CHUNK_SIZE]
-					}else{
-						neighbor_masks[index]=~u32(0)
-					}
-				}else{
-					if chunk_mask_ok {
-						neighbor_masks[index]=chunk_mask.is_opaque_mask[index-CHUNK_SIZE]
-					}else{
-						neighbor_masks[index]=~u32(0)
-					}
-				}
-			}
-		}
-
-	case .extra:
-		log.log(.Warning,"ono")
-		return
-	}
-
-	for z:=u32(0); z<CHUNK_SIZE; z+=1 {
-		for x:=u32(0); x<CHUNK_SIZE; x+=1 {
-			index:=x+z*CHUNK_SIZE
-
-			visible_mask:=current_masks[index]&~neighbor_masks[index]
-
-			for visible_mask!=0 {
-				y:=bits.count_trailing_zeros(visible_mask)
-				visible_mask&=visible_mask-1
-
-				vox_index:=cast(u16)(y+x*CHUNK_SIZE+z*CHUNK_SIZE*CHUNK_SIZE)
-
-				vox:=get_vox_in_chunk_index(chunk_vox_data,vox_index)
-				item,i_ok:=reg.get(&g.item_reg,vox)
-				if !i_ok {
-					continue
-				}
-
-				face:tg.Vert_Face
-
-				face.block_pos=pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z})
-				face.texture_face_index=cast(u32)item.texture_data.sides[side]
-				face.geometry_face_index=cast(u16)item.model_data.cube_indices[side]
-
-				mesh.data[face_count]=face
-				face_count+=1
-			}
-		}
-	}
-
-	mesh.face_count=face_count
-	return face_count
-}
 
 
 Destroy_Mesh_Data_Q::hm.Dynamic_Handle_Map(Destroy_Mesh_Data_Q_Data,Destroy_Mesh_Data_Q_HD)
@@ -1923,18 +1889,7 @@ do_chunkering::proc(){
 	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
 	defer tg.end_tracking_allocator(&tracking_allocator)
 	log.log(.Info,"starting chunker thread")
-
-	// spall_ctx = spall.context_create("trace_test.spall")
-	// defer spall.context_destroy(&spall_ctx)
-
-	// buffer_backing := make([]u8, spall.BUFFER_DEFAULT_SIZE)
-	// defer delete(buffer_backing)
-
-	// spall_buffer = spall.buffer_create(buffer_backing, u32(sync.current_thread_id()))
-	// defer spall.buffer_destroy(&spall_ctx, &spall_buffer)
-
-	// spall.SCOPED_EVENT(&spall_ctx, &spall_buffer, #procedure)
-
+		log.log(.Info, "free GPU mesh space = ", tg.free_list_space_lef(&g.w_map.chunks_in_mesh))
 
 	for !s.app_should_close{
 
