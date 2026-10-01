@@ -173,6 +173,7 @@ Vox_Chunk_Data::struct{
 
 	backing_mask_data:^Vox_Mask_HM,
 	vox_mask_hd:Vox_Mask_HD,
+	pos:[4]int,
 }
 
 Vox_Mask_HD::distinct hm.Handle64

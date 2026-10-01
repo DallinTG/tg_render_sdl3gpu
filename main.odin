@@ -189,7 +189,8 @@ Vertex_Data_t :: struct #align(16){
 }
 
 UBO ::struct{
-	mvp: matrix[4,4]f32
+	mvp: matrix[4,4]f32,
+	viewport_size:[2]f32,
 }
 
 // rot:f32=0// FIXME this should not be heare
@@ -394,20 +395,21 @@ create_render_pass :: proc (
 	pass.info = info
 	pass.frame_data = frame_data
 	pass.name = name // This is just for debuging
-	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,{
+	pass.sampler = sdl.CreateGPUSampler(s.gpu_device,sdl.GPUSamplerCreateInfo{
 		min_filter = .LINEAR,
 		mag_filter = .NEAREST,
 		mipmap_mode = .LINEAR,
 	
-	    address_mode_u = .REPEAT,
-	    address_mode_v = .REPEAT,
-	    address_mode_w = .REPEAT,
-
+	    address_mode_u = .MIRRORED_REPEAT,
+	    address_mode_v = .MIRRORED_REPEAT,
+	    address_mode_w = .MIRRORED_REPEAT,
+	// mip_lod_bias = -1.0,
 		min_lod = 0,
 		max_lod = 12,
 
 	    enable_anisotropy = true,
 	    max_anisotropy = 8,
+		enable_compare = true
 	})
 
 	target_info := sdl.GPUGraphicsPipelineTargetInfo{
@@ -468,9 +470,10 @@ do_render_pass::proc(
 	view_mat,proj_mat:=make_view_mat_proj_mat(cam)
 
 	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
-	pass.ubo = {mvp = proj_mat * view_mat * modl_mat,}
+	pass.ubo = {mvp = proj_mat * view_mat * modl_mat, viewport_size = cast([2]f32)cam.texture_size}
 
 	sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline)
+
 	sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
 	
 	clear_dynamic_array(&pass.texture_sampler_binding)

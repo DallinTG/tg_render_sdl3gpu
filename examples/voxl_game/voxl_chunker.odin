@@ -32,10 +32,18 @@ import "core:math/bits"
 Vox_Render_Settings::struct{
 	do_chunk_back_face_culling:bool,
 	do_chunk_frustum_culling:bool,
+	xz_render_distance:int,
+	y_render_distance:int,
+	lod_levels:int,
+	lod_depth:int,
 }
 DF_VOX_RENDER_SETTINGS:Vox_Render_Settings:{
 	do_chunk_back_face_culling = true,
 	do_chunk_frustum_culling = true,
+	xz_render_distance = 2,
+	y_render_distance = 5,
+	lod_levels = 10,
+	lod_depth = 4,
 }
 Vox_Render_Debug_Info::struct{
 
@@ -83,7 +91,7 @@ Map::struct{
 
 	stream_chunk_pos: [3]int,
 	stream_chunk_pos_valid: bool,
-	chunks_map:map[[3]int]Chunk_HD,
+	chunks_map:map[[4]int]Chunk_HD,
 	chunks:Chunks_Handle_Map,
 	backing_world_vox_data:Backing_Vox_World_Data, 
 	vox_chunk_hm:Vox_Chunk_Data_HM,
@@ -119,7 +127,7 @@ Chunks_Handle_Map::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
 Chunk_HD::distinct hm.Handle64
 Chunk::struct{
 	handle:				Chunk_HD,
-	pos:				[3]int,
+	pos:				[4]int,
 	vox_data_hd:		Vox_Chunk_Data_HD,
 	// offset_in_map_mesh:	[Model_Sides]int,
 	// draw_cmd:			[Model_Sides]sdl.GPUIndirectDrawCommand,
@@ -157,40 +165,10 @@ GPU_Mesh_Data::struct{
 }
 
 
-// Chunks_Vox_Data_Handle_Map::hm.Dynamic_Handle_Map(Chunk_Vox_Data,Chunk_Vox_Data_HD)
-// Chunk_Vox_Data_HD::distinct hm.Handle32
-// Chunk_Vox_Data_HD::Palett_Chunk_HD
-// Chunk_Vox_Data_Raw::[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE]Voxel
-
-// Voxel::struct{
-// 	item_hd:Item_HD,
-// }
-
-// Chunk_Vox_Data::struct{
-// 	handle:Chunk_Vox_Data_HD,
-// 	data:Chunk_Vox_Data_Raw,
-//     // mask[y][z]   bit x = solid at [x][y][z]
-// 	is_solid_mask: [CHUNK_SIZE][CHUNK_SIZE]bit_set[u32(0)..<CHUNK_SIZE; u32],
-// }
-
-
-remove_chunck::proc(w_map:^Map,pos:[3]int){
-
-}
-// get_chunk::proc(w_map:^Map,chunk_hd:Chunk_HD)->(chunk:^Chunk,ok:bool){
-// 	chunk, ok = hm.get(&w_map.chunks, chunk_hd) 
-// 	return chunk, ok
-// }
 get_chunk::proc(w_map:^Map,chunk_hd:Chunk_HD)->(chunk:^Chunk,ok:bool){
 	chunk, ok = hm.get(&w_map.chunks, chunk_hd) 
 	return chunk, ok
 }
-// get_chunk_vox_data::proc(w_map:^Map, vox_data_hd:Chunk_Vox_Data_HD)->(vox_data:^Chunk_Vox_Data,ok:bool){
-// 	vox_data,ok=hm.get(&w_map.chunks_voxel_data,vox_data_hd)
-	
-// 	return vox_data,ok
-// }
-
 
 Model_Sides::enum{
 	pos_x,
@@ -209,7 +187,6 @@ get_chunk_mesh_data::proc(w_map:^Map, mesh_data_hd:Chunk_Mesh_Data_HD)->(mesh_da
 
 
 init_map::proc(w_map:^Map){
-	// xar.freelist_init(&w_map.chunks_in_mesh)
 	tg.free_list_init(&w_map.chunks_in_mesh,MAX_NUM_CHUNKS)
 	w_map.draw_cmd_buf_hd = tg.create_mesh(sdl.GPUIndirectDrawCommand,MAX_NUM_CHUNKS,{},type = .indirect_cmd_buff, debug_name = "w_map GPUIndirectDrawCommand buffer")
 	w_map.chunk_shader_data.mesh_hd = tg.create_mesh(Chunk_Shader_Data,MAX_NUM_CHUNKS,{},type = .dynamic_buff, debug_name = "Chunk shader data buffer")
@@ -218,89 +195,64 @@ init_map::proc(w_map:^Map){
 		usage = .UPLOAD,
 		size = cast(u32)(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * size_of(tg.Vert_Face)),
 	})
-	// for x in -26..=26{
-	// 	for y in -1..=1{
-	// 		for z in -26..=26{
-	// 			add_to_gen_chunk_q(w_map,{x,y,z})
-	// 		} 
-	// 	} 
-	// } 
 }
 
 MAX_CHUNKS_TO_Q_AT_ONE_TIME :: 100
-adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=100,y_rad:int=5)->(did_work:bool){
+// adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
 
-	chunk_pos:=pos_to_chunck_pos(pos)
-	// if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
+// 	chunk_pos:=pos_to_chunck_pos(pos)
+// 	// if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
 	
-	// }else{
-	// 	return
-	// }
+// 	// }else{
+// 	// 	return
+// 	// }
+// 	xz_rad:=g.settings.xz_render_distance
+// 	y_rad:=g.settings.y_render_distance
 
-	min_x:=(-1*xz_rad) + chunk_pos.x
-	max_x:=xz_rad + chunk_pos.x
-	min_y:=(-1*y_rad) + chunk_pos.y
-	max_y:=y_rad + chunk_pos.y
-	min_z:=(-1*xz_rad) + chunk_pos.z
-	max_z:=xz_rad + chunk_pos.z
+// 	min_x:=(-1*xz_rad) + chunk_pos.x
+// 	max_x:=xz_rad + chunk_pos.x
+// 	min_y:=(-1*y_rad) + chunk_pos.y
+// 	max_y:=y_rad + chunk_pos.y
+// 	min_z:=(-1*xz_rad) + chunk_pos.z
+// 	max_z:=xz_rad + chunk_pos.z
 
-	q_count:int
+// 	q_count:int
 
-	// for x in min_x ..= max_x{
-	// 	for y in min_y ..= max_y{
-	// 		for z in min_z ..= max_z{
-	// 			key:[3]int={x,y,z}
-	// 			ok := key in w_map.chunks_map
-	// 			if !ok{
-	// 				q_count+=1
-	// 				log.log(.Debug,q_count)
-	// 				vox_q:=hm.len(g.w_map.gen_vox_data_q)
-	// 				mesh_q:=hm.len(g.w_map.gen_mesh_data_q)
-	// 				up_q:=hm.len(g.w_map.upload_mesh_data_q)
-	// 				add_to_gen_chunk_q(w_map,{x,y,z})
-	// 				did_work = true
-	// 				if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME{
-	// 					return
-	// 				}
-	// 			}
-	// 		} 
-	// 	} 
-	// }
-
-	for radius:=0; radius<=max(xz_rad,y_rad); radius+=1 {
-		for x:=-radius; x<=radius; x+=1 {
-			for y:=-min(radius,y_rad); y<=min(radius,y_rad); y+=1 {
-				for z:=-radius; z<=radius; z+=1 {
-					if abs(x)!=radius && abs(y)!=radius && abs(z)!=radius {
-						continue
-					}
+// 	for radius:=0; radius<=max(xz_rad,y_rad); radius+=1 {
+// 		for x:=-radius; x<=radius; x+=1 {
+// 			for y:=-min(radius,y_rad); y<=min(radius,y_rad); y+=1 {
+// 				for z:=-radius; z<=radius; z+=1 {
+// 					if abs(x)!=radius && abs(y)!=radius && abs(z)!=radius {
+// 						continue
+// 					}
 	
-					key:[3]int={
-						chunk_pos.x+x,
-						chunk_pos.y+y,
-						chunk_pos.z+z,
-					}
+// 					key:[4]int={
+// 						chunk_pos.x+x,
+// 						chunk_pos.y+y,
+// 						chunk_pos.z+z,
+// 						1,// this represens the size of the lod
+// 					}
 	
-					if ok:=key in w_map.chunks_map; !ok {
-						add_to_gen_chunk_q(w_map,key)
-						did_work=true
-						q_count+=1
+// 					if ok:=key in w_map.chunks_map; !ok {
+// 						add_to_gen_chunk_q(w_map,key)
+// 						did_work=true
+// 						q_count+=1
 	
-						if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
-							return
-						}
-					}
-				}
-			}
-		}
-	}
+// 						if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
+// 							return
+// 						}
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
 
 
 
-	return
-}
+// 	return
+// }
 
-removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=100,y_rad:int=5)->(did_work:bool){
+removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,)->(did_work:bool){
 
 	chunk_pos:=pos_to_chunck_pos(pos)
 	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
@@ -308,6 +260,10 @@ removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=100,y_rad:
 	}else{
 		return
 	}
+
+	xz_rad:=g.settings.xz_render_distance+3
+	y_rad:=g.settings.y_render_distance+3
+	
 	min_x:=(-1*xz_rad) + chunk_pos.x
 	max_x:=xz_rad + chunk_pos.x
 	min_y:=(-1*y_rad) + chunk_pos.y
@@ -338,6 +294,81 @@ removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,xz_rad:int=100,y_rad:
 	}
 	return
 }
+
+
+adding_chunks_around_pos :: proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
+
+	chunk_pos:=pos_to_chunck_pos(pos)
+
+	xz_rad:=g.settings.xz_render_distance
+	y_rad:=g.settings.y_render_distance
+	lod_depth:=g.settings.lod_depth
+	lod_levels:=g.settings.lod_levels
+
+	q_count:int
+	previous_distance:=0
+	lod:=1
+
+	for lod_level:=0; lod_level<lod_levels; lod_level+=1 {
+
+		outer_distance:int
+
+		if lod==1 {
+			outer_distance=max(xz_rad,y_rad)
+		} else {
+			band_width:=lod_depth*lod
+			outer_distance=previous_distance+band_width-1
+		}
+
+		for radius:=previous_distance; radius<=outer_distance; radius+=1 {
+			for x:=-radius; x<=radius; x+=1 {
+				for y:=-min(radius,y_rad*lod); y<=min(radius,y_rad*lod); y+=1 {
+					for z:=-radius; z<=radius; z+=1 {
+
+						if abs(x)!=radius && abs(y)!=radius && abs(z)!=radius {
+							continue
+						}
+
+						world_x:=chunk_pos.x+x
+						world_y:=chunk_pos.y+y
+						world_z:=chunk_pos.z+z
+
+						if lod>1 {
+							if world_x%lod!=0 ||
+							   world_y%lod!=0 ||
+							   world_z%lod!=0 {
+								continue
+							}
+						}
+
+						key:[4]int={
+							world_x,
+							world_y,
+							world_z,
+							lod,
+						}
+
+						if ok:=key in w_map.chunks_map; !ok {
+							add_to_gen_chunk_q(w_map,key)
+							did_work=true
+							q_count+=1
+							log.log(.Debug,lod)
+							if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
+								return
+							}
+						}
+					}
+				}
+			}
+		}
+
+		previous_distance=outer_distance+1
+		lod*=2
+	}
+
+	return
+}
+
 
 update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 	mesh:=tg.get_mesh(w_map.draw_cmd_buf_hd)
@@ -373,35 +404,10 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 			tg.append_to_mesh(&chunck_shader_data.cpu,{},chunck_shader_data_[:])
 			// log.log(.Debug,"draw_cmd",draw_cmd,)
 			w_map.chunk_shader_data.count+=1
+			log.log(.Debug,gpu_mesh.chunk_shader_data)
 
 		}
 	}
-
-	// itor:=hm.iterator_make(&w_map.chunks)
-	// loop:for chunk, chunk_hd in hm.iterate(&itor) {
-	// 	cam_chunk_pos:=pos_to_chunck_pos(cam.pos)
-	// 	if should_cull_chunk(&frustum,chunk.chunk_shader_data.pos.xyz){
-	// 		continue
-	// 	}
-	// 	for draw_cmd, side in chunk.draw_cmd{
-
-	// 		tmep_full_count+=1
-	// 		if draw_cmd.num_vertices == 0{
-	// 			continue
-	// 		}
-	// 		if should_cull_chunk_side(side,chunk.chunk_shader_data.pos.xyz, cast([3]i32)cam_chunk_pos){
-	// 			continue
-	// 		}
-	// 		draw_cmd_:[1]sdl.GPUIndirectDrawCommand=draw_cmd
-	// 		tg.append_to_mesh(&mesh.cpu,{},draw_cmd_[:])
-	// 		chunck_shader_data_:[1]Chunk_Shader_Data=chunk.chunk_shader_data
-	// 		tg.append_to_mesh(&chunck_shader_data.cpu,{},chunck_shader_data_[:])
-	// 		// log.log(.Debug,"draw_cmd",draw_cmd,)
-	// 		w_map.chunk_shader_data.count+=1
-
-	// 	}
-	// }
-	// log.log(.Debug,"cmd count",w_map.chunk_shader_data.count,"tmep_full_count",tmep_full_count)
 	tg.update_mesh(w_map.draw_cmd_buf_hd)
 	tg.update_mesh(w_map.chunk_shader_data.mesh_hd)
 }
@@ -516,57 +522,35 @@ make_frustum :: proc(view_mat: tg.Mat4, proj_mat: tg.Mat4) -> Frustum {
 }
 
 
-should_cull_chunk :: proc(
-    frustum: ^Frustum,
-    chunk_pos: [3]i32,
-) -> bool {
+should_cull_chunk :: proc(frustum: ^Frustum, chunk_pos: [3]i32) -> bool {
 	if !g.settings.do_chunk_frustum_culling {return false}
-    min_pos: [3]f32 = {
-        cast(f32)chunk_pos.x * cast(f32)CHUNK_SIZE,
-        cast(f32)chunk_pos.y * cast(f32)CHUNK_SIZE,
-        cast(f32)chunk_pos.z * cast(f32)CHUNK_SIZE,
-    }
 
-    max_pos: [3]f32 = {
-        min_pos.x + cast(f32)CHUNK_SIZE,
-        min_pos.y + cast(f32)CHUNK_SIZE,
-        min_pos.z + cast(f32)CHUNK_SIZE,
-    }
+	min_x := cast(f32)chunk_pos.x * CHUNK_SIZE
+	min_y := cast(f32)chunk_pos.y * CHUNK_SIZE
+	min_z := cast(f32)chunk_pos.z * CHUNK_SIZE
 
-    for plane in frustum.planes {
+	max_x := min_x + CHUNK_SIZE
+	max_y := min_y + CHUNK_SIZE
+	max_z := min_z + CHUNK_SIZE
 
-        p: [3]f32
+	for plane in frustum.planes {
+		x := min_x
+		y := min_y
+		z := min_z
 
-        if plane.normal.x >= 0 {
-            p.x = max_pos.x
-        } else {
-            p.x = min_pos.x
-        }
+		if plane.normal.x >= 0 {x = max_x}
+		if plane.normal.y >= 0 {y = max_y}
+		if plane.normal.z >= 0 {z = max_z}
 
-        if plane.normal.y >= 0 {
-            p.y = max_pos.y
-        } else {
-            p.y = min_pos.y
-        }
+		if plane.normal.x*x +
+		   plane.normal.y*y +
+		   plane.normal.z*z +
+		   plane.distance < 0 {
+			return true
+		}
+	}
 
-        if plane.normal.z >= 0 {
-            p.z = max_pos.z
-        } else {
-            p.z = min_pos.z
-        }
-
-        distance :=
-            plane.normal.x * p.x +
-            plane.normal.y * p.y +
-            plane.normal.z * p.z +
-            plane.distance
-
-        if distance < 0 {
-            return true
-        }
-    }
-
-    return false
+	return false
 }
 
 render_map::proc(w_map:^Map){
@@ -640,7 +624,7 @@ Gen_Chunk_Q::hm.Dynamic_Handle_Map(Gen_Chunk_Q_Data,Gen_Chunk_Q_HD)
 Gen_Chunk_Q_HD::distinct hm.Handle64
 Gen_Chunk_Q_Data::struct{
 	handle:Gen_Chunk_Q_HD,
-	pos:[3]int,
+	pos:[4]int,
 	q_state:Q_State,
 }
 manage_gen_chunk_q::proc(w_map:^Map)->(did_work:bool){
@@ -661,7 +645,7 @@ manage_gen_chunk_q::proc(w_map:^Map)->(did_work:bool){
 	}
 	return
 }
-add_to_gen_chunk_q::proc(w_map:^Map,pos:[3]int)->(q_hd:Gen_Chunk_Q_HD){
+add_to_gen_chunk_q::proc(w_map:^Map,pos:[4]int)->(q_hd:Gen_Chunk_Q_HD){
 	err:runtime.Allocator_Error
 	q_hd,err=hm.add(&w_map.gen_chunk_q, Gen_Chunk_Q_Data{pos = pos})
 	q,q_ok:=hm.get(&w_map.gen_chunk_q,q_hd)
@@ -686,7 +670,7 @@ do_a_gen_chunk_q::proc(w_map:^Map,hd:Gen_Chunk_Q_HD){
 		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
 	}
 }
-add_chunck::proc(w_map:^Map,pos:[3]int){
+add_chunck::proc(w_map:^Map,pos:[4]int){
 
 	chunk_hd, chunk_ok := &w_map.chunks_map[pos]
 	if !chunk_ok{ // chesvks if there is a chunk in the map if not create one
@@ -793,7 +777,7 @@ Gen_Vox_Data_Q::hm.Dynamic_Handle_Map(Gen_Vox_Data_Q_Data,Gen_Vox_Data_Q_HD)
 Gen_Vox_Data_Q_HD::distinct hm.Handle64
 Gen_Vox_Data_Q_Data::struct{
 	handle:Gen_Vox_Data_Q_HD,
-	pos:[3]int,
+	pos:[4]int,
 	data_hd:Chunk_HD,
 	q_state:Q_State,
 }
@@ -818,7 +802,7 @@ manage_gen_vox_data_q::proc(w_map:^Map)->(did_work:bool){
 	}
 	return
 }
-add_to_gen_vox_data_q::proc(w_map:^Map,chunk_hd:Chunk_HD,pos:[3]int)->(q_hd:Gen_Vox_Data_Q_HD){
+add_to_gen_vox_data_q::proc(w_map:^Map,chunk_hd:Chunk_HD,pos:[4]int)->(q_hd:Gen_Vox_Data_Q_HD){
 	// log.log(.Debug,"added to gen vox data q")
 	err:runtime.Allocator_Error
 	q_hd,err=hm.add(&w_map.gen_vox_data_q, Gen_Vox_Data_Q_Data{data_hd = chunk_hd,pos = pos})
@@ -843,7 +827,7 @@ do_a_gen_vox_data_q::proc(w_map:^Map,hd:Gen_Vox_Data_Q_HD){
 		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
 	}
 }
-gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[3]int){
+gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[4]int){
 	// log.log(.Error,"GEN VOX CALLED chunk=",chunk_hd," pos=",pos)
 	chunk, ok := get_chunk(w_map,chunk_hd)
 	assert(ok)
@@ -857,24 +841,25 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[3]int){
 	for side in Model_Sides{
 		opposite_side:=side
 		key:=pos
+		lod_size:= pos.w
 		switch side{
 		case .pos_x:
-			key += {1,0,0}
+			key += {1*lod_size,0,0,0}
 			opposite_side = .neg_x
 		case .neg_x:
-			key += {-1,0,0}
+			key += {-1*lod_size,0,0,0}
 			opposite_side = .pos_x
 		case .pos_y:
-			key += {0,1,0}
+			key += {0,1*lod_size,0,0}
 			opposite_side = .neg_y
 		case .neg_y:
-			key += {0,-1,0}
+			key += {0,-1*lod_size,0,0}
 			opposite_side = .pos_y
 		case .pos_z:
-			key += {0,0,1}
+			key += {0,0,1*lod_size,0}
 			opposite_side = .neg_z
 		case .neg_z:
-			key += {0,0,-1}
+			key += {0,0,-1*lod_size,0}
 			opposite_side = .pos_z
 		case .extra:
 			return //TODO NOT USING EXTRA Sides yet
@@ -914,31 +899,36 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[3]int){
 	}
 }
 
-
 // gen_vox_data :: proc(
 // 	w_map:^Map,
-// 	vox_chunk: ^Vox_Chunk_Data,
-// 	chunk: ^Chunk,
-// 	pos: [3]int,
-// ) {
-// 	chunk.chunk_shader_data.pos = {
+// 	vox_chunk:^Vox_Chunk_Data,
+// 	chunk:^Chunk,
+// 	pos:[4]int,
+// ){
+// 	vox_chunk.pos = pos
+// 	lod_lev:=pos.w
+
+// 	chunk.chunk_shader_data.pos={
 // 		cast(i32)pos.x,
 // 		cast(i32)pos.y,
 // 		cast(i32)pos.z,
-// 		1,
+// 		cast(i32)pos.w,
 // 	}
 
-// 	xz_scl: f64 = 0.01
-// 	y_scl: f64 = 30.0
+// 	xz_scl:f64=0.001
+// 	y_scl:f64=600.0
 
-// 	world_x_start := pos.x * CHUNK_SIZE
-// 	world_y_start := pos.y * CHUNK_SIZE
-// 	world_z_start := pos.z * CHUNK_SIZE
+// 	world_x_start:=pos.x*CHUNK_SIZE
+// 	world_y_start:=pos.y*CHUNK_SIZE
+// 	world_z_start:=pos.z*CHUNK_SIZE
 
+// 	grass_pal_index:=get_or_add_palette_index(vox_chunk,g.df_items[.grass])
+// 	stone_pal_index:=get_or_add_palette_index(vox_chunk,g.df_items[.stone_slate])
+	
 // 	for x := 0; x < CHUNK_SIZE; x += 1 {
 // 		world_x := world_x_start + x
 // 		x_bit := u32(1) << u32(x)
-
+	
 // 		for z := 0; z < CHUNK_SIZE; z += 1 {
 // 			world_z := world_z_start + z
 
@@ -949,25 +939,58 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[3]int){
 // 					cast(f64)world_z * xz_scl,
 // 				},
 // 			)
+			
+// 			height_x := nos.noise_2d(
+// 				6223378936854776807,
+// 				{
+// 					cast(f64)(world_x + 1) * xz_scl,
+// 					cast(f64)world_z * xz_scl,
+// 				},
+// 			)
+			
+// 			height_z := nos.noise_2d(
+// 				6223378936854776807,
+// 				{
+// 					cast(f64)world_x * xz_scl,
+// 					cast(f64)(world_z + 1) * xz_scl,
+// 				},
+// 			)
 
-// 			// Number of solid blocks in this column.
+
+			
+// 			change_x := math.abs(height_x - height)
+// 			change_z := math.abs(height_z - height)
+			
+// 			height_change := max(change_x, change_z)
+// 			is_steep := height_change > 0.003
+
+// 			height = (height + 1.0) * 0.5
+// 			height = math.pow(height, 2.5)
+	
 // 			solid_height := cast(int)(height * cast(f32)y_scl) - world_y_start
-
-// 			// Entire column is above the terrain.
+	
 // 			if solid_height <= 0 {
 // 				continue
 // 			}
-
-// 			// Terrain extends through the entire chunk.
+	
 // 			if solid_height > CHUNK_SIZE {
 // 				solid_height = CHUNK_SIZE
 // 			}
 
-// 			for y := 0; y < solid_height; y += 1 {
-// 				// log.log(.Debug,"setting blocvks")
-// 				set_block_in_chunk(vox_chunk,pos={cast(u8)x,cast(u8)y,cast(u8)z},item_hd=g.df_items[.grass])
-// 				// vox_chunk.data[x][y][z].item_hd = g.df_items[.grass]
-// 				chunk.is_solid_mask[y][z] |=  {u32(x)}
+// 			if is_steep{
+// 				set_blocks_in_chunk_by_col_pal_index(
+// 					vox_chunk,
+// 					stone_pal_index,
+// 					{cast(u8)x,cast(u8)z},
+// 					cast(u8)solid_height,
+// 				)
+// 			}else{
+// 				set_blocks_in_chunk_by_col_pal_index(
+// 					vox_chunk,
+// 					grass_pal_index,
+// 					{cast(u8)x,cast(u8)z},
+// 					cast(u8)solid_height,
+// 				)
 // 			}
 // 		}
 // 	}
@@ -977,31 +1000,35 @@ gen_vox_data :: proc(
 	w_map:^Map,
 	vox_chunk:^Vox_Chunk_Data,
 	chunk:^Chunk,
-	pos:[3]int,
+	pos:[4]int,
 ){
-	chunk.chunk_shader_data.pos={
+	vox_chunk.pos = pos
+	lod_lev := pos.w
+
+	chunk.chunk_shader_data.pos = {
 		cast(i32)pos.x,
 		cast(i32)pos.y,
 		cast(i32)pos.z,
-		1,
+		cast(i32)pos.w,
 	}
 
-	xz_scl:f64=0.01
-	y_scl:f64=30.0
+	xz_scl:f64 = 0.001
+	y_scl:f64 = 600.0
 
-	world_x_start:=pos.x*CHUNK_SIZE
-	world_y_start:=pos.y*CHUNK_SIZE
-	world_z_start:=pos.z*CHUNK_SIZE
+	world_x_start := pos.x * CHUNK_SIZE
+	world_y_start := pos.y * CHUNK_SIZE
+	world_z_start := pos.z * CHUNK_SIZE
 
-	grass_pal_index:=get_or_add_palette_index(vox_chunk,g.df_items[.grass])
-	
+	grass_pal_index := get_or_add_palette_index(vox_chunk, g.df_items[.grass])
+	stone_pal_index := get_or_add_palette_index(vox_chunk, g.df_items[.stone_slate])
+
 	for x := 0; x < CHUNK_SIZE; x += 1 {
-		world_x := world_x_start + x
+		world_x := world_x_start + x * lod_lev
 		x_bit := u32(1) << u32(x)
-	
+
 		for z := 0; z < CHUNK_SIZE; z += 1 {
-			world_z := world_z_start + z
-	
+			world_z := world_z_start + z * lod_lev
+
 			height := nos.noise_2d(
 				6223378936854776807,
 				{
@@ -1009,31 +1036,60 @@ gen_vox_data :: proc(
 					cast(f64)world_z * xz_scl,
 				},
 			)
-	
+
+			height_x := nos.noise_2d(
+				6223378936854776807,
+				{
+					cast(f64)(world_x + lod_lev) * xz_scl,
+					cast(f64)world_z * xz_scl,
+				},
+			)
+
+			height_z := nos.noise_2d(
+				6223378936854776807,
+				{
+					cast(f64)world_x * xz_scl,
+					cast(f64)(world_z + lod_lev) * xz_scl,
+				},
+			)
+
+			change_x := math.abs(height_x - height)
+			change_z := math.abs(height_z - height)
+
+			height_change := max(change_x, change_z)
+			is_steep := height_change > 0.003
+
+			height = (height + 1.0) * 0.5
+			height = math.pow(height, 2.5)
+
 			solid_height := cast(int)(height * cast(f32)y_scl) - world_y_start
-	
+
 			if solid_height <= 0 {
 				continue
 			}
-	
+
 			if solid_height > CHUNK_SIZE {
 				solid_height = CHUNK_SIZE
 			}
-	
-			set_blocks_in_chunk_by_col_pal_index(
-				vox_chunk,
-				grass_pal_index,
-				{cast(u8)x,cast(u8)z},
-				cast(u8)solid_height,
-			)
-			
-			// for y := 0; y < solid_height; y += 1 {
-			// 	vox_chunk.is_solid_mask[y][z] |= {u32(x)}
-			// }
+
+			if is_steep {
+				set_blocks_in_chunk_by_col_pal_index(
+					vox_chunk,
+					stone_pal_index,
+					{cast(u8)x, cast(u8)z},
+					cast(u8)solid_height,
+				)
+			} else {
+				set_blocks_in_chunk_by_col_pal_index(
+					vox_chunk,
+					grass_pal_index,
+					{cast(u8)x, cast(u8)z},
+					cast(u8)solid_height,
+				)
+			}
 		}
 	}
 }
-
 
 Destroy_Vox_Data_Q::hm.Dynamic_Handle_Map(Destroy_Vox_Data_Q_Data,Destroy_Vox_Data_HD)
 Destroy_Vox_Data_HD::distinct hm.Handle64
@@ -1080,21 +1136,6 @@ do_a_destroy_vox_data_q::proc(w_map:^Map,hd:Destroy_Vox_Data_HD){
 		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
 	}
 }
-// destroy_chunk_vox_data::proc(w_map:^Map,vox_data_hd:Chunk_Vox_Data_HD){
-// 	ok:=remove_chunk_data(&w_map.backing_world_vox_data,vox_data_hd)
-// 	if !ok{
-// 		log.log(.Error,"destroy_chunk_vox_data has failed",vox_data_hd)
-// 	}
-// 	// found,err:=hm.remove(&w_map.chunks_voxel_data,vox_data_hd)
-// 	// if err != .None{
-// 	// 	log.log(.Error,"destroy_chunk_vox_data failed",err,vox_data_hd)
-// 	// 	return
-// 	// }
-// 	// if !found{
-// 	// 	log.log(.Warning,"destroy_chunk_vox_data failed cant find",vox_data_hd)
-// 	// 	return
-// 	// }
-// }
 
 Gen_Mesh_Data_Q::hm.Dynamic_Handle_Map(Gen_Mesh_Data_Q_Data,Gen_Mesh_Data_Q_HD)
 Gen_Mesh_Data_Q_HD::distinct hm.Handle64
@@ -1246,6 +1287,7 @@ mesh_by_bit_mask :: proc(
 	neighbor_vox, neighbor_vox_ok := get_vox_chunk_data(w_map, neighbor_vox_hd)
 	if !neighbor_vox_ok {log.log(.Error, "failed, neighbor_vox_data_hd not valid", neighbor_vox_hd);return}
 
+
 	chunk_ab := &chunk_vox_data.backing_chunk_data_abstract
 	chunk_pal_count := chunk_ab.pal_count^
 
@@ -1380,319 +1422,6 @@ mesh_by_bit_mask :: proc(
 	mesh.face_count = face_count
 	return face_count
 }
-
-
-
- 
-
-
-
-
-// transpose_32x32 :: proc(m:[32]u32) -> (new_m:[32]u32) {
-// 	new_m = m
-
-// 	for block:=16; block>0; block>>=1 {
-// 		mask:u32
-// 		shift:int
-
-// 		switch block {
-// 		case 16:
-// 			mask = 0xFFFF0000
-// 			shift = 16
-// 		case 8:
-// 			mask = 0xFF00FF00
-// 			shift = 8
-// 		case 4:
-// 			mask = 0xF0F0F0F0
-// 			shift = 4
-// 		case 2:
-// 			mask = 0xCCCCCCCC
-// 			shift = 2
-// 		case 1:
-// 			mask = 0xAAAAAAAA
-// 			shift = 1
-// 		}
-
-// 		for i:=0; i<32; i+=block*2 {
-// 			for j:=0; j<block; j+=1 {
-// 				a:=i+j
-// 				b:=a+block
-
-// 				x:=(new_m[a] ~ (new_m[b] << cast(u32)shift)) & mask
-// 				new_m[a] ~= x
-// 				new_m[b] ~= x >> cast(u32)shift
-// 			}
-// 		}
-// 	}
-
-// 	return
-// }
-
-
-// mesh_by_bit_mask :: proc(
-// 	w_map: 				^Map,
-// 	chunk_hd:			Chunk_HD,
-// 	neighbor_chunk_hd:	Chunk_HD,
-// 	vox_data_hd:		Vox_Chunk_Data_HD,
-// 	neighbor_vox_hd:	Vox_Chunk_Data_HD,
-// 	mesh:				^Chunk_Mesh_Data,
-// 	side:				Model_Sides,
-// )->(face_count:int) {
-
-// 	chunk, ok := get_chunk(w_map,chunk_hd)
-// 	if !ok{log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")");return}
-// 	neighbor_chunk, neighbor_chunk_ok := get_chunk(w_map,neighbor_chunk_hd)
-// 	if !neighbor_chunk_ok{log.log(.Error, "failed invalid chunk_hd(",neighbor_chunk_hd,")");return}
-
-// 	chunk_vox_data,vox_ok:=get_vox_chunk_data(w_map, vox_data_hd)
-// 	if !vox_ok {log.log(.Error,"failed, vox_data_hd not valid",vox_data_hd);return}
-
-// 	neighbor_vox,neighbor_vox_ok:=get_vox_chunk_data(w_map,neighbor_vox_hd)
-// 	if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",neighbor_vox_hd);return}
-
-// 	chunk_mask,chunk_mask_ok := hm.get(chunk_vox_data.backing_mask_data,chunk_vox_data.vox_mask_hd)
-// 	if !chunk_mask_ok {
-// 		return
-// 	}
-
-// 	neighbor_mask,neighbor_mask_ok := hm.get(neighbor_vox.backing_mask_data,neighbor_vox.vox_mask_hd)
-// 	if !neighbor_mask_ok {
-// 		return
-// 	}
-	
-
-// 	//--------------------------------------------------------------------------
-// 	// Setup everything that depends on the face direction.
-// 	//--------------------------------------------------------------------------
-
-// 	do_transpose:bool
-
-// 	// Source layout.
-// 	source_low_stride:int=1
-// 	source_high_stride:int=CHUNK_SIZE
-
-// 	// Output layout.
-// 	output_low_stride:int=1
-// 	output_high_stride:int=CHUNK_SIZE
-
-// 	// Neighbor direction for X/Z.
-// 	neighbor_delta:int
-
-// 	// Coordinate reconstruction.
-// 	x_low:int
-// 	x_high:int
-// 	x_normal:int
-
-// 	y_low:int
-// 	y_high:int
-// 	y_normal:int
-
-// 	z_low:int
-// 	z_high:int
-// 	z_normal:int
-
-
-// 	switch side {
-// 	case .pos_x,.pos_y,.pos_z:
-// 		neighbor_delta = 1
-
-// 	case .neg_x,.neg_y,.neg_z:
-// 		neighbor_delta = -1
-
-// 	case .extra:
-// 	return
-// 	}
-
-// switch side {
-// 	case .pos_x,.neg_x:
-// 		do_transpose = true
-
-// 		x_low = 0
-// 		x_high = 0
-// 		x_normal = 1
-
-// 		y_low = 1
-// 		y_high = 0
-// 		y_normal = 0
-
-// 		z_low = 0
-// 		z_high = 1
-// 		z_normal = 0
-
-// 	case .pos_y,.neg_y:
-// 		do_transpose = false
-
-
-// 		x_low = 1
-// 		x_high = 0
-// 		x_normal = 0
-
-// 		y_low = 0
-// 		y_high = 0
-// 		y_normal = 1
-
-// 		z_low = 0
-// 		z_high = 1
-// 		z_normal = 0
-
-// 	case .pos_z, .neg_z:
-// 		do_transpose = true
-
-
-// 		x_low = 1
-// 		x_high = 0
-// 		x_normal = 0
-
-// 		y_low = 0
-// 		y_high = 1
-// 		y_normal = 0
-
-// 		z_low = 0
-// 		z_high = 0
-// 		z_normal = 1
-// 	case .extra:
-// 		return
-// 	}
-
-// current_masks:[CHUNK_SIZE * CHUNK_SIZE]u32
-// 	neighbor_masks:[CHUNK_SIZE * CHUNK_SIZE]u32
-
-
-// 	if !do_transpose {
-// 		for index:=0; index<CHUNK_SIZE*CHUNK_SIZE; index+=1 {
-// 			current := chunk_mask.is_solid_mask[index]
-// 			neighbor := chunk_mask.is_solid_mask[index]
-
-// 			if side == .pos_y {
-// 				neighbor = current >> 1
-
-// 				if high == CHUNK_SIZE-1 {
-// 					neighbor = (neighbor & 0x7FFFFFFF) | ((neighbor_mask.is_solid_mask[index] & 1) << 31)
-// 				}
-// 			} else {
-// 				neighbor = current << 1
-
-// 				if high == 0 {
-// 					neighbor = (neighbor & 0xFFFFFFFE) | ((neighbor_mask.is_solid_mask[index] >> 31) & 1)
-// 				}
-// 			}
-
-// 			current_masks[index] = current
-// 			neighbor_masks[index] = neighbor
-// 		}
-// 	} else {
-// 		for plane:=0; plane<CHUNK_SIZE; plane+=1 {
-// 			current_rows:[CHUNK_SIZE]u32
-// 			neighbor_rows:[CHUNK_SIZE]u32
-
-// 			for row:=0; row<CHUNK_SIZE; row+=1 {
-// 				current_index := row*source_low_stride + plane*source_high_stride
-
-// 				current_rows[row] = chunk_mask.is_solid_mask[current_index]
-// 				neighbor_rows[row] = chunk_mask.is_solid_mask[current_index]
-
-// 				if side == .pos_x {
-// 					if row == CHUNK_SIZE-1 {
-// 						neighbor_rows[row] = neighbor_mask.is_solid_mask[plane*source_high_stride]
-// 					} else {
-// 						neighbor_rows[row] = chunk_mask.is_solid_mask[(row+1)*source_low_stride + plane*source_high_stride]
-// 					}
-// 				} else if side == .neg_x {
-// 					if row == 0 {
-// 						neighbor_rows[row] = neighbor_mask.is_solid_mask[(CHUNK_SIZE-1)*source_low_stride + plane*source_high_stride]
-// 					} else {
-// 						neighbor_rows[row] = chunk_mask.is_solid_mask[(row-1)*source_low_stride + plane*source_high_stride]
-// 					}
-// 				} else if side == .pos_z {
-// 					if plane == CHUNK_SIZE-1 {
-// 						neighbor_rows[row] = neighbor_mask.is_solid_mask[row*source_low_stride]
-// 					} else {
-// 						neighbor_rows[row] = chunk_mask.is_solid_mask[row*source_low_stride + (plane+1)*source_high_stride]
-// 					}
-// 				} else if side == .neg_z {
-// 					if plane == 0 {
-// 						neighbor_rows[row] = neighbor_mask.is_solid_mask[row*source_low_stride + (CHUNK_SIZE-1)*source_high_stride]
-// 					} else {
-// 						neighbor_rows[row] = chunk_mask.is_solid_mask[row*source_low_stride + (plane-1)*source_high_stride]
-// 					}
-// 				}
-// 			}
-
-// 			current_rows = transpose_32x32(current_rows)
-// 			neighbor_rows = transpose_32x32(neighbor_rows)
-
-// 			for row:=0; row<CHUNK_SIZE; row+=1 {
-// 				output_index := row*output_low_stride + plane*output_high_stride
-
-// 				current_masks[output_index] = current_rows[row]
-// 				neighbor_masks[output_index] = neighbor_rows[row]
-// 			}
-// 		}
-// 	}
-
-
-// 	//--------------------------------------------------------------------------
-// 	// Cache palette material data.
-// 	//--------------------------------------------------------------------------
-
-// 	texture_cache:[256]u32
-// 	geometry_cache:[256]u16
-
-// 	pal_count := chunk_vox_data.backing_chunk_data_abstract.pal_count^
-
-// 	for i:=0; i<cast(int)pal_count; i+=1 {
-// 		item,ok := reg.get(
-// 			&g.item_reg,
-// 			chunk_vox_data.backing_chunk_data_abstract.pal[i].item,
-// 		)
-
-// 		if !ok {
-// 			continue
-// 		}
-
-// 		texture_cache[i] = cast(u32)item.texture_data.sides[side]
-// 		geometry_cache[i] = cast(u16)item.model_data.cube_indices[side]
-// 	}
-
-// 	for index:=0; index<CHUNK_SIZE*CHUNK_SIZE; index+=1 {
-// 		visible_mask := current_masks[index] &~ neighbor_masks[index]
-
-// 		low := cast(u32)index & (CHUNK_SIZE-1)
-// 		high := cast(u32)index >> 5
-
-// 		for visible_mask != 0 {
-// 			normal := bits.count_trailing_zeros(visible_mask)
-
-// 			x := low*cast(u32)x_low + cast(u32)high*cast(u32)x_high + normal*cast(u32)x_normal
-// 			y := low*cast(u32)y_low + cast(u32)high*cast(u32)y_high + normal*cast(u32)y_normal
-// 			z := low*cast(u32)z_low + cast(u32)high*cast(u32)z_high + normal*cast(u32)z_normal
-
-// 			vox_index := y + x*CHUNK_SIZE + z*CHUNK_SIZE*CHUNK_SIZE
-// 			pal_index := get_palette_index(chunk_vox_data,cast(u16)vox_index)
-
-// 			face:tg.Vert_Face
-// 			face.block_pos = pack_block_pos({
-// 				cast(u16)x,
-// 				cast(u16)y,
-// 				cast(u16)z,
-// 			})
-// 			face.texture_face_index = texture_cache[pal_index]
-// 			face.geometry_face_index = geometry_cache[pal_index]
-
-// 			mesh.data[face_count] = face
-// 			face_count += 1
-
-// 			visible_mask &= visible_mask - 1
-// 		}
-// 	}
-
-// 	mesh.face_count = face_count
-
-// 	return
-// }
-
-
-
 
 Destroy_Mesh_Data_Q::hm.Dynamic_Handle_Map(Destroy_Mesh_Data_Q_Data,Destroy_Mesh_Data_Q_HD)
 Destroy_Mesh_Data_Q_HD::distinct hm.Handle64
@@ -1864,8 +1593,8 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 	first_face:=cast(u32) range.start * CHUNK_MAX_FACE_NUM
 
 	upload_data_to_mesh_by_offset(w_map.map_mesh_hd,w_map.chunck_transfer_buffer,mesh.data[:mesh.face_count],first_face, copy_pass)
-	gpu_data.draw_cmd[side].num_vertices = cast(u32)mesh.face_count*6
-	gpu_data.draw_cmd[side].first_vertex = first_face *6
+	gpu_data.draw_cmd[side].num_vertices = cast(u32)mesh.face_count*3
+	gpu_data.draw_cmd[side].first_vertex = first_face *3
 	gpu_data.draw_cmd[side].num_instances = 1 
 	add_to_destroy_mesh_data_q(w_map,mesh_hd)
 }

@@ -109,7 +109,7 @@ get_block_pos_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chun
 
 		local:=voxel-chunk*CHUNK_SIZE
 
-		chunk_hd,ok:=w_map.chunks_map[chunk]
+		chunk_hd,ok:=w_map.chunks_map[{chunk.x,chunk.y,chunk.z,1}]
 		if ok{
 			chunk_data,chunk_ok:=get_chunk(w_map,chunk_hd)
 			if chunk_ok{
@@ -175,7 +175,7 @@ get_block_pos_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chun
 get_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chunk:[3]int,chunk_pos:[3]u8,w_pos:[3]f32,block:Item_HD,enter_side:Model_Sides){
 	chunk,chunk_pos,w_pos,enter_side=get_block_pos_by_ray(w_map,start_pos,look)
 
-	chunk_hd,chunk_hd_ok:=w_map.chunks_map[chunk]
+	chunk_hd,chunk_hd_ok:=w_map.chunks_map[{chunk.x,chunk.y,chunk.z,1}]
 	if !chunk_hd_ok {log.log(.Warning,"ray failed bad chunk",chunk_hd);return}
 
 	chunk_data,chunk_data_ok:=get_chunk(w_map,chunk_hd)
