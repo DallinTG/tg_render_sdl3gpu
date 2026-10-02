@@ -225,21 +225,22 @@ struct Output{
 	float4 position : SV_Position;
 	float4 color : TEXCOORD0;
 	float2 uv : TEXCOORD1;
+	uint size : TEXCOORD2;
 
-	uint   img_index : TEXCOORD2;
-	uint   layer: TEXCOORD3;
-	float4 img_1_tint : TEXCOORD4;
+	uint   img_index : TEXCOORD3;
+	uint   layer: TEXCOORD4;
+	float4 img_1_tint : TEXCOORD5;
 
-	uint   img_index_2 : TEXCOORD5;
-	uint   layer_2: TEXCOORD6;
-	float4 img_2_tint : TEXCOORD7;
+	uint   img_index_2 : TEXCOORD6;
+	uint   layer_2: TEXCOORD7;
+	float4 img_2_tint : TEXCOORD8;
 
 
-	float3 normal : TEXCOORD8;
-	uint   draw_index : TEXCOORD9;
-	float   shading: TEXCOORD10;
+	float3 normal : TEXCOORD9;
+	uint   draw_index : TEXCOORD10;
+	float   shading: TEXCOORD11;
 
-	float2 face_uv : TEXCOORD11;
+	float2 face_uv : TEXCOORD12;
 
 	// float clip_u : SV_ClipDistance0;
 	// float clip_v : SV_ClipDistance1;
@@ -381,6 +382,7 @@ Output main(
 	Chunk_Data chunk = chunk_data[draw_index];
 
 	float lod_size = float(chunk.size);
+	
 	// ------------------------------------------------------------
 	// Block position
 	// ------------------------------------------------------------
@@ -388,11 +390,7 @@ Output main(
 	uint block_y = (packed_pos >> 5)  & 0x1F;
 	uint block_z = (packed_pos >> 10) & 0x1F;
 
-	float3 block_pos = float3(
-		block_x,
-		block_y,
-		block_z
-	);
+	float3 block_pos = float3(block_x,block_y,block_z);
 	// ------------------------------------------------------------
 	// Face geometry
 	// ------------------------------------------------------------
@@ -405,30 +403,18 @@ Output main(
 	float2 final_uv = float2(0, 0);
 	float2 face_uv = float2(0, 0);
 	if (corner_id == 0) {
-
 		final_pos.xyz = geometry.pos0.xyz;
-
 		final_uv = tex.uv0;
 		face_uv = float2(0, 0);
-
 	}
 	else if (corner_id == 1) {
-
 		final_pos.xyz = geometry.pos0.xyz + edge1 * 2.0;
-
-		final_uv = tex.uv0 +
-			(tex.uv1 - tex.uv0) * 2.0;
-
+		final_uv = tex.uv0 +(tex.uv1 - tex.uv0) * 2.0;
 		face_uv = float2(2, 0);
-
 	}
 	else {
-
 		final_pos.xyz = geometry.pos0.xyz + edge3 * 2.0;
-
-		final_uv = tex.uv0 +
-			(tex.uv3 - tex.uv0) * 2.0;
-
+		final_uv = tex.uv0 +(tex.uv3 - tex.uv0) * 2.0;
 		face_uv = float2(0, 2);
 	}
 	// ------------------------------------------------------------
@@ -450,12 +436,12 @@ Output main(
 		float(chunk.pos_y) * 32.0,
 		float(chunk.pos_z) * 32.0
 	);
-		// ------------------------------------------------------------
+	// ------------------------------------------------------------
 	// Vertex output
 	// ------------------------------------------------------------
 	output.position = mul(mvp, final_pos);
-
 	output.uv = final_uv;
+	output.size = lod_size;
 
 	output.img_index = tex.img_index;
 	output.layer = tex.layer;

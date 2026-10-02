@@ -553,7 +553,7 @@ make_view_mat_proj_mat::proc(cam:^Camera)->(view_mat:Mat4,proj_mat:Mat4){
 			lin.to_radians(cast(f32)90 * cam.zoom), 
 			cast(f32)cam.texture_size.x / cast(f32)cam.texture_size.y,
 			0.1, 
-			10000,
+			100000,
 		)
 	case .orthographic:
 		pos:=cam.pos
@@ -866,12 +866,14 @@ screane_space_to_world_2d::proc(cam:^Camera,pos:[2]f32)->(world:[2]f32){
 // this is a very rudimenty controler and should only be used for testing
 update_camera_3d::proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=1.5,){
 	move_input:Vec2
+	speed:=speed
 	
 	if is_input_event(.move_u,always_consume_p = false, always_consume_d = false) do move_input.y = 1
 	else if is_input_event(.move_d,always_consume_p = false, always_consume_d = false) do move_input.y = -1
 	if is_input_event(.move_l,always_consume_p = false, always_consume_d = false) do move_input.x = -1
 	else if is_input_event(.move_r,always_consume_p = false, always_consume_d = false) do move_input.x = 1
 	
+	if is_input_event(.ui_shift,always_consume_p = false, always_consume_d = false){speed*=20}
 	look_input := s.input_events.mouse_move * sensitivity * dt
 	
 	cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)

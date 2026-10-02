@@ -188,7 +188,7 @@ main :: proc(){
 
 		if s.time.is_60_hz{
 			tg.toggle_mouse_mode_on_input_event(g.window,.ESC)
-			log.log(.Info,get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look,))
+			// log.log(.Info,get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look,))
 
 			
 			// manage_all_w_map_q(&g.w_map)
