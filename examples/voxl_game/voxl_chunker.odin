@@ -3,6 +3,7 @@ package voxl_game
 import "core:testing"
 import "base:runtime"
 
+import "core:os"
 import "core:time"
 import tg"../../../tg_render_sdl3gpu"
 import sdl "vendor:sdl3"
@@ -13,7 +14,6 @@ import "core:math/rand"
 import "core:hash"
 import "core:c"
 import "core:fmt"
-import "core:thread"
 // import hm "../../handle_map_static_virtual"
 import hm "core:container/handle_map"
 import "core:container/xar"
@@ -23,9 +23,11 @@ import cl"../../clay-odin"
 import st"core:strings"
 import steam "../../steamworks"
 import reg "../../registry"
+import "core:thread"
+import "core:container/pool"
 import atom "core:sync"
+import "core:sync/chan"
 import nos "core:math/noise"
-import "core:sync"
 import "core:prof/spall"
 import "core:math/bits"
 
@@ -42,8 +44,8 @@ DF_VOX_RENDER_SETTINGS:Vox_Render_Settings:{
 	do_chunk_frustum_culling = true,
 	xz_render_distance = 8,
 	y_render_distance = 8,
-	lod_levels = 14,
-	lod_depth = 4,
+	lod_levels = 10,
+	lod_depth = 2,
 }
 Vox_Render_Debug_Info::struct{
 
@@ -85,6 +87,15 @@ CHUNK_MAX_FACE_NUM::  CHUNK_SIZE * CHUNK_SIZE / 2
 MAX_NUM_DRAW_CMD_BUF::MAX_NUM_CHUNKS / 8
 // MAX_NUM_OF_MAP_MESH_SECTIONS ::  NUM_OF_FACES_PER_MAP_MESH_SECTIONS * 2 * CHUNK_SIZE * MAX_NUM_CHUNKS
 // NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
+
+
+// Task_Data :: struct {
+// 	link: ^Task_Data,
+// 	el_1:rawptr,
+// 	el_2:rawptr,
+// 	el_3:rawptr,
+// }
+
 Map::struct{
 	did_work:bool,
 	renderer_saw_work:bool,
@@ -102,25 +113,25 @@ Map::struct{
 	draw_cmd_buf_hd:tg.Mesh_Handle,
 	map_mesh_hd:tg.Mesh_Handle,
 	chunk_shader_data:tg.Indexed_GPU_Data,
-
-
 	
-
 	chunks_in_mesh:tg.Free_List,
-
 	chunck_transfer_buffer:^sdl.GPUTransferBuffer,
 
-	// Map Qs_____________________________________
-	gen_chunk_q:Gen_Chunk_Q,
-	destroy_chunk_q:Destroy_Chunk_Q, 
+	t_pool:thread.Pool,
+	pool_tasks:Pool_Tasks_HM,
 
-	gen_vox_data_q:Gen_Vox_Data_Q,
-	destroy_vox_data_q:Destroy_Vox_Data_Q,
-	gen_mesh_data_q:Gen_Mesh_Data_Q,
-	destroy_mesh_data_q:Destroy_Mesh_Data_Q,
-	upload_mesh_data_q:Upload_Mesh_Data_Q,
-	unload_mesh_data_q:Unload_Mesh_Data_Q,
+	// Map Qs_____________________________________
+	gen_chunk_chan:chan.Chan(Gen_Chunk_Q_Data,.Both),
+	destroy_chunk_chan:chan.Chan(Destroy_Chunk_Q_Data,.Both),
+	gen_vox_data_chan:chan.Chan(Gen_Vox_Data_Q_Data,.Both),
+	gen_mesh_data_chan:chan.Chan(Gen_Mesh_Data_Q_Data,.Both),
+	check_needs_meshing_chan:chan.Chan(Check_Needs_Meshing_Q_Data,.Both),
+	upload_mesh_data_chan:chan.Chan(Upload_Mesh_Data_Q_Data,.Both),
+	destroy_vox_data_chan:chan.Chan(Destroy_Vox_Data_Q_Data,.Both),
+	destroy_mesh_data_chan:chan.Chan(Destroy_Mesh_Data_Q_Data,.Both),
+	unload_mesh_data_chan:chan.Chan(Unload_Mesh_Data_Q_Data,.Both,),
 }
+
 
 
 Chunks_Handle_Map::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
@@ -129,14 +140,13 @@ Chunk::struct{
 	handle:				Chunk_HD,
 	pos:				[4]int,
 	vox_data_hd:		Vox_Chunk_Data_HD,
-	// offset_in_map_mesh:	[Model_Sides]int,
-	// draw_cmd:			[Model_Sides]sdl.GPUIndirectDrawCommand,
-	// range_in_map_mesh:	[Model_Sides]tg.Free_List_Range,
+
+	vox_q_state:Q_State,
+	mesh_q_state:[Model_Sides]Q_State,
+
 	gpu_mesh_data_hd:GPU_Mesh_Data_HD,
 	mesh_data:		 [Model_Sides]Chunk_Mesh_Data_HD,
 	chunk_shader_data:Chunk_Shader_Data,
-	// chunk_shader_data_index:int,
-	// is_solid_mask: [CHUNK_SIZE][CHUNK_SIZE]bit_set[u32(0)..<CHUNK_SIZE; u32],//TODO THIS NEEDS TO BE MOVED INTO THE PALET CHUNK ? VOX DATA
 }
 
 Chunk_Shader_Data::struct{
@@ -164,6 +174,99 @@ GPU_Mesh_Data::struct{
 	face_count:int
 }
 
+Pool_Tasks_HM::hm.Dynamic_Handle_Map(Pool_Task,Pool_Task_HD)
+Pool_Task_HD::distinct hm.Handle64
+Pool_Task::struct{
+	handle:Pool_Task_HD,
+	task:All_Tasks,
+}
+All_Tasks::union{
+	Gen_Vox_Data_Task,
+	Mesh_Chunk_Task,
+}
+Gen_Vox_Data_Task::struct{
+	w_map:^Map,
+	vox_data_hd:Vox_Chunk_Data_HD,
+}
+Mesh_Chunk_Task::struct{
+	w_map: ^Map,
+	chunk_hd:Chunk_HD,
+	vox_data_hd: Vox_Chunk_Data_HD,
+	neighbor_vox_hd: [4]Vox_Chunk_Data_HD,
+	mesh_hd: Chunk_Mesh_Data_HD,
+	has_4_neighbors:bool,
+	side: Model_Sides,
+}
+
+start_gen_vox_dat_task::proc(w_map:^Map, task:Gen_Vox_Data_Task){
+	task_hd,err:=hm.add(&w_map.pool_tasks,Pool_Task{task=task})
+	assert(err == .None)
+	task_ptr,task_ok:=hm.get(&w_map.pool_tasks,task_hd)
+	assert(task_ok)
+	
+	thread.pool_add_task(&w_map.t_pool,context.allocator,do_task,task_ptr,cast(int)task_hd.idx)
+	
+}
+
+start_mesh_chunk_task::proc(w_map:^Map, task:Mesh_Chunk_Task){
+	task_hd,err:=hm.add(&w_map.pool_tasks,Pool_Task{task=task})
+	assert(err == .None)
+	task_ptr,task_ok:=hm.get(&w_map.pool_tasks,task_hd)
+	assert(task_ok)
+	
+	thread.pool_add_task(&w_map.t_pool,context.allocator,do_task,task_ptr,cast(int)task_hd.idx)
+	
+}
+
+
+do_task::proc(task: thread.Task){
+	// tg.name_thread("Gen Vox Data Task",task.user_index)
+	// tracking_allocator:mem.Tracking_Allocator
+	// context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
+	// context.allocator = tg.init_tracking_allocator(&tracking_allocator)
+	// defer tg.end_tracking_allocator(&tracking_allocator)
+	// defer tg.destroy_tg_console_logger(context.logger)
+	new_task:=cast(^Pool_Task)task.data
+	switch t in new_task.task {
+		case Gen_Vox_Data_Task:
+		gen_vox_data(t.w_map,t.vox_data_hd)
+		case Mesh_Chunk_Task:
+		mesh_by_bit_mask(t.w_map,t.chunk_hd,t.vox_data_hd,t.neighbor_vox_hd,t.mesh_hd,t.has_4_neighbors,t.side)
+	}
+}
+
+fin_pool_tasks::proc(w_map:^Map){
+	for {
+		task_raw, ok := thread.pool_pop_done(&w_map.t_pool)
+		if !ok {break}
+		task:=cast(^Pool_Task)task_raw.data
+		switch t in task.task{
+		case Gen_Vox_Data_Task:
+			
+			vox_chunk,vox_chunk_ok:=hm.get(&w_map.vox_chunk_hm,t.vox_data_hd)
+			assert(vox_chunk_ok)
+			atom.atomic_store(&vox_chunk.vox_gened,true)
+			add_to_chunk_needs_meshing_q(w_map,vox_chunk.pos)
+		case Mesh_Chunk_Task:
+			mesh,mesh_ok:=hm.get(&w_map.chunks_mesh_data,t.mesh_hd)
+			assert(mesh_ok)
+
+			chunk,chunk_ok:=hm.get(&w_map.chunks,t.chunk_hd)
+			assert(chunk_ok)
+			face_count :=mesh.face_count
+
+			chunk.mesh_q_state[t.side] = .usable
+			if face_count <= 0 {
+				add_to_destroy_mesh_data_q(w_map,t.mesh_hd)
+			}else{
+				add_to_upload_mesh_data_q(w_map,t.chunk_hd,t.mesh_hd,t.side)
+			}
+			
+		}
+		hm.remove(&w_map.pool_tasks,task.handle)
+	}
+}
+
 
 get_chunk::proc(w_map:^Map,chunk_hd:Chunk_HD)->(chunk:^Chunk,ok:bool){
 	chunk, ok = hm.get(&w_map.chunks, chunk_hd) 
@@ -185,8 +288,53 @@ get_chunk_mesh_data::proc(w_map:^Map, mesh_data_hd:Chunk_Mesh_Data_HD,)->(mesh_d
 	return mesh_data,ok
 }
 
+// @(thread_local)
+// w_map_thread_data:^Map
+// ctx:runtime.Context
+// defalt_pool_init :: proc(t: ^thread.Thread, data: rawptr) {
+// 	// tg.name_thread("Chunkering")
 
+// 	// ctx=runtime.default_context()
+// 	// tracking_allocator:mem.Tracking_Allocator
+// 	// ctx.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
+// 	// ctx.allocator = tg.init_tracking_allocator(&tracking_allocator)
+
+// 	// defer tg.end_tracking_allocator(&tracking_allocator)
+// 	// log.log(.Info,"starting chunker thread")
+// 	w_map_thread_data = cast(^Map)data
+// }
+// defalt_pool_fin :: proc(t: ^thread.Thread, data: rawptr) {
+	// w_map_thread_data = cast(^Map)data
+// }
 init_map::proc(w_map:^Map){
+	// w_map.t_pool
+	pool_allocator: mem.Allocator
+	pool_allocator = runtime.heap_allocator()
+	thread.pool_init(&w_map.t_pool,pool_allocator,10)
+	defer thread.pool_start(&w_map.t_pool)
+
+
+	err:runtime.Allocator_Error
+	w_map.gen_chunk_chan , err = chan.create_buffered(chan.Chan(Gen_Chunk_Q_Data),10000, context.allocator)
+	assert(err == .None)
+	w_map.destroy_chunk_chan , err = chan.create_buffered(chan.Chan(Destroy_Chunk_Q_Data),10000, context.allocator)
+	assert(err == .None)
+	w_map.gen_vox_data_chan, err = chan.create_buffered(chan.Chan(Gen_Vox_Data_Q_Data),10000, context.allocator)
+	assert(err == .None)
+	w_map.gen_mesh_data_chan, err = chan.create_buffered(chan.Chan(Gen_Mesh_Data_Q_Data),100000, context.allocator)
+	assert(err == .None)
+	w_map.check_needs_meshing_chan, err = chan.create_buffered(chan.Chan(Check_Needs_Meshing_Q_Data),100000, context.allocator)
+	assert(err == .None)
+	w_map.upload_mesh_data_chan, err = chan.create_buffered(chan.Chan(Upload_Mesh_Data_Q_Data),100000, context.allocator)
+	assert(err == .None)
+	w_map.destroy_vox_data_chan, err = chan.create_buffered(chan.Chan(Destroy_Vox_Data_Q_Data),10000, context.allocator)
+	assert(err == .None)
+	w_map.destroy_mesh_data_chan, err = chan.create_buffered(chan.Chan(Destroy_Mesh_Data_Q_Data),10000, context.allocator)
+	assert(err == .None)
+	w_map.unload_mesh_data_chan, err = chan.create_buffered(chan.Chan(Unload_Mesh_Data_Q_Data),10000, context.allocator)
+	assert(err == .None)
+
+
 	tg.free_list_init(&w_map.chunks_in_mesh,MAX_NUM_CHUNKS)
 	w_map.draw_cmd_buf_hd = tg.create_mesh(sdl.GPUIndirectDrawCommand,MAX_NUM_CHUNKS,{},type = .indirect_cmd_buff, debug_name = "w_map GPUIndirectDrawCommand buffer")
 	w_map.chunk_shader_data.mesh_hd = tg.create_mesh(Chunk_Shader_Data,MAX_NUM_CHUNKS,{},type = .dynamic_buff, debug_name = "Chunk shader data buffer")
@@ -197,60 +345,8 @@ init_map::proc(w_map:^Map){
 	})
 }
 
-MAX_CHUNKS_TO_Q_AT_ONE_TIME :: 100
-// adding_chunks_around_pos::proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
+MAX_CHUNKS_TO_Q_AT_ONE_TIME :: 500
 
-// 	chunk_pos:=pos_to_chunck_pos(pos)
-// 	// if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
-	
-// 	// }else{
-// 	// 	return
-// 	// }
-// 	xz_rad:=g.settings.xz_render_distance
-// 	y_rad:=g.settings.y_render_distance
-
-// 	min_x:=(-1*xz_rad) + chunk_pos.x
-// 	max_x:=xz_rad + chunk_pos.x
-// 	min_y:=(-1*y_rad) + chunk_pos.y
-// 	max_y:=y_rad + chunk_pos.y
-// 	min_z:=(-1*xz_rad) + chunk_pos.z
-// 	max_z:=xz_rad + chunk_pos.z
-
-// 	q_count:int
-
-// 	for radius:=0; radius<=max(xz_rad,y_rad); radius+=1 {
-// 		for x:=-radius; x<=radius; x+=1 {
-// 			for y:=-min(radius,y_rad); y<=min(radius,y_rad); y+=1 {
-// 				for z:=-radius; z<=radius; z+=1 {
-// 					if abs(x)!=radius && abs(y)!=radius && abs(z)!=radius {
-// 						continue
-// 					}
-	
-// 					key:[4]int={
-// 						chunk_pos.x+x,
-// 						chunk_pos.y+y,
-// 						chunk_pos.z+z,
-// 						1,// this represens the size of the lod
-// 					}
-	
-// 					if ok:=key in w_map.chunks_map; !ok {
-// 						add_to_gen_chunk_q(w_map,key)
-// 						did_work=true
-// 						q_count+=1
-	
-// 						if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
-// 							return
-// 						}
-// 					}
-// 				}
-// 			}
-// 		}
-// 	}
-
-
-
-// 	return
-// }
 
 removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,)->(did_work:bool){
 
@@ -286,353 +382,14 @@ removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,)->(did_work:bool){
 		if remove_chunk {
 			// log.log(.Debug,chunk.pos,"min_x",min_x,"max_x",max_x,"min_y",min_y,"max_y",max_y,"min_z",min_z,"max_z",max_z,remove_chunk)
 			// add_to_destroy_chunk_q(w_map,chunk_hd)
-			did_work = true
+			// did_work = true
 			// q_count+=1
-			// if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME{return}
+			// if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {return}
 			// return
 		}
 	}
 	return
 }
-
-// adding_chunks_around_pos :: proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
-// 	chunk_pos:=pos_to_chunck_pos(pos)
-
-// 	xz_rad:=g.settings.xz_render_distance
-// 	y_rad:=g.settings.y_render_distance
-// 	lod_depth:=g.settings.lod_depth
-// 	lod_levels:=g.settings.lod_levels
-
-// 	q_count:=0
-// 	previous_distance:=0
-// 	lod:=1
-
-
-// 	for i_lod in 0..<lod_levels {
-// 		lod_lev := 1 << cast(u32)i_lod
-// 		log.log(.Debug,lod_lev)
-		
-		
-			
-		
-	
-
-// 	}
-
-
-// 	for lod_level:=0; lod_level<lod_levels; lod_level+=1 {
-
-// 		outer_distance:int
-
-// 		if lod==1 {
-// 			outer_distance=max(xz_rad,y_rad)
-// 		} else {
-// 			band_width:=lod_depth*lod
-// 			outer_distance=previous_distance+band_width-1
-// 		}
-
-// 		for radius:=previous_distance; radius<=outer_distance; radius+=1 {
-
-// 			y_radius:=min(radius,y_rad*lod)
-
-// 			for x:=-radius; x<=radius; x+=1 {
-
-// 				world_x:=chunk_pos.x+x
-
-// 				if lod>1 && world_x%lod!=0 {
-// 					continue
-// 				}
-
-// 				for y:=-y_radius; y<=y_radius; y+=1 {
-
-// 					world_y:=chunk_pos.y+y
-
-// 					if lod>1 && world_y%lod!=0 {
-// 						continue
-// 					}
-
-// 					for z:=-radius; z<=radius; z+=1 {
-
-// 						if abs(x)!=radius && abs(y)!=y_radius && abs(z)!=radius {
-// 							continue
-// 						}
-
-// 						world_z:=chunk_pos.z+z
-
-// 						if lod>1 && world_z%lod!=0 {
-// 							continue
-// 						}
-
-// 						key:[4]int={
-// 							world_x,
-// 							world_y,
-// 							world_z,
-// 							lod,
-// 						}
-
-// 						if ok:=key in w_map.chunks_map; !ok {
-// 							add_to_gen_chunk_q(w_map,key)
-// 							did_work=true
-
-// 							q_count+=1
-// 							if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
-// 								return
-// 							}
-// 						}
-// 					}
-// 				}
-// 			}
-// 		}
-
-// 		previous_distance=outer_distance+1
-// 		lod*=2
-// 	}
-
-// 	return
-// }
-	
-// adding_chunks_around_pos :: proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
-// 	chunk_pos:=pos_to_chunck_pos(pos)
-
-// 	xz_rad:=g.settings.xz_render_distance
-// 	y_rad:=g.settings.y_render_distance
-// 	lod_depth:=g.settings.lod_depth
-// 	lod_levels:=g.settings.lod_levels
-
-// 	q_count:=0
-// 	previous_distance:=0
-// 	lod:=1
-
-
-// 	for i_lod in 0..<lod_levels {
-// 		lod_lev := 1 << cast(u32)i_lod
-// 		log.log(.Debug,lod_lev)
-		
-		
-			
-		
-	
-
-// 	}
-
-// 	return
-// }
-
-
-// adding_chunks_around_pos :: proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
-// 	chunk_pos:=pos_to_chunck_pos(pos)
-// 	xz_rad:=g.settings.xz_render_distance
-// 	y_rad:=g.settings.y_render_distance
-// 	lod_depth:=g.settings.lod_depth
-
-// 	q_count:=0
-// 	previous_distance:=0
-
-// 	for i_lod in 0..<g.settings.lod_levels {
-// 		lod_lev:=1 << cast(u32)i_lod
-// 		band_width:=lod_depth*lod_lev
-
-// 		outer_distance:=max(xz_rad,y_rad)
-// 		if lod_lev > 1 {
-// 			outer_distance=previous_distance+band_width
-// 		}
-
-// 		x_start:=chunk_pos.x-outer_distance
-// 		x_start-=x_start%lod_lev
-// 		x_start-=chunk_pos.x
-
-// 		y_start:=chunk_pos.y-min(outer_distance,y_rad*lod_lev)
-// 		y_start-=y_start%lod_lev
-// 		y_start-=chunk_pos.y
-
-// 		z_start:=chunk_pos.z-outer_distance
-// 		z_start-=z_start%lod_lev
-// 		z_start-=chunk_pos.z
-
-// 		for x:=x_start; x<=outer_distance; x+=lod_lev {
-// 			for y:=y_start; y<=min(outer_distance,y_rad*lod_lev); y+=lod_lev {
-// 				for z:=z_start; z<=outer_distance; z+=lod_lev {
-
-// 					distance:=max(abs(x),abs(y),abs(z))
-// 					if distance < previous_distance || distance > outer_distance-lod_lev {
-// 						continue
-// 					}
-
-// 					key:[4]int={
-// 						chunk_pos.x+x,
-// 						chunk_pos.y+y,
-// 						chunk_pos.z+z,
-// 						lod_lev,
-// 					}
-
-// 					if ok:=key in w_map.chunks_map; !ok {
-// 						add_to_gen_chunk_q(w_map,key)
-// 						did_work=true
-// 						q_count+=1
-// 						log.log(.Debug,"chunk",key)
-// 						if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
-// 							return
-// 						}
-// 					}
-// 				}
-// 			}
-// 		}
-
-// 		previous_distance=outer_distance
-// 	}
-
-// 	return
-// }
-
-
-
-// adding_chunks_around_pos :: proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
-// 	chunk_pos:=pos_to_chunck_pos(pos)
-// 	xz_rad:=g.settings.xz_render_distance
-// 	y_rad:=g.settings.y_render_distance
-// 	lod_depth:=g.settings.lod_depth
-
-// 	q_count:=0
-// 	previous_radius:=0
-
-// 	for i_lod in 0..<g.settings.lod_levels {
-// 		lod_lev:=1 << cast(u32)i_lod
-
-// 		outer_radius:=xz_rad
-// 		if i_lod > 0 {
-// 			outer_radius=previous_radius+lod_depth*lod_lev
-// 		}
-
-// 		// Convert the normal-chunk distances into LOD-grid coordinates.
-// 		inner_grid:=previous_radius/lod_lev
-// 		outer_grid:=outer_radius/lod_lev
-
-// 		y_outer:=min(outer_radius,y_rad*lod_lev)
-// 		y_inner:=min(previous_radius,y_rad*lod_lev)
-
-// 		x_min:=chunk_pos.x/lod_lev-outer_grid
-// 		x_max:=chunk_pos.x/lod_lev+outer_grid
-// 		y_min:=chunk_pos.y/lod_lev-(y_outer/lod_lev)
-// 		y_max:=chunk_pos.y/lod_lev+(y_outer/lod_lev)
-// 		z_min:=chunk_pos.z/lod_lev-outer_grid
-// 		z_max:=chunk_pos.z/lod_lev+outer_grid
-
-// 		for gx:=x_min; gx<=x_max; gx+=1 {
-// 			for gy:=y_min; gy<=y_max; gy+=1 {
-// 				for gz:=z_min; gz<=z_max; gz+=1 {
-// 					x:=gx*lod_lev
-// 					y:=gy*lod_lev
-// 					z:=gz*lod_lev
-
-// 					distance:=max(
-// 						abs(x-chunk_pos.x),
-// 						abs(y-chunk_pos.y),
-// 						abs(z-chunk_pos.z),
-// 					)
-
-// 					if distance < previous_radius || distance >= outer_radius {
-// 						continue
-// 					}
-
-// 					key:[4]int={x,y,z,lod_lev}
-
-// 				if ok:=key in w_map.chunks_map; !ok {
-// 						add_to_gen_chunk_q(w_map,key)
-// 						did_work=true
-// 						q_count+=1
-
-// 						if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
-// 							return
-// 						}
-// 					}
-// 				}
-// 			}
-// 		}
-
-// 		previous_radius=outer_radius
-// 	}
-
-// 	return
-// }
-
-
-
-// adding_chunks_around_pos :: proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
-// 	chunk_pos:=pos_to_chunck_pos(pos)
-// 	xz_rad:=g.settings.xz_render_distance
-// 	y_rad:=g.settings.y_render_distance
-// 	lod_depth:=g.settings.lod_depth
-
-// // g.settings.lod_1_scale
-
-// 	lod_1_radius:=cast(int)(f32(xz_rad)*2)
-// 	lod_1_radius=((lod_1_radius+lod_depth-1)/lod_depth)*lod_depth
-
-// 	q_count:=0
-// 	previous_distance:=0
-
-// 	for i_lod in 0..<g.settings.lod_levels {
-// 		lod_lev:=1 << cast(u32)i_lod
-
-// 		band_width:=lod_depth*lod_lev
-// 		if i_lod==0 {
-// 			band_width=lod_1_radius
-// 		}
-
-// 		outer_distance:=previous_distance+band_width
-// 		y_outer:=min(outer_distance,y_rad*lod_lev)
-
-// 		x_start:=chunk_pos.x-outer_distance
-// 		x_start-=x_start%lod_lev
-
-// 		y_start:=chunk_pos.y-y_outer
-// 		y_start-=y_start%lod_lev
-
-// 		z_start:=chunk_pos.z-outer_distance
-// 		z_start-=z_start%lod_lev
-
-// 		x_end:=chunk_pos.x+outer_distance
-// 		x_end-=x_end%lod_lev
-
-// 		y_end:=chunk_pos.y+y_outer
-// 		y_end-=y_end%lod_lev
-
-// 		z_end:=chunk_pos.z+outer_distance
-// 		z_end-=z_end%lod_lev
-
-// 		for x:=x_start; x<=x_end; x+=lod_lev {
-// 			for y:=y_start; y<=y_end; y+=lod_lev {
-// 				for z:=z_start; z<=z_end; z+=lod_lev {
-// 					distance:=max(
-// 						abs(x-chunk_pos.x),
-// 						abs(y-chunk_pos.y),
-// 						abs(z-chunk_pos.z),
-// 					)
-
-// 					if distance<previous_distance || distance>=outer_distance {
-// 						continue
-// 					}
-
-// 					key:[4]int={x,y,z,lod_lev}
-
-// 					if ok:=key in w_map.chunks_map; !ok {
-// 						add_to_gen_chunk_q(w_map,key)
-// 						did_work=true
-// 						q_count+=1
-
-// 						if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
-// 							return
-// 						}
-// 					}
-// 				}
-// 			}
-// 		}
-
-// 		previous_distance=outer_distance
-// 	}
-
-// 	return
-// }
 
 next_power_of_two :: proc(v:int) -> int {
 	result := 1
@@ -763,7 +520,7 @@ adding_chunks_around_pos :: proc(w_map:^Map, pos:[3]f32) -> (did_work:bool) {
 					if ok := key in w_map.chunks_map ;ok{
 						continue
 					}
-
+					log.log(.Debug,"add_chunck",key)
 					add_to_gen_chunk_q(w_map, key)
 
 					did_work = true
@@ -788,78 +545,6 @@ adding_chunks_around_pos :: proc(w_map:^Map, pos:[3]f32) -> (did_work:bool) {
 
 	return
 }
-// adding_chunks_around_pos :: proc(w_map:^Map,pos:[3]f32)->(did_work:bool){
-
-// 	chunk_pos:=pos_to_chunck_pos(pos)
-
-// 	xz_rad:=g.settings.xz_render_distance
-// 	y_rad:=g.settings.y_render_distance
-// 	lod_depth:=g.settings.lod_depth
-// 	lod_levels:=g.settings.lod_levels
-
-// 	q_count:int
-// 	previous_distance:=0
-// 	lod:=1
-
-// 	for lod_level:=0; lod_level<lod_levels; lod_level+=1 {
-
-// 		outer_distance:int
-
-// 		if lod==1 {
-// 			outer_distance=max(xz_rad,y_rad)
-// 		} else {
-// 			band_width:=lod_depth*lod
-// 			outer_distance=previous_distance+band_width-1
-// 		}
-
-// 		for radius:=previous_distance; radius<=outer_distance; radius+=1 {
-// 			for x:=-radius; x<=radius; x+=1 {
-// 				for y:=-min(radius,y_rad*lod); y<=min(radius,y_rad*lod); y+=1 {
-// 					for z:=-radius; z<=radius; z+=1 {
-
-// 						if abs(x)!=radius && abs(y)!=radius && abs(z)!=radius {
-// 							continue
-// 						}
-
-// 						world_x:=chunk_pos.x+x
-// 						world_y:=chunk_pos.y+y
-// 						world_z:=chunk_pos.z+z
-
-// 						if lod>1 {
-// 							if world_x%lod!=0 ||
-// 							   world_y%lod!=0 ||
-// 							   world_z%lod!=0 {
-// 								continue
-// 							}
-// 						}
-
-// 						key:[4]int={
-// 							world_x,
-// 							world_y,
-// 							world_z,
-// 							lod,
-// 						}
-
-// 						if ok:=key in w_map.chunks_map; !ok {
-// 							add_to_gen_chunk_q(w_map,key)
-// 							did_work=true
-// 							q_count+=1
-// 							if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {
-// 								return
-// 							}
-// 						}
-// 					}
-// 				}
-// 			}
-// 		}
-
-// 		previous_distance=outer_distance+1
-// 		lod*=2
-// 	}
-
-// 	return
-// }
-
 
 update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
 	mesh:=tg.get_mesh(w_map.draw_cmd_buf_hd)
@@ -1060,8 +745,8 @@ render_map::proc(w_map:^Map){
 
 
 Q_State::enum{
-	building,
 	usable,
+	in_q,
 	finished,
 }
 manage_all_w_map_q::proc(w_map:^Map)->(did_work:bool){
@@ -1071,25 +756,42 @@ manage_all_w_map_q::proc(w_map:^Map)->(did_work:bool){
     // did_work = adding_chunks_around_pos(&g.w_map,g.cam.pos)
 	did_work = adding_chunks_around_pos(&g.w_map,{0,0,0})
     did_work = removing_chunks_not_around_pos(&g.w_map,g.cam.pos)
-    log.log(.Debug,g.cam.pos)
+    // log.log(.Debug,g.cam.pos)
 
 
     did_work = manage_gen_chunk_q(w_map)
+    
     did_work = manage_gen_vox_data_q(w_map)
+    // did_work = manage_gen_multy_vox_q(w_map)
+    did_work = manage_chunk_needs_meshing_q(w_map)
+
     did_work = manage_gen_mesh_data_q(w_map)
 
 
     did_work = manage_upload_mesh_data_q(w_map)
 
-
+    
     did_work = manage_destroy_chunk_q(w_map)
     did_work = manage_destroy_vox_data_q(w_map)
     did_work = manage_destroy_mesh_data_q(w_map)
 
 
     did_work = manage_unload_mesh_data_q(w_map)
-
+    
     chunk_pos:=pos_to_chunck_pos(g.cam.pos)
+
+	log.log(
+	    .Debug,
+	    "W", thread.pool_num_waiting(&w_map.t_pool),
+	    "P", thread.pool_num_in_processing(&w_map.t_pool),
+	    "O", thread.pool_num_outstanding(&w_map.t_pool),
+	    "D", thread.pool_num_done(&w_map.t_pool),
+	)
+
+    fin_pool_tasks(w_map)
+
+
+
 
     get_w_map_debug_info(w_map)
 	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
@@ -1105,11 +807,12 @@ manage_all_w_map_q::proc(w_map:^Map)->(did_work:bool){
 }
 
 get_w_map_debug_info::proc(w_map:^Map){
-	g.debug_info.gen_chunk_q_len 		= cast(int)hm.len(w_map.gen_chunk_q)
-	g.debug_info.gen_vox_data_q_len 	= cast(int)hm.len(w_map.gen_vox_data_q)
-	g.debug_info.gen_mesh_data_q_len 	= cast(int)hm.len(w_map.gen_mesh_data_q)
-	g.debug_info.destroy_mesh_data_q_len= cast(int)hm.len(w_map.destroy_mesh_data_q)
-	g.debug_info.upload_mesh_data_q_len = cast(int)hm.len(w_map.upload_mesh_data_q)
+	g.debug_info.gen_chunk_q_len 		= cast(int)chan.len(w_map.gen_chunk_chan)
+	g.debug_info.destroy_chunk_q_len 	= cast(int)chan.len(w_map.destroy_chunk_chan)
+	g.debug_info.gen_vox_data_q_len 	= cast(int)chan.len(w_map.gen_vox_data_chan)
+	g.debug_info.gen_mesh_data_q_len 	= cast(int)chan.len(w_map.gen_mesh_data_chan)
+	g.debug_info.destroy_mesh_data_q_len= cast(int)chan.len(w_map.destroy_mesh_data_chan)
+	g.debug_info.upload_mesh_data_q_len = cast(int)chan.len(w_map.upload_mesh_data_chan)
 
 	g.debug_info.space_lef_on_gpu_buff  = tg.free_list_space_lef(&w_map.chunks_in_mesh)
 
@@ -1121,58 +824,34 @@ get_w_map_debug_info::proc(w_map:^Map){
 	
 }
 
-Gen_Chunk_Q::hm.Dynamic_Handle_Map(Gen_Chunk_Q_Data,Gen_Chunk_Q_HD)
-Gen_Chunk_Q_HD::distinct hm.Handle64
+// Gen_Chunk_Q::hm.Dynamic_Handle_Map(Gen_Chunk_Q_Data,Gen_Chunk_Q_HD)
+// Gen_Chunk_Q_HD::distinct hm.Handle64
 Gen_Chunk_Q_Data::struct{
-	handle:Gen_Chunk_Q_HD,
+	// handle:Gen_Chunk_Q_HD,
 	pos:[4]int,
-	q_state:Q_State,
+	// q_state:Q_State,
 }
 manage_gen_chunk_q::proc(w_map:^Map)->(did_work:bool){
 
-	it := hm.iterator_make(&w_map.gen_chunk_q)
-	for q, q_hd in hm.iterate(&it) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
-			hm.remove(&w_map.gen_chunk_q,q_hd)
+	for {
+		value, ok := chan.try_recv(w_map.gen_chunk_chan)
+		if !ok {
+			break // More idiomatic than return here
 		}
-	}
-
-	it_2 := hm.iterator_make(&w_map.gen_chunk_q)
-	for q, q_hd in hm.iterate(&it_2) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable {
-			did_work=true
-			do_a_gen_chunk_q(w_map,q_hd)
-		}
+		did_work=true
+		do_a_gen_chunk_q(w_map,value)
 	}
 	return
 }
-add_to_gen_chunk_q::proc(w_map:^Map,pos:[4]int)->(q_hd:Gen_Chunk_Q_HD){
-	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.gen_chunk_q, Gen_Chunk_Q_Data{pos = pos})
-	q,q_ok:=hm.get(&w_map.gen_chunk_q,q_hd)
-	if err != .None{
-		log.log(.Error, err )
-	}
-	if !q_ok{
-		log.log(.Error, "err",err,"q",q,"q_hd",q_hd )
-	}
-	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
-	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+add_to_gen_chunk_q::proc(w_map:^Map,pos:[4]int){
+	chan.send(w_map.gen_chunk_chan,Gen_Chunk_Q_Data{pos = pos})
 	return
 }
-do_a_gen_chunk_q::proc(w_map:^Map,hd:Gen_Chunk_Q_HD){
-	q,ok:=hm.get(&w_map.gen_chunk_q,hd)
-	if !ok{
-		log.log(.Warning, "cant find item in q to destroy")
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
-	if ok{
-		add_chunck(w_map,q.pos)
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
+do_a_gen_chunk_q::proc(w_map:^Map,q:Gen_Chunk_Q_Data){
+	add_chunck(w_map,q.pos)
 }
 add_chunck::proc(w_map:^Map,pos:[4]int){
-
+	
 	chunk_hd, chunk_ok := &w_map.chunks_map[pos]
 	if !chunk_ok{ // chesvks if there is a chunk in the map if not create one
 
@@ -1189,57 +868,31 @@ add_chunck::proc(w_map:^Map,pos:[4]int){
 	}
 	chunk_hd^ = new_chunk_hd
 	add_to_gen_vox_data_q(w_map,new_chunk_hd,pos)
-	// gen_chunk_vox_data(w_map,temp_hd,pos)
-	
 }
 
-Destroy_Chunk_Q::hm.Dynamic_Handle_Map(Destroy_Chunk_Q_Data,Destroy_Chunk_HD)
-Destroy_Chunk_HD::distinct hm.Handle64
 Destroy_Chunk_Q_Data::struct{
-	handle:Destroy_Chunk_HD,
 	data_hd:Chunk_HD,
-	q_state:Q_State,
 }
 manage_destroy_chunk_q::proc(w_map:^Map)->(did_work:bool){
-	it := hm.iterator_make(&w_map.destroy_chunk_q)
-	for q, q_hd in hm.iterate(&it) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
-			hm.remove(&w_map.destroy_chunk_q,q_hd)
+	for {
+		value, ok := chan.try_recv(w_map.destroy_chunk_chan)
+		if !ok {
+			break // More idiomatic than return here
 		}
-	}
-
-	it_2 := hm.iterator_make(&w_map.destroy_chunk_q)
-	for q, q_hd in hm.iterate(&it_2) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable {
-			did_work = true
-			do_a_destroy_chunk_q(w_map,q_hd)
-		}
+		did_work=true
+		do_a_destroy_chunk_q(w_map,value)
 	}
 	return
 }
-add_to_destroy_chunk_q::proc(w_map:^Map,chunk_hd:Chunk_HD)->(q_hd:Destroy_Chunk_HD){
-	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.destroy_chunk_q, Destroy_Chunk_Q_Data{data_hd = chunk_hd})
-	q,q_ok:=hm.get(&w_map.destroy_chunk_q,q_hd)
-	if err != .None{
-		log.log(.Error, err )
-	}
-	if !q_ok{
-		log.log(.Error, "err",err,"q",q,"q_hd",q_hd )
-	}
-	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
-
-	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+add_to_destroy_chunk_q::proc(w_map:^Map,chunk_hd:Chunk_HD){
+	chan.send(w_map.destroy_chunk_chan,Destroy_Chunk_Q_Data{data_hd = chunk_hd})
 	return
 }
-do_a_destroy_chunk_q::proc(w_map:^Map,hd:Destroy_Chunk_HD){
-	q,ok:=hm.get(&w_map.destroy_chunk_q,hd)
-	if ok{
-		destroy_chunck(w_map,q.data_hd)
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
+do_a_destroy_chunk_q::proc(w_map:^Map,q:Destroy_Chunk_Q_Data){
+	destroy_chunck(w_map,q.data_hd)
 }
 destroy_chunck::proc(w_map:^Map,hd:Chunk_HD){
+	log.log(.Debug,"testing if destroy_chunck working")
 	chunk,ok:=hm.get(&w_map.chunks,hd)
 	if !ok{
 		log.log(.Warning,"cant find chunk",hd,"to destroy")
@@ -1273,62 +926,34 @@ destroy_chunck::proc(w_map:^Map,hd:Chunk_HD){
 	
 }
 
-
-Gen_Vox_Data_Q::hm.Dynamic_Handle_Map(Gen_Vox_Data_Q_Data,Gen_Vox_Data_Q_HD)
-Gen_Vox_Data_Q_HD::distinct hm.Handle64
 Gen_Vox_Data_Q_Data::struct{
-	handle:Gen_Vox_Data_Q_HD,
 	pos:[4]int,
 	data_hd:Chunk_HD,
-	q_state:Q_State,
 }
 manage_gen_vox_data_q::proc(w_map:^Map)->(did_work:bool){
-
-	it := hm.iterator_make(&w_map.gen_vox_data_q)
-	for q, q_hd in hm.iterate(&it) {
-		// log.log(.Debug,"starting  removing and finish to gen vox data q",q)
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
-			hm.remove(&w_map.gen_vox_data_q,q_hd)
-			// log.log(.Debug,"removing and finish to gen vox data q",q)
+	index:int
+	for {
+		value, ok := chan.try_recv(w_map.gen_vox_data_chan)
+		if !ok {
+			break // More idiomatic than return here
 		}
-	}
-
-	it_2 := hm.iterator_make(&w_map.gen_vox_data_q)
-	for q, q_hd in hm.iterate(&it_2) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable  {
-			// log.log(.Debug,"do vox data q")
-			do_a_gen_vox_data_q(w_map,q_hd)
-			did_work = true
-		}
+		did_work=true
+		index+=1
+		do_a_gen_vox_data_q(w_map,value,index)
 	}
 	return
+
 }
-add_to_gen_vox_data_q::proc(w_map:^Map,chunk_hd:Chunk_HD,pos:[4]int)->(q_hd:Gen_Vox_Data_Q_HD){
-	// log.log(.Debug,"added to gen vox data q")
-	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.gen_vox_data_q, Gen_Vox_Data_Q_Data{data_hd = chunk_hd,pos = pos})
-	q,q_ok:=hm.get(&w_map.gen_vox_data_q,q_hd)
-	if err != .None{
-		log.log(.Error, err )
-	}
-	if !q_ok{
-		log.log(.Error, "err",err,"q",q,"q_hd",q_hd )
-	}
-	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
-	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+add_to_gen_vox_data_q::proc(w_map:^Map,chunk_hd:Chunk_HD,pos:[4]int){
+	chan.send(w_map.gen_vox_data_chan,Gen_Vox_Data_Q_Data{data_hd = chunk_hd,pos = pos})
 	return
+
 }
-do_a_gen_vox_data_q::proc(w_map:^Map,hd:Gen_Vox_Data_Q_HD){
-	q,ok:=hm.get(&w_map.gen_vox_data_q,hd)
-	if !ok{
-		log.log(.Error,"failed to get",hd)
-	}
-	if ok{
-		gen_chunk_vox_data(w_map,q.data_hd,q.pos)
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
+do_a_gen_vox_data_q::proc(w_map:^Map,q:Gen_Vox_Data_Q_Data,index:int){
+
+	gen_chunk_vox_data(w_map,q.data_hd,q.pos,index)
 }
-gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[4]int){
+gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[4]int,index:int){
 	// log.log(.Error,"GEN VOX CALLED chunk=",chunk_hd," pos=",pos)
 	chunk, ok := get_chunk(w_map,chunk_hd)
 	assert(ok)
@@ -1337,78 +962,158 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[4]int){
 	chunk.vox_data_hd = vox_chunk_hd
 	vox_chunk,vox_chunk_ok:=get_vox_chunk_data(w_map,vox_chunk_hd)
 	assert(vox_chunk_ok)
+
+	vox_chunk.pos = pos
+	chunk.chunk_shader_data.pos = {
+		cast(i32)pos.x,
+		cast(i32)pos.y,
+		cast(i32)pos.z,
+		cast(i32)pos.w,
+	}
+
+	start_gen_vox_dat_task(w_map,Gen_Vox_Data_Task{w_map = w_map,vox_data_hd=vox_chunk_hd})
+
 	
-	gen_vox_data(w_map,vox_chunk,chunk,pos)
+}
+
+
+
+
+gen_vox_data :: proc(
+	w_map:^Map,
+	vox_chunk_hd:Vox_Chunk_Data_HD,
+	// chunk:^Chunk,
+){
+	vox_chunk,vox_chunk_ok:=hm.get(&w_map.vox_chunk_hm,vox_chunk_hd)
+	assert(vox_chunk_ok)
+	pos:=vox_chunk.pos
+	vox_chunk.pos = pos
+	lod_lev := pos.w
+
+
+	xz_scl:f64 = 0.001
+	y_scl:f64 = 600.0
+
+	world_x_start := pos.x * CHUNK_SIZE
+	world_y_start := pos.y * CHUNK_SIZE
+	world_z_start := pos.z * CHUNK_SIZE
+
+	
+	grass_pal_index := get_or_add_palette_index(vox_chunk, g.df_items[.grass])
+	stone_pal_index := get_or_add_palette_index(vox_chunk, g.df_items[.stone_slate])
+
+	for x := 0; x < CHUNK_SIZE; x += 1 {
+		world_x := world_x_start + x * lod_lev + lod_lev / 2
+
+		for z := 0; z < CHUNK_SIZE; z += 1 {
+			world_z := world_z_start + z * lod_lev + lod_lev / 2
+
+			height := nos.noise_2d(
+				6223378936854776807,
+				{
+					cast(f64)world_x * xz_scl,
+					cast(f64)world_z * xz_scl,
+				},
+			)
+
+			height_x := nos.noise_2d(
+				6223378936854776807,
+				{
+					cast(f64)(world_x + lod_lev) * xz_scl,
+					cast(f64)world_z * xz_scl,
+				},
+			)
+
+			height_z := nos.noise_2d(
+				6223378936854776807,
+				{
+					cast(f64)world_x * xz_scl,
+					cast(f64)(world_z + lod_lev) * xz_scl,
+				},
+			)
+
+			change_x := math.abs(height_x - height)
+			change_z := math.abs(height_z - height)
+
+			height_change := max(change_x/cast(f32)lod_lev, change_z/cast(f32)lod_lev)
+			is_steep := height_change > 0.003
+
+			height = (height + 1.0) * 0.5
+			height = math.pow(height, 2.5)
+
+			world_height := cast(int)(height * cast(f32)y_scl)
+			solid_height := (world_height - world_y_start) / lod_lev
+
+			if solid_height <= 0 {
+				continue
+			}
+
+			if solid_height > CHUNK_SIZE {
+				solid_height = CHUNK_SIZE
+			}
+
+			if is_steep {
+				set_blocks_in_chunk_by_col_pal_index(
+					vox_chunk,
+					stone_pal_index,
+					{cast(u8)x, cast(u8)z},
+					cast(u8)solid_height,
+				)
+			} else {
+				set_blocks_in_chunk_by_col_pal_index(
+					vox_chunk,
+					grass_pal_index,
+					{cast(u8)x, cast(u8)z},
+					cast(u8)solid_height,
+				)
+			}
+		}
+	}
+	
+	// defer add_to_chunk_needs_meshing_q(w_map,pos)
+}
+
+Check_Needs_Meshing_Q_Data::struct{
+	pos:[4]int,
+}
+manage_chunk_needs_meshing_q::proc(w_map:^Map)->(did_work:bool){
+	for {
+		value, ok := chan.try_recv(w_map.check_needs_meshing_chan)
+		if !ok {
+			break // More idiomatic than return here
+		}
+		did_work=true
+		// do_a_gen_mesh_data_q(w_map,value)
+		check_needs_meshing_q(w_map,value)
+	}
+	return
+}
+add_to_chunk_needs_meshing_q::proc(
+	w_map:^Map,
+	pos:[4]int,
+){
+	chan.send(w_map.check_needs_meshing_chan,Check_Needs_Meshing_Q_Data{pos})
+	return
+}
+check_needs_meshing_q::proc(w_map:^Map,q:Check_Needs_Meshing_Q_Data){
+	check_if_chunk_needs_meshing(w_map,q.pos)
+}
+
+
+check_if_chunk_needs_meshing::proc(w_map:^Map,pos:[4]int){
+	chunk_hd,ok:= w_map.chunks_map[pos]
+	assert(ok)
+	chunk_data,chunk_data_ok:=hm.dynamic_get(&w_map.chunks,chunk_hd)
+	assert(chunk_data_ok)
+	vox_hd:=chunk_data.vox_data_hd
+	vox_data,vox_data_ok:=hm.dynamic_get(&w_map.vox_chunk_hm,vox_hd)
+	assert(vox_data_ok)
+	if atom.atomic_load(&vox_data.vox_gened) == false {return}
 	next_side:for side in Model_Sides{
 		opposite_side:=side
 		key:=pos
 		lower_lod_key:[4][4]int={pos,pos,pos,pos,}
 		lod_size:= pos.w
-	// 	switch side{
-	// 	case .pos_x:
-	// 		opposite_side = .neg_x
-	// 		key += {1*lod_size,0,0,0}
-	// 		lower_lod_key = key
-	// 		if lod_size > 1{
-	// 			lower_lod_key -= {1*(lod_size/2),0,0,(lod_size/2)}
-	// 			lower_lod_key[1] += {0,1*(lod_size/2),0,0}
-	// 			lower_lod_key[2] += {0,1*(lod_size/2),1*(lod_size/2),0}
-	// 			lower_lod_key[3] += {0,0,1*(lod_size/2),0}
-	// 		}
-	// 	case .neg_x:
-	// 		opposite_side = .pos_x
-	// 		key += {-1*lod_size,0,0,0}
-	// 		lower_lod_key = key
-	// 		if lod_size > 1{
-	// 			lower_lod_key -= {-1*(lod_size/2),0,0,(lod_size/2)}
-	// 			lower_lod_key[1] += {0,1*(lod_size/2),0,0}
-	// 			lower_lod_key[2] += {0,1*(lod_size/2),1*(lod_size/2),0}
-	// 			lower_lod_key[3] += {0,0,1*(lod_size/2),0}
-	// 		}
-	// 	case .pos_y:
-	// 		opposite_side = .neg_y
-	// 		key += {0,1*lod_size,0,0}
-	// 		lower_lod_key = key
-	// 		if lod_size > 1{
-	// 			lower_lod_key -= {0,1*(lod_size/2),0,(lod_size/2)}
-	// 			lower_lod_key[1] += {1*(lod_size/2),0,0,0}
-	// 			lower_lod_key[2] += {1*(lod_size/2),0,1*(lod_size/2),0}
-	// 			lower_lod_key[3] += {0,0,1*(lod_size/2),0}
-	// 		}
-	// 	case .neg_y:
-	// 		opposite_side = .pos_y
-	// 		key += {0,-1*lod_size,0,0}
-	// 		lower_lod_key = key
-	// 		if lod_size > 1{
-	// 			lower_lod_key -= {0,-1*(lod_size/2),0,(lod_size/2)}
-	// 			lower_lod_key[1] += {1*(lod_size/2),0,0,0}
-	// 			lower_lod_key[2] += {1*(lod_size/2),0,1*(lod_size/2),0}
-	// 			lower_lod_key[3] += {0,0,1*(lod_size/2),0}
-	// 		}
-	// 	case .pos_z:
-	// 		opposite_side = .neg_z
-	// 		key += {0,0,1*lod_size,0}
-	// 		lower_lod_key = key
-	// 		if lod_size > 1{
-	// 			lower_lod_key -= {0,0,1*(lod_size/2),(lod_size/2)}
-	// 			lower_lod_key[1] += {1*(lod_size/2),0,0,0}
-	// 			lower_lod_key[2] += {1*(lod_size/2),1*(lod_size/2),0,0}
-	// 			lower_lod_key[3] += {0,1*(lod_size/2),0,0}
-	// 		}
-	// 	case .neg_z:
-	// 		opposite_side = .pos_z
-	// 		key += {0,0,-1*lod_size,0}
-	// 		lower_lod_key = key
-	// 		if lod_size > 1{
-	// 			lower_lod_key -= {0,0,-1*(lod_size/2),(lod_size/2)}
-	// 			lower_lod_key[1] += {1*(lod_size/2),0,0,0}
-	// 			lower_lod_key[2] += {1*(lod_size/2),1*(lod_size/2),0,0}
-	// 			lower_lod_key[3] += {0,1*(lod_size/2),0,0}
-	// 		}
-	// 	case .extra:
-	// 		continue next_side //TODO NOT USING EXTRA Sides yet
-	// 	}
-
 		switch side {
 		case .pos_x:
 			opposite_side = .neg_x
@@ -1520,8 +1225,9 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[4]int){
 		has_4_neighbors:bool
 		neighbor_chunk_hds:[4]Chunk_HD
 		chunk_hd_ok:bool
-		neighbor_chunk_hds[0], ok = w_map.chunks_map[key]
-		if !ok{
+		neighbor_chunk_ok:bool
+		neighbor_chunk_hds[0], neighbor_chunk_ok = w_map.chunks_map[key]
+		if !neighbor_chunk_ok{
 			if lod_size > 1{
 				has_4_neighbors = true
 				nab_lod_0_ok:bool
@@ -1551,6 +1257,7 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[4]int){
 			for &neighbor_chunk,i in &neighbor_chunks{
 				neighbor_chunk_ok:bool
 				neighbor_chunk,neighbor_chunk_ok=get_chunk(w_map,neighbor_chunk_hds[i])
+				
 				if !neighbor_chunk_ok {continue next_side}
 				
 			}
@@ -1559,323 +1266,99 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[4]int){
 		neighbor_vox_chunks:[4]^Vox_Chunk_Data
 		if  !has_4_neighbors{
 			neighbor_vox_data,neighbor_vox_data_ok:=get_vox_chunk_data(w_map,neighbor_chunks[0].vox_data_hd)
-			if !neighbor_vox_data_ok{
+			if  !neighbor_vox_data.vox_gened{
+				continue next_side
+			}
+			if !neighbor_vox_data_ok {
 				continue next_side
 			}
 		}else{
 			for &neighbor_chunk,i in &neighbor_chunks{
 				neighbor_vox_data_ok:bool
 				neighbor_vox_chunks[i],neighbor_vox_data_ok=get_vox_chunk_data(w_map,neighbor_chunk.vox_data_hd)
+				if !neighbor_vox_chunks[i].vox_gened  {continue next_side}
 				if !neighbor_vox_data_ok {continue next_side}
 				
 			}
 		}
 		// Mesh the chunk itself
+		// if true {return}
 		if !has_4_neighbors {
+			add_to_gen_mesh_data_q(
+			    w_map = w_map,
+			    chunk_hd = chunk_hd,
+				// neighbor_chunk_hd =	neighbor_chunk_hd,
+			    vox_chunk_hd = chunk_data.vox_data_hd,
+			    neighbor_vox_chunk_hd = {neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd},
+				has_4_neighbors = has_4_neighbors,
+			    side = side,
+			)
 
-		add_to_gen_mesh_data_q(
-		    w_map = w_map,
-		    chunk_hd = chunk_hd,
-			// neighbor_chunk_hd =	neighbor_chunk_hd,
-		    vox_chunk_hd = chunk.vox_data_hd,
-		    neighbor_vox_chunk_hd = {neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd},
-			has_4_neighbors = has_4_neighbors,
-		    side = side,
-		)
-
-		add_to_gen_mesh_data_q(
-			w_map = w_map,
-			chunk_hd = neighbor_chunk_hds[0],
-			// neighbor_chunk_hd = chunk_hd,
-			vox_chunk_hd = neighbor_chunks[0].vox_data_hd,
-			neighbor_vox_chunk_hd ={chunk.vox_data_hd,chunk.vox_data_hd,chunk.vox_data_hd,chunk.vox_data_hd,},
-			has_4_neighbors = has_4_neighbors,
-			side = opposite_side,
-		)
-
+			add_to_gen_mesh_data_q(
+				w_map = w_map,
+				chunk_hd = neighbor_chunk_hds[0],
+				// neighbor_chunk_hd = chunk_hd,
+				vox_chunk_hd = neighbor_chunks[0].vox_data_hd,
+				neighbor_vox_chunk_hd ={chunk_data.vox_data_hd,chunk_data.vox_data_hd,chunk_data.vox_data_hd,chunk_data.vox_data_hd,},
+				has_4_neighbors = has_4_neighbors,
+				side = opposite_side,
+			)
 		// Mesh the neighbor too
-// 	
-		}else if has_4_neighbors{
-
+		}else if has_4_neighbors{	
 			add_to_gen_mesh_data_q(
 				w_map = w_map,
 				chunk_hd = chunk_hd,
 				// neighbor_chunk_hd = chunk_hd,
-				vox_chunk_hd = chunk.vox_data_hd,
+				vox_chunk_hd = chunk_data.vox_data_hd,
 				neighbor_vox_chunk_hd = {neighbor_chunks[0].vox_data_hd,neighbor_chunks[1].vox_data_hd,neighbor_chunks[2].vox_data_hd,neighbor_chunks[3].vox_data_hd},
 				has_4_neighbors = has_4_neighbors,
 				side = side,
 			)
 		}
-
 	}
 }
 
-// gen_vox_data :: proc(
-// 	w_map:^Map,
-// 	vox_chunk:^Vox_Chunk_Data,
-// 	chunk:^Chunk,
-// 	pos:[4]int,
-// ){
-// 	vox_chunk.pos = pos
-// 	lod_lev:=pos.w
-
-// 	chunk.chunk_shader_data.pos={
-// 		cast(i32)pos.x,
-// 		cast(i32)pos.y,
-// 		cast(i32)pos.z,
-// 		cast(i32)pos.w,
-// 	}
-
-// 	xz_scl:f64=0.001
-// 	y_scl:f64=600.0
-
-// 	world_x_start:=pos.x*CHUNK_SIZE
-// 	world_y_start:=pos.y*CHUNK_SIZE
-// 	world_z_start:=pos.z*CHUNK_SIZE
-
-// 	grass_pal_index:=get_or_add_palette_index(vox_chunk,g.df_items[.grass])
-// 	stone_pal_index:=get_or_add_palette_index(vox_chunk,g.df_items[.stone_slate])
-	
-// 	for x := 0; x < CHUNK_SIZE; x += 1 {
-// 		world_x := world_x_start + x
-// 		x_bit := u32(1) << u32(x)
-	
-// 		for z := 0; z < CHUNK_SIZE; z += 1 {
-// 			world_z := world_z_start + z
-
-// 			height := nos.noise_2d(
-// 				6223378936854776807,
-// 				{
-// 					cast(f64)world_x * xz_scl,
-// 					cast(f64)world_z * xz_scl,
-// 				},
-// 			)
-			
-// 			height_x := nos.noise_2d(
-// 				6223378936854776807,
-// 				{
-// 					cast(f64)(world_x + 1) * xz_scl,
-// 					cast(f64)world_z * xz_scl,
-// 				},
-// 			)
-			
-// 			height_z := nos.noise_2d(
-// 				6223378936854776807,
-// 				{
-// 					cast(f64)world_x * xz_scl,
-// 					cast(f64)(world_z + 1) * xz_scl,
-// 				},
-// 			)
-
-
-			
-// 			change_x := math.abs(height_x - height)
-// 			change_z := math.abs(height_z - height)
-			
-// 			height_change := max(change_x, change_z)
-// 			is_steep := height_change > 0.003
-
-// 			height = (height + 1.0) * 0.5
-// 			height = math.pow(height, 2.5)
-	
-// 			solid_height := cast(int)(height * cast(f32)y_scl) - world_y_start
-	
-// 			if solid_height <= 0 {
-// 				continue
-// 			}
-	
-// 			if solid_height > CHUNK_SIZE {
-// 				solid_height = CHUNK_SIZE
-// 			}
-
-// 			if is_steep{
-// 				set_blocks_in_chunk_by_col_pal_index(
-// 					vox_chunk,
-// 					stone_pal_index,
-// 					{cast(u8)x,cast(u8)z},
-// 					cast(u8)solid_height,
-// 				)
-// 			}else{
-// 				set_blocks_in_chunk_by_col_pal_index(
-// 					vox_chunk,
-// 					grass_pal_index,
-// 					{cast(u8)x,cast(u8)z},
-// 					cast(u8)solid_height,
-// 				)
-// 			}
-// 		}
-// 	}
-// }
-
-gen_vox_data :: proc(
-	w_map:^Map,
-	vox_chunk:^Vox_Chunk_Data,
-	chunk:^Chunk,
-	pos:[4]int,
-){
-	vox_chunk.pos = pos
-	lod_lev := pos.w
-
-	chunk.chunk_shader_data.pos = {
-		cast(i32)pos.x,
-		cast(i32)pos.y,
-		cast(i32)pos.z,
-		cast(i32)pos.w,
-	}
-
-	xz_scl:f64 = 0.001
-	y_scl:f64 = 600.0
-
-	world_x_start := pos.x * CHUNK_SIZE
-	world_y_start := pos.y * CHUNK_SIZE
-	world_z_start := pos.z * CHUNK_SIZE
-
-	grass_pal_index := get_or_add_palette_index(vox_chunk, g.df_items[.grass])
-	stone_pal_index := get_or_add_palette_index(vox_chunk, g.df_items[.stone_slate])
-
-	for x := 0; x < CHUNK_SIZE; x += 1 {
-		world_x := world_x_start + x * lod_lev + lod_lev / 2
-
-		for z := 0; z < CHUNK_SIZE; z += 1 {
-			world_z := world_z_start + z * lod_lev + lod_lev / 2
-
-			height := nos.noise_2d(
-				6223378936854776807,
-				{
-					cast(f64)world_x * xz_scl,
-					cast(f64)world_z * xz_scl,
-				},
-			)
-
-			height_x := nos.noise_2d(
-				6223378936854776807,
-				{
-					cast(f64)(world_x + lod_lev) * xz_scl,
-					cast(f64)world_z * xz_scl,
-				},
-			)
-
-			height_z := nos.noise_2d(
-				6223378936854776807,
-				{
-					cast(f64)world_x * xz_scl,
-					cast(f64)(world_z + lod_lev) * xz_scl,
-				},
-			)
-
-			change_x := math.abs(height_x - height)
-			change_z := math.abs(height_z - height)
-
-			height_change := max(change_x/cast(f32)lod_lev, change_z/cast(f32)lod_lev)
-			is_steep := height_change > 0.003
-
-			height = (height + 1.0) * 0.5
-			height = math.pow(height, 2.5)
-
-			world_height := cast(int)(height * cast(f32)y_scl)
-			solid_height := (world_height - world_y_start) / lod_lev
-
-			if solid_height <= 0 {
-				continue
-			}
-
-			if solid_height > CHUNK_SIZE {
-				solid_height = CHUNK_SIZE
-			}
-
-			if is_steep {
-				set_blocks_in_chunk_by_col_pal_index(
-					vox_chunk,
-					stone_pal_index,
-					{cast(u8)x, cast(u8)z},
-					cast(u8)solid_height,
-				)
-			} else {
-				set_blocks_in_chunk_by_col_pal_index(
-					vox_chunk,
-					grass_pal_index,
-					{cast(u8)x, cast(u8)z},
-					cast(u8)solid_height,
-				)
-			}
-		}
-	}
-}
-
-Destroy_Vox_Data_Q::hm.Dynamic_Handle_Map(Destroy_Vox_Data_Q_Data,Destroy_Vox_Data_HD)
-Destroy_Vox_Data_HD::distinct hm.Handle64
 Destroy_Vox_Data_Q_Data::struct{
-	handle:Destroy_Vox_Data_HD,
 	data_hd:Vox_Chunk_Data_HD,
-	q_state:Q_State,
 }
 manage_destroy_vox_data_q::proc(w_map:^Map)->(did_work:bool){
-	it := hm.iterator_make(&w_map.destroy_vox_data_q)
-	for q, q_hd in hm.iterate(&it) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
-			hm.remove(&w_map.destroy_vox_data_q,q_hd)
+	for {
+		value, ok := chan.try_recv(w_map.destroy_vox_data_chan)
+		if !ok {
+			break // More idiomatic than return here
 		}
-	}
-
-	it_2 := hm.iterator_make(&w_map.destroy_vox_data_q)
-	for q, q_hd in hm.iterate(&it_2) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable  {
-			do_a_destroy_vox_data_q(w_map,q_hd)
-			did_work = true
-		}
+		did_work=true
+		do_a_destroy_vox_data_q(w_map,value)
 	}
 	return
 }
-add_to_destroy_vox_data_q::proc(w_map:^Map,vox_data_hd:Vox_Chunk_Data_HD)->(q_hd:Destroy_Vox_Data_HD){
-	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.destroy_vox_data_q, Destroy_Vox_Data_Q_Data{data_hd = vox_data_hd})
-	q,q_ok:=hm.get(&w_map.destroy_vox_data_q,q_hd)
-	if err != .None{
-		log.log(.Error, err )
-	}
-	if !q_ok{
-		log.log(.Error, "err",err,"q",q,"q_hd",q_hd )
-	}
-	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
-	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+add_to_destroy_vox_data_q::proc(w_map:^Map,vox_data_hd:Vox_Chunk_Data_HD){
+	chan.send(w_map.destroy_vox_data_chan,Destroy_Vox_Data_Q_Data{vox_data_hd})
 	return
 }
-do_a_destroy_vox_data_q::proc(w_map:^Map,hd:Destroy_Vox_Data_HD){
-	q,ok:=hm.get(&w_map.destroy_vox_data_q,hd)
-	if ok{
-		delete_vox_chunk_data(w_map,q.data_hd)
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
+do_a_destroy_vox_data_q::proc(w_map:^Map,q:Destroy_Vox_Data_Q_Data){
+
+	delete_vox_chunk_data(w_map,q.data_hd)
+
 }
 
-Gen_Mesh_Data_Q::hm.Dynamic_Handle_Map(Gen_Mesh_Data_Q_Data,Gen_Mesh_Data_Q_HD)
-Gen_Mesh_Data_Q_HD::distinct hm.Handle64
+
 Gen_Mesh_Data_Q_Data::struct{
-	handle:Gen_Mesh_Data_Q_HD,
+
 	data_hd:Chunk_HD,
-	// neighbor_data_hd:Chunk_HD,
 	vox_chunk_hd:Vox_Chunk_Data_HD,
 	neighbor_vox_chunk_hd:[4]Vox_Chunk_Data_HD,
 	has_4_neighbors:bool,
 	side:Model_Sides,
-	q_state:Q_State,
 }
 manage_gen_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
-
-	it := hm.iterator_make(&w_map.gen_mesh_data_q)
-	for q, q_hd in hm.iterate(&it) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
-			hm.remove(&w_map.gen_mesh_data_q,q_hd)
+	for {
+		value, ok := chan.try_recv(w_map.gen_mesh_data_chan)
+		if !ok {
+			break // More idiomatic than return here
 		}
-	}
-
-	it_2 := hm.iterator_make(&w_map.gen_mesh_data_q)
-	for q, q_hd in hm.iterate(&it_2) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable {
-			did_work = true
-			do_a_gen_mesh_data_q(w_map, q_hd)
-		}
+		did_work=true
+		do_a_gen_mesh_data_q(w_map,value)
 	}
 	return
 }
@@ -1886,39 +1369,35 @@ add_to_gen_mesh_data_q::proc(
 	neighbor_vox_chunk_hd:[4]Vox_Chunk_Data_HD,
 	has_4_neighbors:bool,
 	side:Model_Sides
-)->(q_hd:Gen_Mesh_Data_Q_HD){
-	
-	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.gen_mesh_data_q, Gen_Mesh_Data_Q_Data{vox_chunk_hd=vox_chunk_hd, data_hd=chunk_hd, neighbor_vox_chunk_hd=neighbor_vox_chunk_hd,has_4_neighbors=has_4_neighbors,side = side})
-	q,q_ok:=hm.get(&w_map.gen_mesh_data_q,q_hd)
-	if err != .None{
-		log.log(.Error, err )
-	}
-	if !q_ok{
-		log.log(.Error, "err",err,"q",q,"q_hd",q_hd )
-	}
-	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
-	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+){
+	chunk, chunk_ok:=hm.get(&w_map.chunks,chunk_hd)
+	assert(chunk_ok)
+
+	if chunk.mesh_q_state[side] == .in_q {return}
+	chunk.mesh_q_state[side] = .in_q
+	chan.send(w_map.gen_mesh_data_chan,Gen_Mesh_Data_Q_Data{chunk_hd,vox_chunk_hd,neighbor_vox_chunk_hd,has_4_neighbors,side})
 	return
 }
-do_a_gen_mesh_data_q::proc(w_map:^Map,hd:Gen_Mesh_Data_Q_HD){
-	q,ok:=hm.get(&w_map.gen_mesh_data_q,hd)
-	if !ok{
-		log.log(.Warning,"invalid",hd)
-	}
-	if ok{
-		mesh_chunk_side(
-			w_map = w_map, 
-			chunk_hd=q.data_hd, 
-			// neighbor_chunk_hd=q.neighbor_data_hd, 
-			vox_data_hd=q.vox_chunk_hd, 
-			neighbor_vox_hd = q.neighbor_vox_chunk_hd,
-			has_4_neighbors= q.has_4_neighbors,
-			side = q.side
-		)
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
+do_a_gen_mesh_data_q::proc(w_map:^Map,q:Gen_Mesh_Data_Q_Data){
+
+	mesh_chunk_side(
+		w_map = w_map, 
+		chunk_hd=q.data_hd, 
+		// neighbor_chunk_hd=q.neighbor_data_hd, 
+		vox_data_hd=q.vox_chunk_hd, 
+		neighbor_vox_hd = q.neighbor_vox_chunk_hd,
+		has_4_neighbors= q.has_4_neighbors,
+		side = q.side
+	)
+
 }
+
+// do_gen_mesh_data_task::proc(task: thread.Task){
+// 	vox_data:=cast(^Chunk_Mesh_Data)task.data
+// 	w_map:=w_map_thread_data
+// 	mesh_chunk_side(w_map,vox_data)
+// }
+
 
 mesh_chunk_side::proc(
 	w_map:^Map,
@@ -1956,16 +1435,7 @@ mesh_chunk_side::proc(
 			return
 		}
 	}
-	// log.log(.Debug,"starting meshiong2")
-
-	// face_count:=mesh_by_side_all(w_map,chunk_vox,mesh_data,side)
-	face_count:=mesh_by_bit_mask(w_map,vox_data_hd,neighbor_vox_hd,mesh_data,has_4_neighbors,side)
-
-	if face_count <= 0 {
-		add_to_destroy_mesh_data_q(w_map,chunk.mesh_data[side])
-		return
-	}
-	add_to_upload_mesh_data_q(w_map,chunk_hd,chunk.mesh_data[side],side)
+	start_mesh_chunk_task(w_map,Mesh_Chunk_Task{w_map,chunk_hd,vox_data_hd,neighbor_vox_hd,chunk.mesh_data[side],has_4_neighbors,side})
 }
 
 //WARN this one is very slow and is just for debuging
@@ -2001,12 +1471,23 @@ mesh_chunk_side::proc(
 // 	return face_count
 // }
 
+// do_mesh_chunk_side_task::proc(task: thread.Task){
+
+// 	tg.name_thread("mesh_chunk_side_task",task.user_index)
+// 	context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
+// 	defer tg.destroy_tg_console_logger(context.logger)
+
+// 	vox_data:=cast(^Vox_Chunk_Data)task.data
+// 	w_map:=w_map_thread_data
+// 	// mesh_by_bit_mask(w_map,vox_data)
+// }
 
 mesh_by_bit_mask :: proc(
 	w_map: ^Map,
+	chunk_hd:Chunk_HD,
 	vox_data_hd: Vox_Chunk_Data_HD,
 	neighbor_vox_hd: [4]Vox_Chunk_Data_HD,
-	mesh: ^Chunk_Mesh_Data,
+	mesh_hd: Chunk_Mesh_Data_HD,
 	has_4_neighbors:bool,
 	side: Model_Sides,
 ) -> (face_count: int) {
@@ -2016,7 +1497,11 @@ mesh_by_bit_mask :: proc(
 	
 	neighbor_vox, neighbor_vox_ok := get_vox_chunk_data(w_map, neighbor_vox_hd[0])
 	if !neighbor_vox_ok {log.log(.Error, "failed, neighbor_vox_data_hd not valid", neighbor_vox_hd);return}
-	
+	mesh,mesh_ok:=hm.get(&w_map.chunks_mesh_data,mesh_hd)
+	if !mesh_ok{
+		return
+	}
+	assert(mesh_ok)
 	
 	neighbors_vox:[4]^Vox_Chunk_Data
 	if has_4_neighbors{
@@ -2026,9 +1511,11 @@ mesh_by_bit_mask :: proc(
 			if !neighbor_vox_4_ok {log.log(.Error, "failed, neighbor_vox_data_hd not valid", neighbor_vox_hd);return}
 		}
 	}
-
 	chunk_ab := &chunk_vox_data.backing_chunk_data_abstract
+	assert(chunk_ab.pal_count != nil)
 	chunk_pal_count := chunk_ab.pal_count^
+	assert(chunk_vox_data.backing_mask_data != nil)
+	assert(chunk_vox_data.backing_world_data != nil)
 
 	texture_cache: []u32
 	geometry_cache: []u16
@@ -2053,20 +1540,28 @@ mesh_by_bit_mask :: proc(
 		}
 	}
 	mesh.face_count = 0
-	chunk_mask, chunk_mask_ok := hm.get(chunk_vox_data.backing_mask_data,chunk_vox_data.vox_mask_hd,)
+	chunk_mask, chunk_mask_ok := hm.get(&chunk_vox_data.backing_mask_data.hm,chunk_vox_data.vox_mask_hd,)
 	// assert(chunk_mask_ok)
-	neighbor_mask, neighbor_mask_ok := hm.get(neighbor_vox.backing_mask_data,neighbor_vox.vox_mask_hd,)
+	neighbor_mask, neighbor_mask_ok := hm.get(&neighbor_vox.backing_mask_data.hm,neighbor_vox.vox_mask_hd,)
 	// assert(neighbor_mask_ok)
-	cur_neighbor_mask:=neighbor_mask.is_opaque_mask
+	cur_neighbor_mask:[CHUNK_SIZE * CHUNK_SIZE]u32
+	if neighbor_mask != nil{
+		cur_neighbor_mask=neighbor_mask.is_opaque_mask
+	}
+
 
 	current_masks: [CHUNK_SIZE * CHUNK_SIZE]u32
 	neighbor_masks: [CHUNK_SIZE * CHUNK_SIZE]u32
 	
 	if has_4_neighbors {
-		n_mask_0,_ := hm.get(neighbors_vox[0].backing_mask_data,neighbors_vox[0].vox_mask_hd)
-		n_mask_1,_ := hm.get(neighbors_vox[1].backing_mask_data,neighbors_vox[1].vox_mask_hd)
-		n_mask_2,_ := hm.get(neighbors_vox[2].backing_mask_data,neighbors_vox[2].vox_mask_hd)
-		n_mask_3,_ := hm.get(neighbors_vox[3].backing_mask_data,neighbors_vox[3].vox_mask_hd)
+		n_mask_0,n_mask_0_ok := hm.get(&neighbors_vox[0].backing_mask_data.hm,neighbors_vox[0].vox_mask_hd);
+		assert(n_mask_0_ok)
+		n_mask_1,n_mask_1_ok := hm.get(&neighbors_vox[1].backing_mask_data.hm,neighbors_vox[1].vox_mask_hd)
+		assert(n_mask_1_ok)
+		n_mask_2,n_mask_2_ok := hm.get(&neighbors_vox[2].backing_mask_data.hm,neighbors_vox[2].vox_mask_hd)
+		assert(n_mask_2_ok)
+		n_mask_3,n_mask_3_ok := hm.get(&neighbors_vox[3].backing_mask_data.hm,neighbors_vox[3].vox_mask_hd)
+		assert(n_mask_3_ok)
 	
 		masks := [4][CHUNK_SIZE*CHUNK_SIZE]u32{
 			n_mask_0.is_opaque_mask,
@@ -2077,10 +1572,12 @@ mesh_by_bit_mask :: proc(
 
 	
 		#partial switch side {
-		case .pos_x, .neg_x, .pos_z, .neg_z:
-			cur_neighbor_mask = sample_4_neighbor_masks_xz(masks,side)
+		case .pos_x, .neg_x:
+			cur_neighbor_mask = sample_4_neighbor_masks_x(masks,side)
 		case .pos_y, .neg_y:
 			cur_neighbor_mask = sample_4_neighbor_masks_y(masks,side)
+		case .pos_z, .neg_z:
+			cur_neighbor_mask = sample_4_neighbor_masks_z(masks,side)
 		}
 
 	}
@@ -2181,69 +1678,8 @@ mesh_by_bit_mask :: proc(
 			face_count += 1
 		}
 	}
-
 	mesh.face_count = face_count
 	return face_count
-}
-sample_4_neighbor_masks_xz :: proc(
-	m: [4][CHUNK_SIZE * CHUNK_SIZE]u32,
-	side: Model_Sides,
-) -> [CHUNK_SIZE * CHUNK_SIZE]u32 {
-	out: [CHUNK_SIZE * CHUNK_SIZE]u32
-
-	if side == .pos_x || side == .neg_x {
-		src_x := 0
-		out_x := 1
-
-		if side == .neg_x {
-			src_x = 31
-			out_x = 31
-		}
-
-		for z := 0; z < 32; z += 1 {
-			for y := 0; y < 32; y += 1 {
-				fy := (y & 15) << 1
-				fz := (z & 15) << 1
-				q := (y >> 4) | ((z >> 4) << 1)
-
-				a := (m[q][src_x + fz * 32] >> u32(fy)) & 1
-				b := (m[q][src_x + fz * 32] >> u32(fy + 1)) & 1
-				c := (m[q][src_x + (fz + 1) * 32] >> u32(fy)) & 1
-				d := (m[q][src_x + (fz + 1) * 32] >> u32(fy + 1)) & 1
-
-				if (a & b & c & d) != 0 {
-					out[out_x + z * 32] |= u32(1) << u32(y)
-				}
-			}
-		}
-	} else {
-		src_z := 0
-		out_z := 0
-
-		if side == .neg_z {
-			src_z = 31
-			out_z = 31
-		}
-
-		for x := 0; x < 32; x += 1 {
-			for y := 0; y < 32; y += 1 {
-				fx := (x & 15) << 1
-				fy := (y & 15) << 1
-				q := (x >> 4) | ((y >> 4) << 1)
-
-				a := (m[q][fx + src_z * 32] >> u32(fy)) & 1
-				b := (m[q][fx + 1 + src_z * 32] >> u32(fy)) & 1
-				c := (m[q][fx + src_z * 32] >> u32(fy + 1)) & 1
-				d := (m[q][fx + 1 + src_z * 32] >> u32(fy + 1)) & 1
-
-				if (a & b & c & d) != 0 {
-					out[x + out_z * 32] |= u32(1) << u32(y)
-				}
-			}
-		}
-	}
-
-	return out
 }
 
 sample_4_neighbor_masks_y :: proc(
@@ -2252,80 +1688,126 @@ sample_4_neighbor_masks_y :: proc(
 ) -> [CHUNK_SIZE * CHUNK_SIZE]u32 {
 	out: [CHUNK_SIZE * CHUNK_SIZE]u32
 
-	bit: u32 = 0
+	src_bit: u32 = 0
 	if side == .neg_y {
-		bit = 31
+		src_bit = 31
 	}
 
-	for z := 0; z < 32; z += 1 {
-		for x := 0; x < 32; x += 1 {
+	for z := 0; z < CHUNK_SIZE; z += 1 {
+		fz := (z & 15) << 1
+		qz := (z >> 4) << 1
+
+		for x := 0; x < CHUNK_SIZE; x += 1 {
 			fx := (x & 15) << 1
-			fz := (z & 15) << 1
-			q := (x >> 4) | ((z >> 4) << 1)
+			q := (x >> 4) | qz
 
-			a := (m[q][fx + fz * 32] >> bit) & 1
-			b := (m[q][fx + 1 + fz * 32] >> bit) & 1
-			c := (m[q][fx + (fz + 1) * 32] >> bit) & 1
-			d := (m[q][fx + 1 + (fz + 1) * 32] >> bit) & 1
+			a := (m[q][fx + fz*CHUNK_SIZE] >> src_bit) & 1
+			b := (m[q][fx + 1 + fz*CHUNK_SIZE] >> src_bit) & 1
+			c := (m[q][fx + (fz+1)*CHUNK_SIZE] >> src_bit) & 1
+			d := (m[q][fx + 1 + (fz+1)*CHUNK_SIZE] >> src_bit) & 1
 
-			if (a & b & c & d) != 0 {
-				out[x + z * 32] |= u32(1) << bit
-			}
+			out[x + z*CHUNK_SIZE] = (a & b & c & d) << src_bit
+		}
+	}
+
+	return out
+}
+sample_4_neighbor_masks_x :: proc(
+	m: [4][CHUNK_SIZE * CHUNK_SIZE]u32,
+	side: Model_Sides,
+) -> [CHUNK_SIZE * CHUNK_SIZE]u32 {
+	out: [CHUNK_SIZE * CHUNK_SIZE]u32
+
+	src_x := 0
+	out_x := 0
+
+	if side == .neg_x {
+		src_x = CHUNK_SIZE - 1
+		out_x = CHUNK_SIZE - 1
+	}
+
+	for z := 0; z < CHUNK_SIZE; z += 1 {
+		fz := (z & 15) << 1
+		qz := (z >> 4) << 1
+
+		for y := 0; y < CHUNK_SIZE; y += 1 {
+			fy := (y & 15) << 1
+			q := (y >> 4) | qz
+
+			i0 := src_x + fz*CHUNK_SIZE
+			i1 := src_x + (fz+1)*CHUNK_SIZE
+
+			a := (m[q][i0] >> u32(fy)) & 1
+			b := (m[q][i0] >> u32(fy+1)) & 1
+			c := (m[q][i1] >> u32(fy)) & 1
+			d := (m[q][i1] >> u32(fy+1)) & 1
+
+			out[out_x + z*CHUNK_SIZE] |=
+				(a & b & c & d) << u32(y)
+		}
+	}
+
+	return out
+}
+sample_4_neighbor_masks_z :: proc(
+	m: [4][CHUNK_SIZE * CHUNK_SIZE]u32,
+	side: Model_Sides,
+) -> [CHUNK_SIZE * CHUNK_SIZE]u32 {
+	out: [CHUNK_SIZE * CHUNK_SIZE]u32
+
+	src_z := 0
+	out_z := 0
+
+	if side == .neg_z {
+		src_z = CHUNK_SIZE - 1
+		out_z = CHUNK_SIZE - 1
+	}
+
+	for x := 0; x < CHUNK_SIZE; x += 1 {
+		fx := (x & 15) << 1
+		qx := x >> 4
+
+		for y := 0; y < CHUNK_SIZE; y += 1 {
+			fy := (y & 15) << 1
+			q := qx | ((y >> 4) << 1)
+
+			i0 := fx + src_z*CHUNK_SIZE
+			i1 := fx + 1 + src_z*CHUNK_SIZE
+
+			a := (m[q][i0] >> u32(fy)) & 1
+			b := (m[q][i1] >> u32(fy)) & 1
+			c := (m[q][i0] >> u32(fy+1)) & 1
+			d := (m[q][i1] >> u32(fy+1)) & 1
+
+			out[x + out_z*CHUNK_SIZE] |=
+				(a & b & c & d) << u32(y)
 		}
 	}
 
 	return out
 }
 
-Destroy_Mesh_Data_Q::hm.Dynamic_Handle_Map(Destroy_Mesh_Data_Q_Data,Destroy_Mesh_Data_Q_HD)
-Destroy_Mesh_Data_Q_HD::distinct hm.Handle64
 Destroy_Mesh_Data_Q_Data::struct{
-	handle:Destroy_Mesh_Data_Q_HD,
 	mesh_data_hd:Chunk_Mesh_Data_HD,
-	q_state:Q_State,
 }
 manage_destroy_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
-
-	it := hm.iterator_make(&w_map.destroy_mesh_data_q)
-	for q, q_hd in hm.iterate(&it) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
-			hm.remove(&w_map.destroy_mesh_data_q,q_hd)
+	for {
+		value, ok := chan.try_recv(w_map.destroy_mesh_data_chan)
+		if !ok {
+			break // More idiomatic than return here
 		}
+		did_work=true
+		do_a_destroy_mesh_data_q(w_map, value)
 	}
 
-	it_2 := hm.iterator_make(&w_map.destroy_mesh_data_q)
-	for q, q_hd in hm.iterate(&it_2) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable {
-			do_a_destroy_mesh_data_q(w_map, q_hd)
-			did_work = true
-		}
-	}
 	return
 }
-add_to_destroy_mesh_data_q::proc(w_map:^Map,mesh_data_hd:Chunk_Mesh_Data_HD)->(q_hd:Destroy_Mesh_Data_Q_HD){
-	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.destroy_mesh_data_q, Destroy_Mesh_Data_Q_Data{mesh_data_hd = mesh_data_hd})
-	q,q_ok:=hm.get(&w_map.destroy_mesh_data_q,q_hd)
-	if err != .None{
-		log.log(.Error, err )
-	}
-	if !q_ok{
-		log.log(.Error, "err",err,"q",q,"q_hd",q_hd )
-	}
-	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
-	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+add_to_destroy_mesh_data_q::proc(w_map:^Map,mesh_data_hd:Chunk_Mesh_Data_HD){
+	chan.send(w_map.destroy_mesh_data_chan,Destroy_Mesh_Data_Q_Data{mesh_data_hd})
 	return
 }
-do_a_destroy_mesh_data_q::proc(w_map:^Map,hd:Destroy_Mesh_Data_Q_HD){
-	q,ok:=hm.get(&w_map.destroy_mesh_data_q,hd)
-	if !ok{
-		log.log(.Warning,hd,q)
-	}
-	if ok{
-		destroy_mesh_data(w_map,q.mesh_data_hd)
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
-
+do_a_destroy_mesh_data_q::proc(w_map:^Map,q:Destroy_Mesh_Data_Q_Data){
+	destroy_mesh_data(w_map,q.mesh_data_hd)
 }
 destor_count:int
 destroy_mesh_data::proc(w_map:^Map,hd:Chunk_Mesh_Data_HD){
@@ -2340,32 +1822,25 @@ destroy_mesh_data::proc(w_map:^Map,hd:Chunk_Mesh_Data_HD){
 	}
 }
 
-Upload_Mesh_Data_Q::hm.Dynamic_Handle_Map(Upload_Mesh_Data_Q_Data,Upload_Mesh_Data_Q_HD)
-Upload_Mesh_Data_Q_HD::distinct hm.Handle64
+// Upload_Mesh_Data_Q::hm.Dynamic_Handle_Map(Upload_Mesh_Data_Q_Data,Upload_Mesh_Data_Q_HD)
+// Upload_Mesh_Data_Q_HD::distinct hm.Handle64
 Upload_Mesh_Data_Q_Data::struct{
-	handle:Upload_Mesh_Data_Q_HD,
+	// handle:Upload_Mesh_Data_Q_HD,
 	data_hd:Chunk_HD,
 	mesh_hd:Chunk_Mesh_Data_HD, 
 	side:Model_Sides,
-	q_state:Q_State,
+	// q_state:Q_State,
 }
 manage_upload_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
-	it := hm.iterator_make(&w_map.upload_mesh_data_q)
-	for q, q_hd in hm.iterate(&it) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
-			hm.remove(&w_map.upload_mesh_data_q,q_hd)
-		}
-	}
-	len :=hm.len(w_map.upload_mesh_data_q)
-	if len<= 0{return}
 	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
-	it_2 := hm.iterator_make(&w_map.upload_mesh_data_q)
-	for q, q_hd in hm.iterate(&it_2) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable {
-			did_work = true
-			do_a_upload_mesh_data_q(w_map, q_hd, copy_pass)
+	for {
+		value, ok := chan.try_recv(w_map.upload_mesh_data_chan)
+		if !ok {
+			break // More idiomatic than return here
 		}
+		did_work=true
+		do_a_upload_mesh_data_q(w_map, value, copy_pass)
 	}
 	sdl.EndGPUCopyPass(copy_pass)
 	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
@@ -2376,29 +1851,12 @@ add_to_upload_mesh_data_q::proc(
 	data_hd:Chunk_HD,
 	mesh_hd:Chunk_Mesh_Data_HD, 
 	side:Model_Sides,
-)->(q_hd:Upload_Mesh_Data_Q_HD){
-	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.upload_mesh_data_q, Upload_Mesh_Data_Q_Data{data_hd=data_hd, mesh_hd=mesh_hd, side=side})
-	q,q_ok:=hm.get(&w_map.upload_mesh_data_q,q_hd)
-	if err != .None{
-		log.log(.Error, err )
-	}
-	if !q_ok{
-		log.log(.Error, "err",err,"q",q,"q_hd",q_hd )
-	}
-	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
-	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+){
+	chan.send(w_map.upload_mesh_data_chan, Upload_Mesh_Data_Q_Data{data_hd=data_hd, mesh_hd=mesh_hd, side=side})
 	return
 }
-do_a_upload_mesh_data_q::proc(w_map:^Map,hd:Upload_Mesh_Data_Q_HD, copy_pass: ^sdl.GPUCopyPass){
-	q,ok:=hm.get(&w_map.upload_mesh_data_q,hd)
-	if !ok{
-		log.log(.Warning,hd,q)
-	}
-	if ok{
-		upload_chunk_side_to_gpu(w_map,q.data_hd,q.mesh_hd,q.side,copy_pass)
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
+do_a_upload_mesh_data_q::proc(w_map:^Map,q:Upload_Mesh_Data_Q_Data, copy_pass: ^sdl.GPUCopyPass){
+	upload_chunk_side_to_gpu(w_map,q.data_hd,q.mesh_hd,q.side,copy_pass)
 }
 
 // upload_chunk_side_to_gpu::proc(w_map:^Map, chunk:^Chunk, mesh:^Chunk_Mesh_Data, side:Model_Sides, copy_pass: ^sdl.GPUCopyPass){
@@ -2414,10 +1872,10 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 		return
 	}
 
-	if mesh.face_count == 0{
-		add_to_destroy_mesh_data_q(w_map,mesh_hd)
-		return
-	}
+	// if mesh.face_count == 0{
+	// 	add_to_destroy_mesh_data_q(w_map,mesh_hd)
+	// 	return
+	// }
 	gpu_data,gpu_data_ok:=hm.get(&w_map.gpu_mesh_data_hm,chunk.gpu_mesh_data_hd)
 	if !gpu_data_ok{
 		// err:runtime.Allocator_Error
@@ -2486,55 +1944,30 @@ upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.
 	// ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 }
 
-Unload_Mesh_Data_Q::hm.Dynamic_Handle_Map(Unload_Mesh_Data_Q_Data,Unload_Mesh_Data_Q_HD)
-Unload_Mesh_Data_Q_HD::distinct hm.Handle64
 Unload_Mesh_Data_Q_Data::struct{
-	handle:Unload_Mesh_Data_Q_HD,
 	gpu_mesh_hd:GPU_Mesh_Data_HD,
-	// range:tg.Free_List_Range,
-	q_state:Q_State,
 }
 manage_unload_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
-
-	it := hm.iterator_make(&w_map.unload_mesh_data_q)
-	for q, q_hd in hm.iterate(&it) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .finished {
-			hm.remove(&w_map.unload_mesh_data_q,q_hd)
+	for {
+		value, ok := chan.try_recv(w_map.unload_mesh_data_chan)
+		if !ok {
+			break // More idiomatic than return here
 		}
+		did_work=true
+		do_a_unload_mesh_data_q(w_map, value)
 	}
 
-	it_2 := hm.iterator_make(&w_map.unload_mesh_data_q)
-	for q, q_hd in hm.iterate(&it_2) {
-		if atom.atomic_load_explicit(&q.q_state,.Acquire) == .usable {
-			do_a_unload_mesh_data_q(w_map, q_hd)
-			did_work = true
-		}
-	}
 	return
 }
-add_to_unload_mesh_data_q::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD)->(q_hd:Unload_Mesh_Data_Q_HD){
-	err:runtime.Allocator_Error
-	q_hd,err=hm.add(&w_map.unload_mesh_data_q, Unload_Mesh_Data_Q_Data{gpu_mesh_hd=gpu_mesh_hd})
-	q,q_ok:=hm.get(&w_map.unload_mesh_data_q,q_hd)
-	if err != .None{
-		log.log(.Error, err )
-	}
-	if !q_ok{
-		log.log(.Error, "err",err,"q",q,"q_hd",q_hd )
-	}
-	assert(q_ok,"failed to ad to q i have know idea how this culd posbly happen what did you do!!!!!!! ")
-	atom.atomic_store_explicit(&q.q_state, .usable, .Release)
+add_to_unload_mesh_data_q::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD){
+
+	chan.send(w_map.unload_mesh_data_chan, Unload_Mesh_Data_Q_Data{gpu_mesh_hd})
 	return
 }
-do_a_unload_mesh_data_q::proc(w_map:^Map,hd:Unload_Mesh_Data_Q_HD){
-	q,ok:=hm.get(&w_map.unload_mesh_data_q,hd)
-	if !ok{
-		log.log(.Warning,hd,q)
-	}
-	if ok{
-		unload_mesh_data(w_map,q.gpu_mesh_hd)
-		atom.atomic_store_explicit(&q.q_state, .finished, .Release)
-	}
+do_a_unload_mesh_data_q::proc(w_map:^Map,q:Unload_Mesh_Data_Q_Data){
+
+	unload_mesh_data(w_map,q.gpu_mesh_hd)
+
 }
 unload_mesh_data::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD){
 	gpu_mesh,gpu_mesh_ok:=hm.get(&w_map.gpu_mesh_data_hm,gpu_mesh_hd)
@@ -2562,7 +1995,7 @@ do_chunkering::proc(){
 	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
 	defer tg.end_tracking_allocator(&tracking_allocator)
 	log.log(.Info,"starting chunker thread")
-		log.log(.Info, "free GPU mesh space = ", tg.free_list_space_lef(&g.w_map.chunks_in_mesh))
+	log.log(.Info, "free GPU mesh space = ", tg.free_list_space_lef(&g.w_map.chunks_in_mesh))
 
 	for !s.app_should_close{
 

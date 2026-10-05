@@ -124,11 +124,11 @@ update_steam_lobby_data::proc(lobby_id:u64){
 	groop.type = .lobby_list
 	groop.groop_endpoint = steam.SteamNetworkingIdentity{}
 	log.log(.Info,"\nupdateing ",lobby_id,"\n")
+	update_player_groop(groop)
 	#partial switch &ep in &groop.groop_endpoint {
 		case steam.SteamNetworkingIdentity:
 		steam.NetworkingIdentity_SetSteamID(&ep,groop.groop_owner_id)	
 	}
-	update_player_groop(groop)
 	dnwi:=get_defalt_networking_instance()
 	if dnwi != nil{
 		if dnwi.type == .nil ||dnwi.type == .client{
@@ -259,7 +259,7 @@ steam_debug_text_hook :: proc "c" (severity: c.int, debugText: cstring) {
 	
 run_steam_callbacks :: proc() {
 	if s.steam.is_using_steam != true {return}
-    temp_mem := make([dynamic]byte, context.temp_allocator)
+
 
     steam_pipe := steam.GetHSteamPipe()
     steam.ManualDispatch_RunFrame(steam_pipe)
@@ -269,10 +269,10 @@ run_steam_callbacks :: proc() {
         // Check for dispatching API call results
         if callback.iCallback == .SteamAPICallCompleted {
             call_completed := transmute(^steam.SteamAPICallCompleted)callback.pubParam
-            resize(&temp_mem, int(callback.cubParam))
+
             if temp_call_res, ok := mem.alloc(int(callback.cubParam), allocator = context.temp_allocator); ok == nil {
                 bFailed: bool
-                if steam.ManualDispatch_GetAPICallResult(steam_pipe, call_completed.hAsyncCall, temp_call_res, callback.cubParam, callback.iCallback, &bFailed) {
+                if steam.ManualDispatch_GetAPICallResult(steam_pipe, call_completed.hAsyncCall, temp_call_res, callback.cubParam, call_completed.iCallback, &bFailed) {
                     // Dispatch the call result to the registered handler(s) for the
                     // call identified by call_completed->m_hAsyncCall
                     // if call_completed.iCallback == .NumberOfCurrentPlayers {
@@ -317,6 +317,7 @@ run_steam_callbacks :: proc() {
                 onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
 
 			case .LobbyCreated:
+
 				log.log(.Info,"\nLobbyCreated_fin\n")
 				temp:=transmute(^steam.LobbyCreated)callback.pubParam
 				if temp.eResult == .OK{

@@ -1,5 +1,6 @@
 package tg_render
 
+import "core:thread"
 import "vendor:stb/truetype"
 
 import sdl "vendor:sdl3"
@@ -26,15 +27,24 @@ import "base:runtime"
 @(private) global_subtract_stdout_options: log.Options
 @(private) global_subtract_stderr_options: log.Options
 
-@(private)
-thread_name:map[int]string
+// @(private)
+
+// thread_name:map[int]string
+
+@(thread_local)
+thread_name:string
+
+@(thread_local)
+thread_name_id:int
 
 @(deferred_in=delete_thread_names)
-name_thread::proc(name:string){
-	thread_name[os.get_current_thread_id()] = name
+name_thread::proc(name:string,id:int = 0){
+	// thread_name[os.get_current_thread_id()] = name
+	thread_name = name
+	thread_name_id = id
 }
 
-delete_thread_names::proc(name:string){
+delete_thread_names::proc(name:string,id:int){
 	if name == "Main"{
 		delete(thread_name)
 	}
@@ -45,6 +55,9 @@ create_tg_console_logger :: proc(lowest := log.Level.Debug, opt := log.Default_C
 	data.file_handle = nil
 	data.ident = ident
 	return log.Logger{tg_console_logger_proc, data, lowest, opt}
+}
+destroy_tg_console_logger :: proc(log: log.Logger, allocator := context.allocator) {
+	free(log.data, allocator)
 }
 
 tg_console_logger_proc :: proc(logger_data: rawptr, level: log.Level, text: string, options: log.Options, location := #caller_location) {
@@ -75,9 +88,9 @@ _file_tg_console_logger_proc :: proc(h: ^os.File, ident: string, level: log.Leve
 
 	if .Thread_Id in options {
 		th_id:=os.get_current_thread_id()
-		name, ok := thread_name[th_id]
-		if ok{
-			fmt.sbprintf(&buf, "[{}] ", name)
+
+		if thread_name != ""{
+			fmt.sbprintf(&buf, "[{}{}] ", thread_name,thread_name_id)
 		}else{
 			fmt.sbprintf(&buf, "[{}] ", th_id)
 		}

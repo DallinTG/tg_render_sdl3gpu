@@ -363,7 +363,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 1, -1, -1, 1},
 				{ 1,  0, -1, 1},
 			},
-			starting_shade = .75
+			starting_shade = .65
 		},
 	)
 
@@ -376,7 +376,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 0, -1,  0, 1},
 				{ 0,  0,  0, 1},
 			},
-			starting_shade = .75
+			starting_shade = .65
 		},
 	)
 
@@ -402,7 +402,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 0, -1,  0, 1},
 				{ 0, -1, -1, 1},
 			},
-			starting_shade = .7
+			starting_shade = .5
 		},
 	)
 	
@@ -415,7 +415,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 1, -1,  0, 1},
 				{ 1,  0,  0, 1},
 			},
-			starting_shade = .9
+			starting_shade = .8
 		},
 	)
 
@@ -428,7 +428,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 				{ 0, -1, -1, 1},
 				{ 0,  0, -1, 1},
 			},
-			starting_shade = .9
+			starting_shade = .8
 		},
 	)
 	tg.update_indexed_gpu_data(&g.geometry_facees)

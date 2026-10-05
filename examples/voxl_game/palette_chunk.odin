@@ -25,6 +25,7 @@ import reg "../../registry"
 import atom "core:sync"
 import nos "core:math/noise"
 
+
 Palette_Sizes::enum u8{
 	u0,
 	u1,
@@ -125,11 +126,22 @@ PALETTES_INFO:[Palette_Sizes]Palette_Info:{
 
 //this is a groop of maps that can store vox data in difrent sizing formats
 Backing_Vox_World_Data::struct{
+	Mutex_u0:atom.Mutex,
 	u0_chunk_data:	U0_Backing_Chunk_Data_HM,
+
+	Mutex_u1:atom.Mutex,
 	u1_chunk_data:	U1_Backing_Chunk_Data_HM,
+
+	Mutex_u2:atom.Mutex,
 	u2_chunk_data:	U2_Backing_Chunk_Data_HM,
+
+	Mutex_u4:atom.Mutex,
 	u4_chunk_data:	U4_Backing_Chunk_Data_HM,
+
+	Mutex_u8:atom.Mutex,
 	u8_chunk_data:	U8_Backing_Chunk_Data_HM,
+
+	Mutex_u16:atom.Mutex,
 	u16_chunk_data:	U16_Backing_Chunk_Data_HM,
 }
 
@@ -174,10 +186,14 @@ Vox_Chunk_Data::struct{
 	backing_mask_data:^Vox_Mask_HM,
 	vox_mask_hd:Vox_Mask_HD,
 	pos:[4]int,
+	vox_gened:bool,
 }
 
 Vox_Mask_HD::distinct hm.Handle64
-Vox_Mask_HM::hm.Dynamic_Handle_Map(Vox_Mask_Data,Vox_Mask_HD)
+Vox_Mask_HM::struct{
+	Mutex:atom.Mutex,
+	hm:hm.Dynamic_Handle_Map(Vox_Mask_Data,Vox_Mask_HD),
+}
 Vox_Mask_Data::struct{
 	handle:Vox_Mask_HD,
 	is_occupied_mask:[CHUNK_SIZE * CHUNK_SIZE]u32,//[x][z]
@@ -211,6 +227,7 @@ delete_vox_chunk_data::proc(w_map:^Map,vox_chunk_hd:Vox_Chunk_Data_HD)->(ok:bool
 	assert(vox_chunk_data_ok,"get_vox_chunk_data not ok")
 	remove_chunk_data_ok:=remove_backing_vox_chunk_data(&w_map.backing_world_vox_data,vox_chunk_data.backing_chunk_data_hd,vox_chunk_data.backing_chunk_data_abstract.palette_size)
 	assert(remove_chunk_data_ok,"new_backing_chunk_vox_data !ok")
+	
 	err:runtime.Allocator_Error
 	ok,err=hm.remove(&w_map.vox_chunk_hm,vox_chunk_hd)
 	assert(err ==.None)
@@ -310,37 +327,50 @@ new_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data, size:Palette_Size
 	err:runtime.Allocator_Error
 	switch size {
 	case .u0:
+		atom.mutex_lock(&data.Mutex_u0)
 		hd, err = hm.dynamic_add(&data.u0_chunk_data,U0_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		atom.mutex_unlock(&data.Mutex_u0)
 		if err != nil {
 			log.log(.Error, "failed adding u0 chunk during err = ", err)
 			return
 		}
+		
 	case .u1:
+		atom.mutex_lock(&data.Mutex_u1)
 		hd, err = hm.dynamic_add(&data.u1_chunk_data,U1_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		atom.mutex_unlock(&data.Mutex_u1)
 		if err != nil {
 			log.log(.Error, "failed adding u1 chunk during err = ", err)
 			return
 		}
 	case .u2:
+		atom.mutex_lock(&data.Mutex_u2)
 		hd, err = hm.dynamic_add(&data.u2_chunk_data,U2_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		atom.mutex_unlock(&data.Mutex_u2)
 		if err != nil {
 			log.log(.Error, "failed adding u2 chunk during err = ", err)
 			return
 		}
 	case .u4:
+		atom.mutex_lock(&data.Mutex_u4)
 		hd, err = hm.dynamic_add(&data.u4_chunk_data,U4_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		atom.mutex_unlock(&data.Mutex_u4)
 		if err != nil {
 			log.log(.Error, "failed adding u4 chunk during err = ", err)
 			return
 		}
 	case .u8:
+		atom.mutex_lock(&data.Mutex_u8)
 		hd, err = hm.dynamic_add(&data.u8_chunk_data,U8_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		atom.mutex_unlock(&data.Mutex_u8)
 		if err != nil {
 			log.log(.Error, "failed adding u8 chunk during err = ", err)
 			return
 		}
 	case .u16:
+		atom.mutex_lock(&data.Mutex_u16)
 		hd, err = hm.dynamic_add(&data.u16_chunk_data,U16_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		atom.mutex_unlock(&data.Mutex_u16)
 		if err != nil {
 			log.log(.Error, "failed adding u16 chunk during err = ", err)
 			return
@@ -354,7 +384,9 @@ remove_backing_vox_chunk_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_
 	// log.log(.Debug,"remove_backing_vox_chunk_data")
 	switch size {
 	case .u0:
+		atom.mutex_lock(&data.Mutex_u0)
 		ok, err := hm.dynamic_remove(&data.u0_chunk_data, hd)
+		atom.mutex_unlock(&data.Mutex_u0)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -364,7 +396,9 @@ remove_backing_vox_chunk_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_
 			return false
 		}
 	case .u1:
+		atom.mutex_lock(&data.Mutex_u1)
 		ok, err := hm.dynamic_remove(&data.u1_chunk_data, hd)
+		atom.mutex_unlock(&data.Mutex_u1)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -375,7 +409,9 @@ remove_backing_vox_chunk_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_
 		}
 
 	case .u2:
+		atom.mutex_lock(&data.Mutex_u2)
 		ok, err := hm.dynamic_remove(&data.u2_chunk_data, hd)
+		atom.mutex_unlock(&data.Mutex_u2)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -386,7 +422,9 @@ remove_backing_vox_chunk_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_
 		}
 
 	case .u4:
+		atom.mutex_lock(&data.Mutex_u4)
 		ok, err := hm.dynamic_remove(&data.u4_chunk_data, hd)
+		atom.mutex_unlock(&data.Mutex_u4)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -396,7 +434,9 @@ remove_backing_vox_chunk_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_
 			return false
 		}
 	case .u8:
+		atom.mutex_lock(&data.Mutex_u8)
 		ok, err := hm.dynamic_remove(&data.u8_chunk_data, hd)
+		atom.mutex_unlock(&data.Mutex_u8)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -406,7 +446,9 @@ remove_backing_vox_chunk_data::proc(data:^Backing_Vox_World_Data,hd:Backing_Vox_
 			return false
 		}
 	case .u16:
+		atom.mutex_lock(&data.Mutex_u16)
 		ok, err := hm.dynamic_remove(&data.u16_chunk_data, hd)
+		atom.mutex_unlock(&data.Mutex_u16)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -490,7 +532,7 @@ set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16,){
 
 	ab.data[word_index]=(ab.data[word_index]&~mask)|value
 
-	mask_data,ok:=hm.get(chunk.backing_mask_data,chunk.vox_mask_hd)
+	mask_data,ok:=hm.get(&chunk.backing_mask_data.hm,chunk.vox_mask_hd)
 	if !ok{
 		// no maskes so no need to update them
 		return
@@ -562,7 +604,7 @@ promote_palette_chunk::proc(chunk:^Vox_Chunk_Data,preserve_data:bool=true){
 			}
 		}
 
-		if !hm.is_valid(chunk.backing_mask_data,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
+		if !hm.is_valid(&chunk.backing_mask_data.hm,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
 			mask_data:Vox_Mask_Data
 			item,item_ok:=reg.get(&g.item_reg,ab_chunk.pal[0].item)
 			if item_ok{ // if !ok is air
@@ -574,11 +616,15 @@ promote_palette_chunk::proc(chunk:^Vox_Chunk_Data,preserve_data:bool=true){
 					mask_data.is_solid_mask = 1
 				}
 			}
-			chunk.vox_mask_hd = hm.dynamic_add(chunk.backing_mask_data, mask_data)
+			atom.mutex_lock(&chunk.backing_mask_data.Mutex)
+			chunk.vox_mask_hd = hm.dynamic_add(&chunk.backing_mask_data.hm, mask_data)
+			atom.mutex_unlock(&chunk.backing_mask_data.Mutex)
 		}
 	}else{
-		if !hm.is_valid(chunk.backing_mask_data,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
-			chunk.vox_mask_hd = hm.dynamic_add(chunk.backing_mask_data, Vox_Mask_Data{})
+		if !hm.is_valid(&chunk.backing_mask_data.hm,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
+			atom.mutex_lock(&chunk.backing_mask_data.Mutex)
+			chunk.vox_mask_hd = hm.dynamic_add(&chunk.backing_mask_data.hm, Vox_Mask_Data{})
+			atom.mutex_unlock(&chunk.backing_mask_data.Mutex)
 		}
 	}
 
@@ -635,7 +681,7 @@ set_blocks_in_chunk_by_col_pal_index::proc(
 		ab.data[word_index+full_words]=(ab.data[word_index+full_words]&~mask)|(value*pinfo.fill_mask&mask)
 	}
 
-	mask_data,ok:=hm.get(chunk.backing_mask_data,chunk.vox_mask_hd)
+	mask_data,ok:=hm.get(&chunk.backing_mask_data.hm,chunk.vox_mask_hd)
 	if !ok{
 		// no maskes so no need to update them
 		return
