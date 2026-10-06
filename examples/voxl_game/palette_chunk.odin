@@ -641,7 +641,7 @@ set_block_in_chunk::proc(
 ){
 
 	vox_index:=pos_to_vox_index(pos)
-	pal_index:=get_or_add_palette_index(chunk,item_hd)
+	pal_index:=get_or_add_palette_index_by_item_hd(chunk,item_hd)
 	set_palette_index(chunk,vox_index,pal_index)
 
 
@@ -716,7 +716,7 @@ set_blocks_in_chunk_by_col_pal_index::proc(
 
 //preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
 //if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
-get_or_add_palette_index::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,preserve_data:bool=true)->(pal_index:u16){
+get_or_add_palette_index_by_item_hd::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,preserve_data:bool=true)->(pal_index:u16){
 	ad_chunk:=&chunk.backing_chunk_data_abstract
 	pal_count:=ad_chunk.pal_count^
 	for i in 0..<pal_count{
@@ -753,6 +753,29 @@ get_or_add_palette_index::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,preserve_da
 
 	return pal_count
 }
+
+//preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
+//if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
+get_or_add_palette_index::proc(chunk:^Vox_Chunk_Data,pal_d:Palette_Data,preserve_data:bool=true)->(pal_index:u16){
+	ad_chunk:=&chunk.backing_chunk_data_abstract
+	pal_count:=ad_chunk.pal_count^
+	for i in 0..<pal_count{
+		if ad_chunk.pal[i] == pal_d{
+			return cast(u16)i,
+		}
+	}
+
+	if cast(int)pal_count >= len(ad_chunk.pal){
+		promote_palette_chunk(chunk,preserve_data)
+		ad_chunk=&chunk.backing_chunk_data_abstract
+	}
+
+	ad_chunk.pal[pal_count]=pal_d
+	ad_chunk.pal_count^+=1
+
+	return pal_count
+}
+
 
 //returns false if there is no next size
 get_next_palett_size::proc(size:Palette_Sizes)->(next_size:Palette_Sizes){

@@ -354,14 +354,16 @@ reg_materials::proc(){
 create_cube_face_geometry :: proc() -> Model_Data {
 
 	result: Model_Data
+
+
 	result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
-				{ 1,  0,  0, 1},
-				{ 1, -1,  0, 1},
-				{ 1, -1, -1, 1},
-				{ 1,  0, -1, 1},
+				{ 1, 1, 1, 1},
+				{ 1, 0, 1, 1},
+				{ 1, 0, 0, 1},
+				{ 1, 1, 0, 1},
 			},
 			starting_shade = .65
 		},
@@ -371,10 +373,10 @@ create_cube_face_geometry :: proc() -> Model_Data {
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
-				{ 0,  0, -1, 1},
-				{ 0, -1, -1, 1},
-				{ 0, -1,  0, 1},
-				{ 0,  0,  0, 1},
+				{ 0, 1, 0, 1},
+				{ 0, 0, 0, 1},
+				{ 0, 0, 1, 1},
+				{ 0, 1, 1, 1},
 			},
 			starting_shade = .65
 		},
@@ -384,10 +386,10 @@ create_cube_face_geometry :: proc() -> Model_Data {
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
-				{ 0,  0, -1, 1},
-				{ 0,  0,  0, 1},
-				{ 1,  0,  0, 1},
-				{ 1,  0, -1, 1},
+				{ 0, 1, 0, 1},
+				{ 0, 1, 1, 1},
+				{ 1, 1, 1, 1},
+				{ 1, 1, 0, 1},
 			},
 			starting_shade = 1
 		},
@@ -397,23 +399,23 @@ create_cube_face_geometry :: proc() -> Model_Data {
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
-				{ 1, -1, -1, 1},
-				{ 1, -1,  0, 1},
-				{ 0, -1,  0, 1},
-				{ 0, -1, -1, 1},
+				{ 1, 0, 0, 1},
+				{ 1, 0, 1, 1},
+				{ 0, 0, 1, 1},
+				{ 0, 0, 0, 1},
 			},
 			starting_shade = .5
 		},
 	)
-	
+
 	result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
-				{ 0,  0,  0, 1},
-				{ 0, -1,  0, 1},
-				{ 1, -1,  0, 1},
-				{ 1,  0,  0, 1},
+				{ 0, 1, 1, 1},
+				{ 0, 0, 1, 1},
+				{ 1, 0, 1, 1},
+				{ 1, 1, 1, 1},
 			},
 			starting_shade = .8
 		},
@@ -423,10 +425,10 @@ create_cube_face_geometry :: proc() -> Model_Data {
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
 			pos = {
-				{ 1,  0, -1, 1},
-				{ 1, -1, -1, 1},
-				{ 0, -1, -1, 1},
-				{ 0,  0, -1, 1},
+				{ 1, 1, 0, 1},
+				{ 1, 0, 0, 1},
+				{ 0, 0, 0, 1},
+				{ 0, 1, 0, 1},
 			},
 			starting_shade = .8
 		},

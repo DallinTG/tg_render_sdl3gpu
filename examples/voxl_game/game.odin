@@ -190,7 +190,13 @@ main :: proc(){
 			tg.toggle_mouse_mode_on_input_event(g.window,.ESC)
 			// log.log(.Info,get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look,))
 
-			
+			if tg.is_input_event(.ui_l_c,never_consume_p = true){
+				log.log(.Debug,"brake",get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look),g.cam.look)
+				brake_block_by_ray(&g.w_map,g.cam.pos,g.cam.look)
+			}
+			if tg.is_input_event(.ui_r_c){
+				set_block_by_ray(&g.w_map,g.cam.pos,g.cam.look)
+			}
 			// manage_all_w_map_q(&g.w_map)
 			sink_game_info(&g.server,&g.info)
 			g.clay_render_comands=create_layout()

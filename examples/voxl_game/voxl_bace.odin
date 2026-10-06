@@ -3,6 +3,7 @@ package voxl_game
 
 import "core:time"
 import tg"../../../tg_render_sdl3gpu"
+
 import sdl "vendor:sdl3"
 import "core:log"
 import "core:mem"
@@ -65,117 +66,285 @@ draw_cube_by_face_item::proc(
 	tg.draw_feces(mesh,faces[:])
 }
 
-get_block_pos_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chunk:[3]int,chunk_pos:[3]u8,w_pos:[3]f32,enter_side:Model_Sides){
-	look_mat:=lin.matrix3_from_yaw_pitch_roll_f32(
+// get_block_pos_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chunk:[3]int,chunk_pos:[3]u8,w_pos:[3]f32,enter_side:Model_Sides){
+// 	look_mat:=lin.matrix3_from_yaw_pitch_roll_f32(
+// 		lin.to_radians(look.yaw),
+// 		lin.to_radians(look.pitch),
+// 		0,
+// 	)
+
+// 	forward:=look_mat * tg.Vec3{0,0,-1}
+
+// 	voxel:=[3]int{
+// 		cast(int)math.floor(start_pos.x),
+// 		cast(int)math.floor(start_pos.y),
+// 		cast(int)math.floor(start_pos.z),
+// 	}
+
+// 	step:[3]int
+// 	t_max:[3]f32
+// 	t_delta:[3]f32
+
+// 	for axis in 0..<3{
+// 		if forward[axis] > 0 {
+// 			step[axis]=1
+// 			t_max[axis]=(cast(f32)voxel[axis]+1-start_pos[axis])/forward[axis]
+// 			t_delta[axis]=1/forward[axis]
+// 		}else if forward[axis] < 0 {
+// 			step[axis]=-1
+// 			t_max[axis]=(cast(f32)voxel[axis]-start_pos[axis])/forward[axis]
+// 			t_delta[axis]=-1/forward[axis]
+// 		}else{
+// 			step[axis]=0
+// 			t_max[axis]=max(f32)
+// 			t_delta[axis]=max(f32)
+// 		}
+// 	}
+
+// 	for i:=0;i<1024;i+=1{
+// 		chunk=pos_to_chunck_pos({
+// 			cast(f32)voxel.x,
+// 			cast(f32)voxel.y,
+// 			cast(f32)voxel.z,
+// 		})
+
+// 		local:=voxel-chunk*CHUNK_SIZE
+
+// 		chunk_hd,ok:=w_map.chunks_map[{chunk.x,chunk.y,chunk.z,1}]
+// 		if ok{
+// 			chunk_data,chunk_ok:=get_chunk(w_map,chunk_hd)
+// 			if chunk_ok{
+// 				vox_data,vox_ok:=get_vox_chunk_data(w_map,chunk_data.vox_data_hd)
+// 				if vox_ok{
+// 					chunk_pos={
+// 						cast(u8)local.x,
+// 						cast(u8)local.y,
+// 						cast(u8)local.z,
+// 					}
+
+// 					block:=get_vox_in_chunk(vox_data,chunk_pos)
+// 					item,i_ok:=reg.get(&g.item_reg,block)
+// 					if !i_ok{ return}
+
+// 					if item != nil{
+// 						w_pos={
+// 							cast(f32)voxel.x,
+// 							cast(f32)voxel.y,
+// 							cast(f32)voxel.z,
+// 						}
+// 						return
+// 					}
+// 				}
+// 			}
+// 		}
+
+// 		if t_max.x < t_max.y && t_max.x < t_max.z {
+// 			w_pos += forward*t_max.x
+// 			voxel.x += step.x
+// 			t_max.x += t_delta.x
+
+// 			if step.x > 0 {
+// 				enter_side=.neg_x
+// 			}else{
+// 				enter_side=.pos_x
+// 			}
+// 		}else if t_max.y < t_max.z {
+// 			w_pos += forward*t_max.y
+// 			voxel.y += step.y
+// 			t_max.y += t_delta.y
+
+// 			if step.y > 0 {
+// 				enter_side=.neg_y
+// 			}else{
+// 				enter_side=.pos_y
+// 			}
+// 		}else{
+// 			w_pos += forward*t_max.z
+// 			voxel.z += step.z
+// 			t_max.z += t_delta.z
+
+// 			if step.z > 0 {
+// 				enter_side=.neg_z
+// 			}else{
+// 				enter_side=.pos_z
+// 			}
+// 		}
+// 	}
+// 	return
+// }
+
+
+
+get_block_pos_by_ray :: proc(
+	w_map: ^Map,
+	start_pos: [3]f32,
+	look: tg.Look_Dir,
+) -> (
+	chunk: [3]int,
+	chunk_pos: [3]u8,
+	w_pos: [3]f32,
+	enter_side: Model_Sides,
+) {
+
+	look_mat := lin.matrix3_from_yaw_pitch_roll_f32(
 		lin.to_radians(look.yaw),
 		lin.to_radians(look.pitch),
 		0,
 	)
 
-	forward:=look_mat * tg.Vec3{0,0,-1}
+	forward := look_mat * tg.Vec3{0, 0, -1}
 
-	voxel:=[3]int{
+	// Current voxel containing the ray origin.
+	voxel := [3]int{
 		cast(int)math.floor(start_pos.x),
 		cast(int)math.floor(start_pos.y),
 		cast(int)math.floor(start_pos.z),
 	}
 
-	step:[3]int
-	t_max:[3]f32
-	t_delta:[3]f32
+	step: [3]int
+	t_max: [3]f32
+	t_delta: [3]f32
 
-	for axis in 0..<3{
+	// Set up DDA.
+	for axis in 0..<3 {
 		if forward[axis] > 0 {
-			step[axis]=1
-			t_max[axis]=(cast(f32)voxel[axis]+1-start_pos[axis])/forward[axis]
-			t_delta[axis]=1/forward[axis]
-		}else if forward[axis] < 0 {
-			step[axis]=-1
-			t_max[axis]=(cast(f32)voxel[axis]-start_pos[axis])/forward[axis]
-			t_delta[axis]=-1/forward[axis]
-		}else{
-			step[axis]=0
-			t_max[axis]=max(f32)
-			t_delta[axis]=max(f32)
+			step[axis] = 1
+			t_max[axis] = (
+				cast(f32)voxel[axis] + 1.0 - start_pos[axis]
+			) / forward[axis]
+			t_delta[axis] = 1.0 / forward[axis]
+
+		} else if forward[axis] < 0 {
+			step[axis] = -1
+			t_max[axis] = (
+				cast(f32)voxel[axis] - start_pos[axis]
+			) / forward[axis]
+			t_delta[axis] = -1.0 / forward[axis]
+
+		} else {
+			step[axis] = 0
+			t_max[axis] = max(f32)
+			t_delta[axis] = max(f32)
 		}
 	}
 
-	for i:=0;i<1024;i+=1{
-		chunk=pos_to_chunck_pos({
+	// We start inside the current voxel.
+	w_pos = start_pos
+	enter_side = .extra
+
+	for i := 0; i < 1024; i += 1 {
+
+		// --------------------------------------------------------
+		// Find chunk containing current voxel.
+		// --------------------------------------------------------
+
+		chunk = pos_to_chunck_pos({
 			cast(f32)voxel.x,
 			cast(f32)voxel.y,
 			cast(f32)voxel.z,
 		})
 
-		local:=voxel-chunk*CHUNK_SIZE
+		local := voxel - chunk * CHUNK_SIZE
 
-		chunk_hd,ok:=w_map.chunks_map[{chunk.x,chunk.y,chunk.z,1}]
-		if ok{
-			chunk_data,chunk_ok:=get_chunk(w_map,chunk_hd)
-			if chunk_ok{
-				vox_data,vox_ok:=get_vox_chunk_data(w_map,chunk_data.vox_data_hd)
-				if vox_ok{
-					chunk_pos={
+		chunk_hd, ok := get_chunk_by_pos_safe(w_map,{chunk.x,chunk.y,chunk.z,1,})
+
+		if ok {
+			chunk_data, chunk_ok := get_chunk(w_map, chunk_hd)
+
+			if chunk_ok {
+				vox_data, vox_ok := get_vox_chunk_data(
+					w_map,
+					chunk_data.vox_data_hd,
+				)
+
+				if vox_ok {
+
+					chunk_pos = {
 						cast(u8)local.x,
 						cast(u8)local.y,
 						cast(u8)local.z,
 					}
 
-					block:=get_vox_in_chunk(vox_data,chunk_pos)
-					item,i_ok:=reg.get(&g.item_reg,block)
-					if !i_ok{ return}
+					block := get_vox_in_chunk(
+						vox_data,
+						chunk_pos,
+					)
 
-					if item != nil{
-						w_pos={
-							cast(f32)voxel.x,
-							cast(f32)voxel.y,
-							cast(f32)voxel.z,
-						}
+					// IMPORTANT:
+					// Do NOT use reg.get() to determine whether
+					// the block is air/solid.
+					//
+					// Assuming block 0 = air.
+					if block != {} {
 						return
 					}
 				}
 			}
 		}
 
+		// --------------------------------------------------------
+		// Advance to the next voxel.
+		//
+		// t_max is the absolute ray parameter of the next
+		// voxel boundary, so w_pos must be calculated from
+		// start_pos rather than accumulated.
+		// --------------------------------------------------------
+
 		if t_max.x < t_max.y && t_max.x < t_max.z {
-			w_pos += forward*t_max.x
+
+			t := t_max.x
+
+			w_pos = start_pos + forward * t
+
 			voxel.x += step.x
 			t_max.x += t_delta.x
 
 			if step.x > 0 {
-				enter_side=.neg_x
-			}else{
-				enter_side=.pos_x
+				enter_side = .neg_x
+			} else {
+				enter_side = .pos_x
 			}
-		}else if t_max.y < t_max.z {
-			w_pos += forward*t_max.y
+
+		} else if t_max.y < t_max.z {
+
+			t := t_max.y
+
+			w_pos = start_pos + forward * t
+
 			voxel.y += step.y
 			t_max.y += t_delta.y
 
 			if step.y > 0 {
-				enter_side=.neg_y
-			}else{
-				enter_side=.pos_y
+				enter_side = .neg_y
+			} else {
+				enter_side = .pos_y
 			}
-		}else{
-			w_pos += forward*t_max.z
+
+		} else {
+
+			t := t_max.z
+
+			w_pos = start_pos + forward * t
+
 			voxel.z += step.z
 			t_max.z += t_delta.z
 
 			if step.z > 0 {
-				enter_side=.neg_z
-			}else{
-				enter_side=.pos_z
+				enter_side = .neg_z
+			} else {
+				enter_side = .pos_z
 			}
 		}
 	}
+
 	return
 }
 
-get_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chunk:[3]int,chunk_pos:[3]u8,w_pos:[3]f32,block:Item_HD,enter_side:Model_Sides){
-	chunk,chunk_pos,w_pos,enter_side=get_block_pos_by_ray(w_map,start_pos,look)
 
-	chunk_hd,chunk_hd_ok:=w_map.chunks_map[{chunk.x,chunk.y,chunk.z,1}]
+get_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chunk_pos:[3]int,pos_in_chunk:[3]u8,w_pos:[3]f32,block:Item_HD,enter_side:Model_Sides){
+	chunk_pos,pos_in_chunk,w_pos,enter_side=get_block_pos_by_ray(w_map,start_pos,look)
+
+	chunk_hd,chunk_hd_ok:=get_chunk_by_pos_safe(w_map,{chunk_pos.x,chunk_pos.y,chunk_pos.z,1})
 	if !chunk_hd_ok {log.log(.Warning,"ray failed bad chunk",chunk_hd);return}
 
 	chunk_data,chunk_data_ok:=get_chunk(w_map,chunk_hd)
@@ -184,6 +353,62 @@ get_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chunk:[3
 	vox_data,vox_data_ok:=get_vox_chunk_data(w_map,chunk_data.vox_data_hd)
 	if !vox_data_ok{log.log(.Warning,"ray failed bad vox_data_hd",chunk_data.vox_data_hd);return}
 
-	block=get_vox_in_chunk(vox_data,chunk_pos)
+	block=get_vox_in_chunk(vox_data,pos_in_chunk)
 	return
+}
+
+DF_AIR_BLOCK::Palette_Data{
+	item = {},
+	is_occupied = false,
+	is_opaque = false,
+	is_solid = false,
+}
+
+brake_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,){
+	chunk_pos,pos_in_chunk,w_pos,block,enter_side:=get_block_by_ray(w_map,start_pos,look)
+	add_to_set_block_cmd_q(w_map,Set_Block_CMD{chunk_pos = {chunk_pos.x,chunk_pos.y,chunk_pos.z,1},pos_in_chunk=pos_in_chunk,new_block=DF_AIR_BLOCK})
+	
+}
+
+set_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,){
+	chunk_pos,pos_in_chunk,w_pos,block,enter_side:=get_block_by_ray(w_map,start_pos,look)
+	offset:[3]int
+	switch enter_side{
+	case .pos_x:offset={1,0,0}
+	case .neg_x:offset={-1,0,0}
+	case .pos_y:offset={0,1,0}
+	case .neg_y:offset={0,-1,0}
+	case .pos_z:offset={0,0,1}
+	case .neg_z:offset={0,0,-1}
+	case .extra:return
+	}
+	temp_pos_in_chunk:[3]int=cast([3]int)pos_in_chunk+offset
+	if temp_pos_in_chunk.x <0{
+		temp_pos_in_chunk.x = 31
+		chunk_pos.x -=1
+	}
+	if temp_pos_in_chunk.x >31{
+		temp_pos_in_chunk.x = 0
+		chunk_pos.x +=1
+	}
+	if temp_pos_in_chunk.y <0{
+		temp_pos_in_chunk.y = 31
+		chunk_pos.y -=1
+	}
+	if temp_pos_in_chunk.y >31{
+		temp_pos_in_chunk.y = 0
+		chunk_pos.y +=1
+	}
+	if temp_pos_in_chunk.z <0{
+		temp_pos_in_chunk.z = 31
+		chunk_pos.z -=1
+	}
+	if pos_in_chunk.z >31{
+		temp_pos_in_chunk.z = 0
+		chunk_pos.z +=1
+	}
+
+	b,ok:=reg.get(&g.item_reg,g.df_items[.stone_slate])
+	add_to_set_block_cmd_q(w_map,Set_Block_CMD{chunk_pos = {chunk_pos.x,chunk_pos.y,chunk_pos.z,1},pos_in_chunk=cast([3]u8)temp_pos_in_chunk,new_block={is_occupied = b.is_occupied,is_opaque = b.is_opaque, is_solid = b.is_solid, item = b.handle}})
+	
 }
