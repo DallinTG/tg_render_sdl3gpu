@@ -180,8 +180,6 @@ struct Face {
 };
 
 struct Face_Texure {
-	float2 uv0;  float2 uv1;  float2 uv2;  float2 uv3;  
-
     uint   img_index;
     uint   layer;
    	uint _padding_1;
@@ -197,6 +195,11 @@ struct Face_Texure {
 };
 
 struct Face_Geometry {
+	float2 uv0;
+	float2 uv1;
+	float2 uv2;
+	float2 uv3;
+
 	float4 pos0;
 	float4 pos1;
 	float4 pos2;
@@ -217,9 +220,9 @@ struct Chunk_Data{
 
 
 StructuredBuffer<Face> Faces : register(t0, space0);
-StructuredBuffer<Face_Texure> face_texure : register(t1, space0);
-StructuredBuffer<Face_Geometry> face_geometry : register(t2, space0);
-StructuredBuffer<Chunk_Data> chunk_data : register(t3, space0);
+// StructuredBuffer<Face_Texure> face_texure : register(t1, space0);
+StructuredBuffer<Face_Geometry> face_geometry : register(t1, space0);
+StructuredBuffer<Chunk_Data> chunk_data : register(t2, space0);
 
 struct Output{
 	float4 position : SV_Position;
@@ -227,127 +230,26 @@ struct Output{
 	float2 uv : TEXCOORD1;
 	uint size : TEXCOORD2;
 
-	uint   img_index : TEXCOORD3;
-	uint   layer: TEXCOORD4;
-	float4 img_1_tint : TEXCOORD5;
+	// uint   img_index : TEXCOORD3;
+	// uint   layer: TEXCOORD4;
+	// float4 img_1_tint : TEXCOORD5;
 
-	uint   img_index_2 : TEXCOORD6;
-	uint   layer_2: TEXCOORD7;
-	float4 img_2_tint : TEXCOORD8;
+	// uint   img_index_2 : TEXCOORD6;
+	// uint   layer_2: TEXCOORD7;
+	// float4 img_2_tint : TEXCOORD8;
 
 
-	float3 normal : TEXCOORD9;
-	uint   draw_index : TEXCOORD10;
-	float   shading: TEXCOORD11;
+	float3 normal : TEXCOORD3;
+	uint   draw_index : TEXCOORD4;
+	float   shading: TEXCOORD5;
 
-	float2 face_uv : TEXCOORD12;
+	float2 face_uv : TEXCOORD6;
 
 	// float clip_u : SV_ClipDistance0;
 	// float clip_v : SV_ClipDistance1;
 	// float4 clip_box : TEXCOORD11;
-
+	uint texture_face_index : TEXCOORD7;
 };
-
-// Output main(
-
-// 	uint vid : SV_VertexID,
-
-// 	[[vk::builtin("DrawIndex")]] uint draw_index : TEXCOORD6
-
-// ) {
-// 	Output output;
-
-// 	uint face_index = vid / 3;
-// 	uint corner_id = vid % 3;
-// 	Face face = Faces[face_index];
-
-// 	// Unpack block position and geometry index.
-// 	uint packed_pos = face.packed_block_pos__geometry_face_index & 0xFFFF;
-// 	uint geometry_face_index = face.packed_block_pos__geometry_face_index >> 16;
-
-// 	// Unpack texture index.
-// 	uint texture_face_index = face.texture_face_index & 0xFFFF;
-
-// 	Face_Geometry geometry = face_geometry[geometry_face_index];
-// 	Face_Texure tex = face_texure[texture_face_index];
-
-// 	Chunk_Data chunk = chunk_data[draw_index];
-// 	float lod_size = float(chunk.size);
-
-// 	// Unpack block position.
-// 	uint block_x =  packed_pos        & 0x1F;
-// 	uint block_y = (packed_pos >> 5)  & 0x1F;
-// 	uint block_z = (packed_pos >> 10) & 0x1F;
-
-// 	float3 block_pos = float3(
-// 		block_x,
-// 		block_y,
-// 		block_z
-// 	);
-
-// 	float3 edge1 = geometry.pos1.xyz - geometry.pos0.xyz;
-// 	float3 edge3 = geometry.pos3.xyz - geometry.pos0.xyz;
-
-// 	float4 final_pos = float4(0, 0, 0, 1);
-// 	float2 final_uv = float2(0, 0);
-// 	float2 face_uv = float2(0, 0);
-
-// 	// float clip_u = 0;
-// 	// float clip_v = 0;
-
-// 	if (corner_id == 0) {
-// 		final_pos.xyz = geometry.pos0.xyz;
-// 		final_uv = tex.uv0;
-// 		face_uv = float2(0, 0);
-// 	}
-// 	else if (corner_id == 1) {
-// 		final_pos.xyz = geometry.pos0.xyz + edge1 * 2.0;
-// 		final_uv = tex.uv0 + (tex.uv1 - tex.uv0) * 2.0;
-// 		face_uv = float2(2, 0);
-// 	}
-// 	else {
-// 		final_pos.xyz = geometry.pos0.xyz + edge3 * 2.0;
-// 		final_uv = tex.uv0 + (tex.uv3 - tex.uv0) * 2.0;
-// 		face_uv = float2(0, 2);
-// 	}
-
-// 	final_pos.xyz += block_pos;
-
-// 	final_pos.xyz *= lod_size;
-
-// 	final_pos.xyz += float3(
-// 	    mul(chunk_data[draw_index].pos_x , 32),
-// 	    mul(chunk_data[draw_index].pos_y , 32),
-// 	    mul(chunk_data[draw_index].pos_z , 32)
-// 	);	
-
-
-// 	output.position = mul(mvp, final_pos);
-// 	output.uv = final_uv;
-
-
-// 	output.img_index = tex.img_index;
-// 	output.layer = tex.layer;
-// 	output.img_1_tint = tex.tint;
-
-// 	output.img_index_2 = tex.img_index_2;
-// 	output.layer_2 = tex.layer_2;
-// 	output.img_2_tint = tex.tint_2;
-
-// 	output.color = float4(1, 1, 1, 1);
-
-// 	output.normal = geometry.normal.xyz;
-// 	output.face_uv = face_uv;
-// 	output.draw_index = draw_index;
-// 	output.shading = geometry.sarting_shade;
-
-// 	// output.clip_u = clip_u;
-// 	// output.clip_v = clip_v;
-// 	return output;
-// }
-
-
-
 
 
 
@@ -375,7 +277,7 @@ Output main(
 	uint texture_face_index = face.texture_face_index & 0xFFFF;
 
 	Face_Geometry geometry = face_geometry[geometry_face_index];
-	Face_Texure tex = face_texure[texture_face_index];
+	// Face_Texure tex = face_texure[texture_face_index];
 	// ------------------------------------------------------------
 	// Chunk
 	// ------------------------------------------------------------
@@ -404,17 +306,17 @@ Output main(
 	float2 face_uv = float2(0, 0);
 	if (corner_id == 0) {
 		final_pos.xyz = geometry.pos0.xyz;
-		final_uv = tex.uv0;
+		final_uv = geometry.uv0;
 		face_uv = float2(0, 0);
 	}
 	else if (corner_id == 1) {
 		final_pos.xyz = geometry.pos0.xyz + edge1 * 2.0;
-		final_uv = tex.uv0 +(tex.uv1 - tex.uv0) * 2.0;
+		final_uv = geometry.uv0 +(geometry.uv1 - geometry.uv0) * 2.0;
 		face_uv = float2(2, 0);
 	}
 	else {
 		final_pos.xyz = geometry.pos0.xyz + edge3 * 2.0;
-		final_uv = tex.uv0 +(tex.uv3 - tex.uv0) * 2.0;
+		final_uv = geometry.uv0 +(geometry.uv3 - geometry.uv0) * 2.0;
 		face_uv = float2(0, 2);
 	}
 	// ------------------------------------------------------------
@@ -443,13 +345,14 @@ Output main(
 	output.uv = final_uv;
 	output.size = lod_size;
 
-	output.img_index = tex.img_index;
-	output.layer = tex.layer;
-	output.img_1_tint = tex.tint;
+	output.texture_face_index = texture_face_index;
+	// output.img_index = tex.img_index;
+	// output.layer = tex.layer;
+	// output.img_1_tint = tex.tint;
 
-	output.img_index_2 = tex.img_index_2;
-	output.layer_2 = tex.layer_2;
-	output.img_2_tint = tex.tint_2;
+	// output.img_index_2 = tex.img_index_2;
+	// output.layer_2 = tex.layer_2;
+	// output.img_2_tint = tex.tint_2;
 
 	output.color = float4(1, 1, 1, 1);
 

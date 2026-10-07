@@ -476,6 +476,8 @@ do_render_pass::proc(
 
 	sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
 	
+
+
 	clear_dynamic_array(&pass.texture_sampler_binding)
 	for &texture in  s.texture_arr_groop{
 		if texture != {}{
@@ -505,13 +507,24 @@ do_render_pass::proc(
 				// new_mat:Mat4 = 1
 				// fmt.print(new_mat,"\n")
 				// sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &new_mat,size_of(new_mat))
-				buffer_count:u32
-				sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &mesh.gpu.vertex_buf,1)
-				buffer_count+=1
+				vert_buffer_count:u32
+				frag_buffer_count:u32
+
+				sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &mesh.gpu.vertex_buf,1)
+				// sdl.BindGPUFragmentStorageBuffers(pass.render_pas, frag_buffer_count, &mesh.gpu.vertex_buf,1)
+				vert_buffer_count+=1
+				// frag_buffer_count+=1
 				for data in indexed_gpu_data{
 					index_mesh :=get_mesh(data.mesh_hd)
-					sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &index_mesh.gpu.vertex_buf,1)
-					buffer_count+=1
+
+					if data.bind_to_vert{
+						sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &index_mesh.gpu.vertex_buf,1)
+						vert_buffer_count+=1
+					}
+					if data.bind_to_frag{
+						sdl.BindGPUFragmentStorageBuffers(pass.render_pas, frag_buffer_count, &index_mesh.gpu.vertex_buf,1)
+						frag_buffer_count+=1
+					}
 				}
 				cmd:=get_mesh(indirect_cmds[i])
 
@@ -529,13 +542,21 @@ do_render_pass::proc(
 				mesh:=get_mesh(mesh_hd)
 				sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
 				// sdl.BindGPUVertexStorageBuffers
-				buffer_count:u32
-				sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &mesh.gpu.vertex_buf,1)
-				buffer_count+=1
+
+				vert_buffer_count:u32
+				frag_buffer_count:u32
+				sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &mesh.gpu.vertex_buf,1)
+				vert_buffer_count+=1
 				for data in indexed_gpu_data{
 					index_mesh :=get_mesh(data.mesh_hd)
-					sdl.BindGPUVertexStorageBuffers(pass.render_pas, buffer_count, &index_mesh.gpu.vertex_buf,1)
-					buffer_count+=1
+					if data.bind_to_vert{
+						sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &index_mesh.gpu.vertex_buf,1)
+						vert_buffer_count+=1
+					}
+					if data.bind_to_frag{
+						sdl.BindGPUFragmentStorageBuffers(pass.render_pas, frag_buffer_count, &index_mesh.gpu.vertex_buf,1)
+						frag_buffer_count+=1
+					}
 				}
 				face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
 				fmt.print(face_count,len(mesh.cpu.vertex_buf.buffer.buf),mesh.cpu.attribute_size,"\n")

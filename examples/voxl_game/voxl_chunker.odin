@@ -308,6 +308,7 @@ init_map::proc(w_map:^Map){
 	thread.pool_init(&w_map.t_pool,pool_allocator,10)
 	defer thread.pool_start(&w_map.t_pool)
 
+	
 
 	err:runtime.Allocator_Error
 	w_map.gen_chunk_chan , err = chan.create_buffered(chan.Chan(Gen_Chunk_Q_Data),10000, context.allocator)
@@ -336,6 +337,8 @@ init_map::proc(w_map:^Map){
 	tg.free_list_init(&w_map.chunks_in_mesh,MAX_NUM_CHUNKS)
 	w_map.draw_cmd_buf_hd = tg.create_mesh(sdl.GPUIndirectDrawCommand,MAX_NUM_CHUNKS,{},type = .indirect_cmd_buff, debug_name = "w_map GPUIndirectDrawCommand buffer")
 	w_map.chunk_shader_data.mesh_hd = tg.create_mesh(Chunk_Shader_Data,MAX_NUM_CHUNKS,{},type = .dynamic_buff, debug_name = "Chunk shader data buffer")
+	w_map.chunk_shader_data.bind_to_vert = true
+	w_map.chunk_shader_data.bind_to_frag = false
 	w_map.map_mesh_hd = tg.create_mesh(tg.Vert_Face,MAX_FACE_COUNT,{},type = .no_tranfer_buff, debug_name = "w_map Chunk buffer mesh")
 	w_map.chunck_transfer_buffer = sdl.CreateGPUTransferBuffer(s.gpu_device,{
 		usage = .UPLOAD,

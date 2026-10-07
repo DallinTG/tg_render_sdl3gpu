@@ -29,7 +29,6 @@ Vert_Face::struct{
 	texture_face_index:u32,
 }
 Vert_Face_Texure::struct{
-	uv:[4][2]f32,
 	img_index:u32,
 	layer:u32,
 	pad_1:u32,
@@ -43,6 +42,7 @@ Vert_Face_Texure::struct{
 	tint_2:[4]f32,
 }
 Vert_Face_Geometry::struct{
+	uv:[4][2]f32,
 	pos:[4][4]f32,
 	normal: [4]f32,
 	starting_shade:f32,
@@ -53,10 +53,14 @@ Vert_Face_Geometry::struct{
 Indexed_GPU_Data::struct{
 	mesh_hd:Mesh_Handle,
 	count:int,
+	bind_to_vert:bool,
+	bind_to_frag:bool,
 }
 
-init_indexed_gpu_data::proc(vert_type:typeid,debug_name:="Face_Texure_Mesh")->(indexed_gpu_data:Indexed_GPU_Data){
+init_indexed_gpu_data::proc(vert_type:typeid,debug_name:="Face_Texure_Mesh",bind_to_vert:bool = true,bind_to_frag:bool = true)->(indexed_gpu_data:Indexed_GPU_Data){
 	indexed_gpu_data.mesh_hd = create_mesh(vert_type,debug_name = debug_name)
+	indexed_gpu_data.bind_to_vert = bind_to_vert
+	indexed_gpu_data.bind_to_frag = bind_to_frag
 	return
 }
 add_indexed_gpu_data::proc(indexed_gpu_data:^Indexed_GPU_Data,data:$T)->(index:int){

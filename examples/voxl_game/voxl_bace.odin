@@ -408,7 +408,7 @@ set_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,){
 		chunk_pos.z +=1
 	}
 
-	b,ok:=reg.get(&g.item_reg,g.df_items[.stone_slate])
+	b,ok:=reg.get(&g.item_reg,g.df_items[.dirt])
 	add_to_set_block_cmd_q(w_map,Set_Block_CMD{chunk_pos = {chunk_pos.x,chunk_pos.y,chunk_pos.z,1},pos_in_chunk=cast([3]u8)temp_pos_in_chunk,new_block={is_occupied = b.is_occupied,is_opaque = b.is_opaque, is_solid = b.is_solid, item = b.handle}})
 	
 }

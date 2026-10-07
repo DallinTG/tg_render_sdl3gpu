@@ -226,10 +226,10 @@ init_all_item_data::proc(){
 	update_texture_facees()
 }
 init_texture_facees::proc(){
-	g.texture_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Texure,"texture_facees_gpu_data")
+	g.texture_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Texure,"texture_facees_gpu_data",bind_to_vert = false,bind_to_frag = true)
 }
 init_geometry_facees::proc(){
-	g.geometry_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Geometry,"geometry_facees_gpu_data")
+	g.geometry_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Geometry,"geometry_facees_gpu_data",bind_to_vert = true,bind_to_frag = false)
 }
 
 update_texture_facees::proc(){
@@ -241,10 +241,10 @@ update_geometry_facees::proc(){
 add_texture_face::proc(tex_id:reg.Reg_ID,tint:[4]f32={1,1,1,1},tex_id_2:reg.Reg_ID=tg.BLANK_TEX_ID,tint_2:[4]f32={0,0,0,0})->(index:int){
 	data:DF_FACE_TYPE
 
-	data.uv[0] =  {0,0}
-	data.uv[1] =  {0,1}
-	data.uv[2] =  {1,1}
-	data.uv[3] =  {1,0}
+	// data.uv[0] =  {0,0}
+	// data.uv[1] =  {0,1}
+	// data.uv[2] =  {1,1}
+	// data.uv[3] =  {1,0}
 
 	texture:=tg.get_texture_by_id(tex_id)
 
@@ -359,6 +359,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 	result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
+			uv =  {{0,0},{0,1},{1,1},{1,0}},
 			pos = {
 				{ 1, 1, 1, 1},
 				{ 1, 0, 1, 1},
@@ -372,6 +373,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 	result.cube_indices[.neg_x] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
+			uv =  {{0,0},{0,1},{1,1},{1,0}},
 			pos = {
 				{ 0, 1, 0, 1},
 				{ 0, 0, 0, 1},
@@ -385,6 +387,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 	result.cube_indices[.pos_y] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
+			uv =  {{0,0},{0,1},{1,1},{1,0}},
 			pos = {
 				{ 0, 1, 0, 1},
 				{ 0, 1, 1, 1},
@@ -398,6 +401,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 	result.cube_indices[.neg_y] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
+			uv =  {{0,0},{0,1},{1,1},{1,0}},
 			pos = {
 				{ 1, 0, 0, 1},
 				{ 1, 0, 1, 1},
@@ -411,6 +415,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 	result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
+			uv =  {{0,0},{0,1},{1,1},{1,0}},
 			pos = {
 				{ 0, 1, 1, 1},
 				{ 0, 0, 1, 1},
@@ -424,6 +429,7 @@ create_cube_face_geometry :: proc() -> Model_Data {
 	result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
 		&g.geometry_facees,
 		tg.Vert_Face_Geometry{
+			uv =  {{0,0},{0,1},{1,1},{1,0}},
 			pos = {
 				{ 1, 1, 0, 1},
 				{ 1, 0, 0, 1},
