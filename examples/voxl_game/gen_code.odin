@@ -25,17 +25,27 @@ Src :: enum {
 }
 
 Textures :: enum {
+	 Medium_Brick_Mask ,
+	 Polished_Mask ,
 	 Stone_Slate ,
+	 Large_Square_Tiles_Mask ,
 	 Grass_Side_Overlay ,
 	 Dirt ,
 	 Grass_Overlay ,
+	 Small_Cobblestone_Mask ,
+	 Small_Brick_Mask ,
 }
 
 Textures_Dir  := #load_directory("assets/textures")
 Textures_Dat := [Textures]Image {
+	.Medium_Brick_Mask = {  width = 16, height = 16, id = { 2062199185,2234204813},  },
+	.Polished_Mask = {  width = 16, height = 16, id = { 2062199185,2345546707},  },
 	.Stone_Slate = {  width = 16, height = 16, id = { 2062199185,410206797},  },
+	.Large_Square_Tiles_Mask = {  width = 16, height = 16, id = { 2062199185,582471420},  },
 	.Grass_Side_Overlay = {  width = 16, height = 16, id = { 2062199185,303175764},  },
 	.Dirt = {  width = 16, height = 16, id = { 2062199185,609455824},  },
 	.Grass_Overlay = {  width = 16, height = 16, id = { 2062199185,1424846840},  },
+	.Small_Cobblestone_Mask = {  width = 16, height = 16, id = { 2062199185,1400632941},  },
+	.Small_Brick_Mask = {  width = 16, height = 16, id = { 2062199185,1200712506},  },
 }
 

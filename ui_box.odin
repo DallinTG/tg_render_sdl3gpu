@@ -137,6 +137,8 @@ ui_box_dec::proc(
 	},
 	do_sizing:bool=false,
 	sizing:cl.Sizing={},
+
+	attachment:cl.FloatingAttachPoints={ element = .CenterCenter, parent = .CenterCenter,},
 )->(dec:cl.ElementDeclaration){
 	new_sizing:cl.Sizing={ cl.SizingFit(), cl.SizingFit() }
 	if do_sizing == true{
@@ -173,10 +175,7 @@ ui_box_dec::proc(
 		floating ={
 			offset = {ui_box.offset.x,ui_box.offset.y},
 			attachTo = .Root,
-			attachment = {
-				element = .CenterCenter,
-				parent = .CenterCenter,
-			},
+			attachment = attachment,
 			// pointerCaptureMode = .Capture,
 	
 		},

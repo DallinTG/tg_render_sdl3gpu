@@ -177,6 +177,10 @@ static const uint CORNER_MAP[6] = { 0, 1, 2, 2, 3, 0 };
 struct Face {
 	uint packed_block_pos__geometry_face_index;
 	uint texture_face_index;
+	uint light_0;
+	uint light_1;
+	uint light_2;
+	uint light_3;
 };
 
 struct Face_Texure {
@@ -249,6 +253,9 @@ struct Output{
 	// float clip_v : SV_ClipDistance1;
 	// float4 clip_box : TEXCOORD11;
 	uint texture_face_index : TEXCOORD7;
+
+	float3 sun_light   : TEXCOORD8;
+	float3 block_light : TEXCOORD9;
 };
 
 
@@ -266,10 +273,17 @@ Output main(
 	// Face
 	// ------------------------------------------------------------
 
-	uint face_index = vid / 3;
-	uint corner_id = vid % 3;
+	// uint face_index = vid / 3;
+	// uint corner_id = vid % 3;
+
+	// Face face = Faces[face_index];
+
+	uint face_index = vid / 6;
+
+	uint corner_id = CORNER_MAP[vid % 6];
 
 	Face face = Faces[face_index];
+
 
 	uint packed_pos = face.packed_block_pos__geometry_face_index & 0xFFFF;
 	uint geometry_face_index = face.packed_block_pos__geometry_face_index >> 16;
@@ -304,21 +318,39 @@ Output main(
 
 	float2 final_uv = float2(0, 0);
 	float2 face_uv = float2(0, 0);
+	// if (corner_id == 0) {
+	// 	final_pos.xyz = geometry.pos0.xyz;
+	// 	final_uv = geometry.uv0;
+	// 	face_uv = float2(0, 0);
+	// }
+	// else if (corner_id == 1) {
+	// 	final_pos.xyz = geometry.pos0.xyz + edge1 * 2.0;
+	// 	final_uv = geometry.uv0 +(geometry.uv1 - geometry.uv0) * 2.0;
+	// 	face_uv = float2(2, 0);
+	// }
+	// else {
+	// 	final_pos.xyz = geometry.pos0.xyz + edge3 * 2.0;
+	// 	final_uv = geometry.uv0 +(geometry.uv3 - geometry.uv0) * 2.0;
+	// 	face_uv = float2(0, 2);
+	// }
+
 	if (corner_id == 0) {
-		final_pos.xyz = geometry.pos0.xyz;
+		final_pos = geometry.pos0;
 		final_uv = geometry.uv0;
-		face_uv = float2(0, 0);
 	}
 	else if (corner_id == 1) {
-		final_pos.xyz = geometry.pos0.xyz + edge1 * 2.0;
-		final_uv = geometry.uv0 +(geometry.uv1 - geometry.uv0) * 2.0;
-		face_uv = float2(2, 0);
+		final_pos = geometry.pos1;
+		final_uv = geometry.uv1;
 	}
-	else {
-		final_pos.xyz = geometry.pos0.xyz + edge3 * 2.0;
-		final_uv = geometry.uv0 +(geometry.uv3 - geometry.uv0) * 2.0;
-		face_uv = float2(0, 2);
+	else if (corner_id == 2) {
+		final_pos = geometry.pos2;
+		final_uv = geometry.uv2;
 	}
+	else if (corner_id == 3) {
+		final_pos = geometry.pos3;
+		final_uv = geometry.uv3;
+	}
+
 	// ------------------------------------------------------------
 	// Local position
 	// ------------------------------------------------------------
@@ -338,6 +370,31 @@ Output main(
 		float(chunk.pos_y) * 32.0,
 		float(chunk.pos_z) * 32.0
 	);
+
+
+
+uint packed_light = face.light_0;
+
+if (corner_id == 1) {
+    packed_light = face.light_1;
+} else if (corner_id == 2) {
+    packed_light = face.light_2;
+} else if (corner_id == 3) {
+    packed_light = face.light_3;
+}
+
+float3 sun_light = float3(
+    float((packed_light >> 25) & 31u),
+    float((packed_light >> 20) & 31u),
+    float((packed_light >> 15) & 31u)
+) / 31.0;
+
+float3 block_light = float3(
+    float((packed_light >> 10) & 31u),
+    float((packed_light >>  5) & 31u),
+    float( packed_light        & 31u)
+) / 31.0;
+
 	// ------------------------------------------------------------
 	// Vertex output
 	// ------------------------------------------------------------
@@ -353,6 +410,10 @@ Output main(
 	// output.img_index_2 = tex.img_index_2;
 	// output.layer_2 = tex.layer_2;
 	// output.img_2_tint = tex.tint_2;
+
+	output.sun_light = sun_light;
+	output.block_light = block_light;
+
 
 	output.color = float4(1, 1, 1, 1);
 

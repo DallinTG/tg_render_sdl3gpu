@@ -145,7 +145,15 @@ Backing_Vox_World_Data::struct{
 	u16_chunk_data:	U16_Backing_Chunk_Data_HM,
 }
 
-Palette_Data::struct{
+// Palette_Data::struct{
+// 	item:Item_HD,
+// 	count:u16,
+// 	is_solid:bool,
+// 	is_opaque:bool,
+// 	is_occupied:bool,
+// }
+
+Block_Palette_Data::struct{
 	item:Item_HD,
 	count:u16,
 	is_solid:bool,
@@ -153,14 +161,22 @@ Palette_Data::struct{
 	is_occupied:bool,
 }
 
+// Light_Palette_Data::struct{
+// 	item:Item_HD,
+// 	count:u16,
+// 	is_solid:bool,
+// 	is_opaque:bool,
+// 	is_occupied:bool,
+// }
+
 Backing_Vox_Chunk_Data_HD::distinct hm.Handle64
 
-U0_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u0].max_pal_size]	Palette_Data, pal_count:u16,}
-U1_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u1].max_pal_size]	Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u1].u32_per_chunk]u32,}
-U2_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u2].max_pal_size]	Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u2].u32_per_chunk]u32,}
-U4_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u4].max_pal_size]	Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u4].u32_per_chunk]u32,}
-U8_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u8].max_pal_size]	Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u8].u32_per_chunk]u32,}
-U16_Chunk_Data::struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u16].max_pal_size]	Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u16].u32_per_chunk]u32,}
+U0_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u0].max_pal_size]Block_Palette_Data, pal_count:u16,}
+U1_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u1].max_pal_size]Block_Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u1].u32_per_chunk]u32,}
+U2_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u2].max_pal_size]Block_Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u2].u32_per_chunk]u32,}
+U4_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u4].max_pal_size]Block_Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u4].u32_per_chunk]u32,}
+U8_Chunk_Data::	struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u8].max_pal_size]Block_Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u8].u32_per_chunk]u32,}
+U16_Chunk_Data::struct{handle:Backing_Vox_Chunk_Data_HD,pal:[PALETTES_INFO[.u16].max_pal_size]Block_Palette_Data, pal_count:u16,data:[PALETTES_INFO[.u16].u32_per_chunk]u32,}
 
 U0_Backing_Chunk_Data_HM::	hm.Dynamic_Handle_Map(U0_Chunk_Data,	Backing_Vox_Chunk_Data_HD)
 U1_Backing_Chunk_Data_HM::	hm.Dynamic_Handle_Map(U1_Chunk_Data,	Backing_Vox_Chunk_Data_HD)
@@ -170,7 +186,7 @@ U8_Backing_Chunk_Data_HM::	hm.Dynamic_Handle_Map(U8_Chunk_Data,	Backing_Vox_Chun
 U16_Backing_Chunk_Data_HM::	hm.Dynamic_Handle_Map(U16_Chunk_Data,	Backing_Vox_Chunk_Data_HD)
 
 Backing_Chunk_Data_Abstract::struct{
-	pal:[]Palette_Data,
+	pal:[]Block_Palette_Data,
 	pal_count:^u16,
 	data:[]u32,
 	palette_size:Palette_Sizes,
@@ -328,7 +344,7 @@ new_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data, size:Palette_Size
 	switch size {
 	case .u0:
 		atom.mutex_lock(&data.Mutex_u0)
-		hd, err = hm.dynamic_add(&data.u0_chunk_data,U0_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		hd, err = hm.dynamic_add(&data.u0_chunk_data,U0_Chunk_Data{pal=Block_Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
 		atom.mutex_unlock(&data.Mutex_u0)
 		if err != nil {
 			log.log(.Error, "failed adding u0 chunk during err = ", err)
@@ -337,7 +353,7 @@ new_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data, size:Palette_Size
 		
 	case .u1:
 		atom.mutex_lock(&data.Mutex_u1)
-		hd, err = hm.dynamic_add(&data.u1_chunk_data,U1_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		hd, err = hm.dynamic_add(&data.u1_chunk_data,U1_Chunk_Data{pal=Block_Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
 		atom.mutex_unlock(&data.Mutex_u1)
 		if err != nil {
 			log.log(.Error, "failed adding u1 chunk during err = ", err)
@@ -345,7 +361,7 @@ new_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data, size:Palette_Size
 		}
 	case .u2:
 		atom.mutex_lock(&data.Mutex_u2)
-		hd, err = hm.dynamic_add(&data.u2_chunk_data,U2_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		hd, err = hm.dynamic_add(&data.u2_chunk_data,U2_Chunk_Data{pal=Block_Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
 		atom.mutex_unlock(&data.Mutex_u2)
 		if err != nil {
 			log.log(.Error, "failed adding u2 chunk during err = ", err)
@@ -353,7 +369,7 @@ new_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data, size:Palette_Size
 		}
 	case .u4:
 		atom.mutex_lock(&data.Mutex_u4)
-		hd, err = hm.dynamic_add(&data.u4_chunk_data,U4_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		hd, err = hm.dynamic_add(&data.u4_chunk_data,U4_Chunk_Data{pal=Block_Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
 		atom.mutex_unlock(&data.Mutex_u4)
 		if err != nil {
 			log.log(.Error, "failed adding u4 chunk during err = ", err)
@@ -361,7 +377,7 @@ new_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data, size:Palette_Size
 		}
 	case .u8:
 		atom.mutex_lock(&data.Mutex_u8)
-		hd, err = hm.dynamic_add(&data.u8_chunk_data,U8_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		hd, err = hm.dynamic_add(&data.u8_chunk_data,U8_Chunk_Data{pal=Block_Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
 		atom.mutex_unlock(&data.Mutex_u8)
 		if err != nil {
 			log.log(.Error, "failed adding u8 chunk during err = ", err)
@@ -369,7 +385,7 @@ new_backing_chunk_vox_data::proc(data:^Backing_Vox_World_Data, size:Palette_Size
 		}
 	case .u16:
 		atom.mutex_lock(&data.Mutex_u16)
-		hd, err = hm.dynamic_add(&data.u16_chunk_data,U16_Chunk_Data{pal=Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
+		hd, err = hm.dynamic_add(&data.u16_chunk_data,U16_Chunk_Data{pal=Block_Palette_Data{item={0,0},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
 		atom.mutex_unlock(&data.Mutex_u16)
 		if err != nil {
 			log.log(.Error, "failed adding u16 chunk during err = ", err)
@@ -742,7 +758,7 @@ get_or_add_palette_index_by_item_hd::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,
 		is_opaque = false
 		is_solid = false
 	}
-	ad_chunk.pal[pal_count]=Palette_Data{
+	ad_chunk.pal[pal_count]=Block_Palette_Data{
 		item=item_hd,
 		count=0,
 		is_occupied=is_occupied,
@@ -756,7 +772,7 @@ get_or_add_palette_index_by_item_hd::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,
 
 //preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
 //if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
-get_or_add_palette_index::proc(chunk:^Vox_Chunk_Data,pal_d:Palette_Data,preserve_data:bool=true)->(pal_index:u16){
+get_or_add_palette_index::proc(chunk:^Vox_Chunk_Data,pal_d:Block_Palette_Data,preserve_data:bool=true)->(pal_index:u16){
 	ad_chunk:=&chunk.backing_chunk_data_abstract
 	pal_count:=ad_chunk.pal_count^
 	for i in 0..<pal_count{

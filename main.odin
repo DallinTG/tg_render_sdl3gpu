@@ -885,7 +885,7 @@ screane_space_to_world_2d::proc(cam:^Camera,pos:[2]f32)->(world:[2]f32){
 	return 
 }
 // this is a very rudimenty controler and should only be used for testing
-update_camera_3d::proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=1.5,){
+update_camera_3d::proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=.5,){
 	move_input:Vec2
 	speed:=speed
 	
@@ -894,7 +894,7 @@ update_camera_3d::proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=1.5
 	if is_input_event(.move_l,always_consume_p = false, always_consume_d = false) do move_input.x = -1
 	else if is_input_event(.move_r,always_consume_p = false, always_consume_d = false) do move_input.x = 1
 	
-	if is_input_event(.ui_shift,always_consume_p = false, always_consume_d = false){speed*=20}
+	if is_input_event(.ui_shift,always_consume_p = false, always_consume_d = false){speed*=80}
 	look_input := s.input_events.mouse_move * sensitivity * dt
 	
 	cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)

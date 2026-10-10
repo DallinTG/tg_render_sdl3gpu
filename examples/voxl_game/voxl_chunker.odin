@@ -86,7 +86,7 @@ Vox_Render_Debug_Info::struct{
 // NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
 // 
 CHUNK_SIZE::32
-MAX_NUM_CHUNKS::350000 * 7
+MAX_NUM_CHUNKS::35000 * 7
 MAX_FACE_COUNT::MAX_NUM_CHUNKS * CHUNK_MAX_FACE_NUM
 CHUNK_MAX_FACE_NUM::  CHUNK_SIZE * CHUNK_SIZE / 2
 MAX_NUM_DRAW_CMD_BUF::MAX_NUM_CHUNKS / 8
@@ -111,7 +111,10 @@ Map::struct{
 	chunks_map:map[[4]int]Chunk_HD,
 	chunks:Chunks_Handle_Map,
 	backing_world_vox_data:Backing_Vox_World_Data, 
+	backing_world_light_data:Backing_Light_World_Data, 
+
 	vox_chunk_hm:Vox_Chunk_Data_HM,
+	light_chunk_hm:Light_Chunk_Data_HM,
 	vox_mask_hm:Vox_Mask_HM,
 	chunks_mesh_data:Chunks_Mesh_Data_Handle_Map,
 	gpu_mesh_data_hm:GPU_Mesh_Data_HM,
@@ -144,12 +147,14 @@ Map::struct{
 Chunks_Handle_Map::hm.Dynamic_Handle_Map(Chunk,Chunk_HD)
 Chunk_HD::distinct hm.Handle64
 Chunk::struct{
-	handle:				Chunk_HD,
-	pos:				[4]int,
-	vox_data_hd:		Vox_Chunk_Data_HD,
+	handle:			Chunk_HD,
+	pos:			[4]int,
+	vox_q_state:	Q_State,
+	vox_data_hd:	Vox_Chunk_Data_HD,
+	light_data_hd:	Light_Chunk_Data_HD,
 
-	vox_q_state:Q_State,
 	mesh_q_state:[Model_Sides]Q_State,
+	
 
 	gpu_mesh_data_hd:GPU_Mesh_Data_HD,
 	// mesh_data:		 [Model_Sides]Chunk_Mesh_Data_HD,
@@ -168,8 +173,8 @@ Chunk_Mesh_Data::struct{
 	data:Chunk_Mesh_Data_Raw,
 	face_count:int
 }
-
-Chunk_Mesh_Data_Raw::[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE]tg.Vert_Face
+// INFO we are /8 on the buffer size becus you will never have all faces filled
+Chunk_Mesh_Data_Raw::[CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE/8]tg.Vert_Face
 
 GPU_Mesh_Data_HM::hm.Dynamic_Handle_Map(GPU_Mesh_Data,GPU_Mesh_Data_HD)
 GPU_Mesh_Data_HD::distinct hm.Handle64
@@ -971,6 +976,12 @@ gen_chunk_vox_data::proc(w_map:^Map, chunk_hd:Chunk_HD,pos:[4]int,index:int){
 	vox_chunk,vox_chunk_ok:=get_vox_chunk_data(w_map,vox_chunk_hd)
 	assert(vox_chunk_ok)
 
+	light_chunk_hd:=make_new_light_chunk_data(w_map, .u0)
+	chunk.light_data_hd = light_chunk_hd
+	light_chunk,light_chunk_ok:=get_light_chunk_data(w_map,light_chunk_hd)
+	assert(light_chunk_ok)
+
+
 	vox_chunk.pos = pos
 	chunk.chunk_shader_data.pos = {
 		cast(i32)pos.x,
@@ -1683,6 +1694,19 @@ mesh_by_bit_mask :: proc(
 			face.texture_face_index = texture_cache[pal_index]
 			face.geometry_face_index = geometry_cache[pal_index]
 
+			for corner_id in 0..<4 {
+
+		
+				face.light[corner_id] = sample_corner_light(
+					&chunk_mask.is_opaque_mask,
+					&cur_neighbor_mask,
+					side,
+					x, cast(int)y, z,
+					corner_id,
+				)
+			}
+
+
 			mesh.data[face_count] = face
 			face_count += 1
 		}
@@ -1873,6 +1897,167 @@ sample_4_neighbor_masks_z :: proc(
 	return out
 }
 
+
+LIGHT_CORNER_POSITIONS_r:=LIGHT_CORNER_POSITIONS
+LIGHT_CORNER_POSITIONS :: [6][4][3]int{
+	// .pos_x — matches pos0, pos1, pos2, pos3
+	{{1, 1, 1},{1, 0, 1},{1, 0, 0},{1, 1, 0},},
+
+	// .neg_x
+	{{0, 1, 0},{0, 0, 0},{0, 0, 1},{0, 1, 1},},
+	// .pos_y
+	{{0, 1, 0},{0, 1, 1},{1, 1, 1},{1, 1, 0},},
+	// .neg_y
+	{{1, 0, 0},{1, 0, 1},{0, 0, 1},{0, 0, 0},},
+	// .pos_z
+	{{0, 1, 1},{0, 0, 1},{1, 0, 1},{1, 1, 1},},
+	// .neg_z
+	{{1, 1, 0},{1, 0, 0},{0, 0, 0},{0, 1, 0},},
+}
+
+LIGHT_FACE_NORMALS_r:=LIGHT_FACE_NORMALS
+LIGHT_FACE_NORMALS :: [6][3]int{
+	{ 1,  0,  0},
+	{-1,  0,  0},
+	{ 0,  1,  0},
+	{ 0, -1,  0},
+	{ 0,  0,  1},
+	{ 0,  0, -1},
+}
+LIGHT_FACE_TANGENTS_r:=LIGHT_FACE_TANGENTS
+LIGHT_FACE_TANGENTS :: [6][2]int{
+	{1, 2},
+	{1, 2},
+	{0, 2},
+	{0, 2},
+	{0, 1},
+	{0, 1},
+}
+
+LIGHT_MAX_PACKED : u32: 0x3fff_ffff
+
+// @(inline)
+light_sample_is_opaque :: proc(
+	current: ^[CHUNK_SIZE * CHUNK_SIZE]u32,
+	across_face: ^[CHUNK_SIZE * CHUNK_SIZE]u32,
+	side: Model_Sides,
+	sx, sy, sz: int,
+) -> bool {
+	if sx >= 0 && sx < CHUNK_SIZE &&
+	   sy >= 0 && sy < CHUNK_SIZE &&
+	   sz >= 0 && sz < CHUNK_SIZE {
+		return (current[sx + sz * CHUNK_SIZE] & (u32(1) << u32(sy))) != 0
+	}
+
+	// Only handle samples crossing this face's normal boundary.
+	switch side {
+	case .pos_x:
+		if sx != CHUNK_SIZE || sy < 0 || sy >= CHUNK_SIZE ||
+		   sz < 0 || sz >= CHUNK_SIZE {
+			return false
+		}
+		return (across_face[sz * CHUNK_SIZE] & (u32(1) << u32(sy))) != 0
+
+	case .neg_x:
+		if sx != -1 || sy < 0 || sy >= CHUNK_SIZE ||
+		   sz < 0 || sz >= CHUNK_SIZE {
+			return false
+		}
+		return (across_face[CHUNK_SIZE - 1 + sz * CHUNK_SIZE] & (u32(1) << u32(sy))) != 0
+
+	case .pos_y:
+		if sy != CHUNK_SIZE || sx < 0 || sx >= CHUNK_SIZE ||
+		   sz < 0 || sz >= CHUNK_SIZE {
+			return false
+		}
+		return (across_face[sx + sz * CHUNK_SIZE] & 1) != 0
+
+	case .neg_y:
+		if sy != -1 || sx < 0 || sx >= CHUNK_SIZE ||
+		   sz < 0 || sz >= CHUNK_SIZE {
+			return false
+		}
+		return (across_face[sx + sz * CHUNK_SIZE] & (u32(1) << 31)) != 0
+
+	case .pos_z:
+		if sz != CHUNK_SIZE || sx < 0 || sx >= CHUNK_SIZE ||
+		   sy < 0 || sy >= CHUNK_SIZE {
+			return false
+		}
+		return (across_face[sx] & (u32(1) << u32(sy))) != 0
+
+	case .neg_z:
+		if sz != -1 || sx < 0 || sx >= CHUNK_SIZE ||
+		   sy < 0 || sy >= CHUNK_SIZE {
+			return false
+		}
+		return (across_face[sx + (CHUNK_SIZE - 1) * CHUNK_SIZE] & (u32(1) << u32(sy))) != 0
+
+	case .extra:
+		return false
+	}
+
+	return false
+}
+
+// @(inline)
+sample_corner_light :: proc(
+	current: ^[CHUNK_SIZE * CHUNK_SIZE]u32,
+	across_face: ^[CHUNK_SIZE * CHUNK_SIZE]u32,
+	side: Model_Sides,
+	x, y, z: int,
+	corner_id: int,
+) -> u32 {
+	if side == .extra {
+		return LIGHT_MAX_PACKED
+	}
+
+	si := int(side)
+	corner := LIGHT_CORNER_POSITIONS_r[si][corner_id]
+	normal := LIGHT_FACE_NORMALS_r[si]
+	tangents := LIGHT_FACE_TANGENTS_r[si]
+
+	// Start one block outside the face.
+	base := [3]int{
+		x + normal[0],
+		y + normal[1],
+		z + normal[2],
+	}
+
+	// Sample the four voxels surrounding this face corner.
+	sign_a := corner[tangents[0]] * 2 - 1
+	sign_b := corner[tangents[1]] * 2 - 1
+
+	a := base
+	a[tangents[0]] += sign_a
+
+	b := base
+	b[tangents[1]] += sign_b
+
+	ab := base
+	ab[tangents[0]] += sign_a
+	ab[tangents[1]] += sign_b
+
+	samples := [4][3]int{base, a, b, ab}
+
+	// Temporary lighting: opaque = 0, non-opaque = 31.
+	lit_samples := 0
+	for p in samples {
+		if !light_sample_is_opaque(current, across_face, side, p[0], p[1], p[2]) {
+			lit_samples += 1
+		}
+	}
+
+	// Average the four samples into one 5-bit brightness value.
+	v := u32(lit_samples * 31 / 4)
+
+	// Pack RGB sunlight and RGB block light.
+	return (v << 25) | (v << 20) | (v << 15) |
+	       (v << 10) | (v << 5)  | v
+}
+
+
+
 Destroy_Mesh_Data_Q_Data::struct{
 	mesh_data_hd:Chunk_Mesh_Data_HD,
 }
@@ -1991,8 +2176,8 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 	first_face:=cast(u32) range.start * CHUNK_MAX_FACE_NUM
 
 	upload_data_to_mesh_by_offset(w_map.map_mesh_hd,w_map.chunck_transfer_buffer,mesh.data[:mesh.face_count],first_face, copy_pass)
-	gpu_data.draw_cmd[side].num_vertices = cast(u32)mesh.face_count*3
-	gpu_data.draw_cmd[side].first_vertex = first_face *3
+	gpu_data.draw_cmd[side].num_vertices = cast(u32)mesh.face_count * 6
+	gpu_data.draw_cmd[side].first_vertex = first_face * 6
 	gpu_data.draw_cmd[side].num_instances = 1 
 	add_to_destroy_mesh_data_q(w_map,mesh_hd)
 }
@@ -2075,7 +2260,7 @@ unload_mesh_data::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD){
 Set_Block_CMD::struct{
 	chunk_pos:[4]int,
 	pos_in_chunk:[3]u8,
-	new_block:Palette_Data,
+	new_block:Block_Palette_Data,
 }
 
 manage_set_block_cmd_q::proc(w_map:^Map)->(did_work:bool){

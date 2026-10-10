@@ -22,6 +22,9 @@ struct Input{
 	float2 face_uv : TEXCOORD6;
 	uint texture_face_index : TEXCOORD7;
 	// float4 clip_box : TEXCOORD11;
+	float3 sun_light   : TEXCOORD8;
+	float3 block_light : TEXCOORD9;
+
 };
 
 struct Face {
@@ -65,7 +68,14 @@ struct Face_Texure {
    	uint _padding_1_2;
 	uint _padding_2_2;
     float4 tint_2;
-    
+
+	uint mask_index;
+	uint mask_layer;
+	uint mask_pad_1;
+	uint mask_pad_2;
+	float4 mask_tint_l;
+	float4 mask_tint_d;
+
 };
 
 SamplerState smp[10] : register(s0, space2);
@@ -91,20 +101,20 @@ float4 main(Input input) : SV_Target0 {
 	float4 img_2_tint = tex.tint_2;
 
 
-	const float CLIP_EPSILON = 0.5;
+	// const float CLIP_EPSILON = 0.5;
 
-	float2 uv_dx = abs(ddx(input.face_uv));
-	float2 uv_dy = abs(ddy(input.face_uv));
+	// float2 uv_dx = abs(ddx(input.face_uv));
+	// float2 uv_dy = abs(ddy(input.face_uv));
 	
-	float clip_epsilon_x = max(uv_dx.x, uv_dy.x);
-	float clip_epsilon_y = max(uv_dx.y, uv_dy.y);
+	// float clip_epsilon_x = max(uv_dx.x, uv_dy.x);
+	// float clip_epsilon_y = max(uv_dx.y, uv_dy.y);
 	
-	if (
-		input.face_uv.x > 1.0 + clip_epsilon_x ||
-		input.face_uv.y > 1.0 + clip_epsilon_y
-	) {
-		discard;
-	}
+	// if (
+	// 	input.face_uv.x > 1.0 + clip_epsilon_x ||
+	// 	input.face_uv.y > 1.0 + clip_epsilon_y
+	// ) {
+	// 	discard;
+	// }
 
 	float2 lod_uv = input.uv / float(input.size);
 
@@ -117,7 +127,7 @@ float4 main(Input input) : SV_Target0 {
 
 	color1 *= img_1_tint;
 
-	// if (color1.a <= 0.0) discard;
+	if (color1.a <= 0.0) discard;
 
 	float4 color = color1;
 
@@ -131,5 +141,62 @@ float4 main(Input input) : SV_Target0 {
 		color.a = color1.a;
 	}
 
-	return color * input.color * float4(input.shading,input.shading,input.shading,1);
+	// ------------------------------------------------------------
+	// Mask lighting
+	//
+	// 0.5 = unchanged
+	// >0.5 = lighten
+	// <0.5 = darken
+	// ------------------------------------------------------------
+
+	Texture2DArray mask_tex = g_Textures[tex.mask_index];
+	
+		
+	
+	float mask = g_Textures[tex.mask_index].Sample(
+		smp[tex.mask_index],
+		float3(lod_uv, tex.mask_layer)
+	).r;
+	
+	if (mask > 0.5) {
+	
+		// 0.5 -> 0
+		// 1.0 -> 1
+		float effect = (mask - 0.5)*2.0 ;
+		effect *= tex.mask_tint_l.a;
+	
+		color.rgb += (1.0 - color.rgb) * tex.mask_tint_l.rgb * effect;
+	
+	} else if (mask < 0.5) {
+	
+		// 0.5 -> 0
+		// 0.0 -> 1
+		float effect = (0.5 - mask)*2.0 ;
+		effect *= tex.mask_tint_d.a;
+	
+		color.rgb *= 1.0 - tex.mask_tint_d.rgb * effect;
+	}
+
+// ------------------------------------------------------------
+// World lighting
+// Both light inputs are normalized to 0.0–1.0.
+// ------------------------------------------------------------
+
+	float3 sun = saturate(input.sun_light);
+	float3 block = saturate(input.block_light);
+	
+	// Combine sunlight and colored block light.
+	// Stronger contributions dominate, with both contributing
+	// when they overlap.
+	float3 light = sqrt(
+	    sun * sun +
+	    block * block
+	);
+	
+	light = saturate(light);
+	
+	// Apply lighting to the final textured and masked color.
+	color.rgb *= light;
+
+	return color * input.color* float4(input.shading, input.shading, input.shading, 1.0);
 }

@@ -272,7 +272,7 @@ init_defalt_ui_boxes::proc(){
 	g.ui_boxes.test = tg.create_ui_box({name="theme_picker_ui_box",update_proc=tg.theme_picker_ui_box,is_visible = false},g.ui_clay_inst)
 	// tg.create_ui_box({name="sand_sim_cell_id_picker_ui_box",update_proc=sand_sim_cell_id_picker_ui_box,is_visible = false},g.ui_clay_inst)
 	tg.create_ui_box(tg.UI_Box_Data{name="inspector_ui_box",update_proc=tg.inspector_ui_box,is_visible = true,inspector={parent = g.debug_info,do_depth = false}},g.ui_clay_inst)
-	
+	tg.create_ui_box(tg.UI_Box_Data{name="item_info_list",update_proc=item_info_list_ui_box,is_visible = true,inspector={parent = g.debug_info,do_depth = false}},g.ui_clay_inst)
 }
 
 

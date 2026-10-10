@@ -357,7 +357,7 @@ get_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chunk_po
 	return
 }
 
-DF_AIR_BLOCK::Palette_Data{
+DF_AIR_BLOCK::Block_Palette_Data{
 	item = {},
 	is_occupied = false,
 	is_opaque = false,
@@ -408,7 +408,7 @@ set_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,){
 		chunk_pos.z +=1
 	}
 
-	b,ok:=reg.get(&g.item_reg,g.df_items[.dirt])
+	b,ok:=reg.get(&g.item_reg,g.temp_using_item_hd)
 	add_to_set_block_cmd_q(w_map,Set_Block_CMD{chunk_pos = {chunk_pos.x,chunk_pos.y,chunk_pos.z,1},pos_in_chunk=cast([3]u8)temp_pos_in_chunk,new_block={is_occupied = b.is_occupied,is_opaque = b.is_opaque, is_solid = b.is_solid, item = b.handle}})
 	
 }

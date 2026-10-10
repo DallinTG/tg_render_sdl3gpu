@@ -27,6 +27,7 @@ Vert_Face::struct{
 	block_pos:u16,
 	geometry_face_index:u16,
 	texture_face_index:u32,
+	light: [4]u32,
 }
 Vert_Face_Texure::struct{
 	img_index:u32,
@@ -40,6 +41,13 @@ Vert_Face_Texure::struct{
 	pad_1_2:u32,
 	pad_2_2:u32,
 	tint_2:[4]f32,
+
+	mask_index:u32,
+	mask_layer:u32,
+	mask_pad_1:u32,
+	mask_pad_2:u32,
+	mask_tint_l:[4]f32,
+	mask_tint_d:[4]f32,
 }
 Vert_Face_Geometry::struct{
 	uv:[4][2]f32,

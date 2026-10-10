@@ -66,13 +66,6 @@ Item_Tag::enum{
 	// ==========================================
 	// 🛠️ TOOL TYPE ARCHETYPES
 	// ==========================================
-	Tool_Pickaxe,      // Effective against stones/metals
-	Tool_Axe,          // Effective against woods/organic structures
-	Tool_Shovel,       // Effective against dirt/sand/gravel
-	Tool_Hoe,          // Tills soil/clears leaf geometry quickly
-	Tool_Shears,       // Snips plants or sheep without destroying the source block
-	Tool_Hammer,       // Used for forging, crushing, or heavy knockback
-	Tool_Wrench,       // Rotates blocks or dismantles machinery cleanly
 
 	// ==========================================
 	// ⚔️ COMBAT, WEAPONS & EQUIPMENT
@@ -133,44 +126,24 @@ Item_Info::struct{
 
 Material_Tags :: bit_set[Material_Tag]
 Material_Tag::enum{
-	// ==========================================
-	// 🪵 BROAD LINEAGE & AUDIO/PARTICLE MATRIX
-	// ==========================================
-	Is_Organic,        // Wood, plants, leather, feathers
-	Is_Stone,          // Cobblestone, deep slate, bricks, obsidian
+
+	Is_Organic,        // Wood, plants, Stone
 	Is_Metal,          // Iron, copper, bronze, adamantine
 	Is_Gem,            // Diamonds, rubies, quartz crystals
-	Is_Flesh,          // Monster parts, meats, soft skin bodies
-	Is_Glass,          // Brittle sand-fused structures
 	Is_Fabric,         // Wool, carpets, banners, clothing
 
-	// ==========================================
-	// 🔥 MANUFACTURING & REFINING
-	// ==========================================
-	Can_Smelt,         // Can be processed inside a standard furnace
-	Can_Blast,         // Requires high-tier blast furnace for processing
-	Can_Crush,         // Can be broken down into dust/gravel variants via hammers
-	Is_Fuel,           // Can be burned inside machines to power recipes (coal, logs)
-	Is_Alloy,          // Created by combining multiple metals together
-	Is_Radioactive,    // Emits ambient hazard damage or powers high-tech tiers
+	has_wood_v,
+	has_stone_v,
 
-	// ==========================================
-	// ⛏️ HARVEST RULES & MINING TIERS
-	// ==========================================
-	Is_Brittle,        // Shatters completely into nothing if mined without the right tool
-	Tier_Wood,         // Can be broken by anything
-	Tier_Stone,        // Requires at least a stone tool to drop items
-	Tier_Iron,         // Requires an iron tool to drop items
-	Tier_Diamond,      // Requires diamond tier tools or higher
-	Tier_Mythic,       // Endgame requirement layer
-
-	// ==========================================
-	// 🎨 AESTHETICS & RARITY
-	// ==========================================
-	Is_Precious,       // Highly sought after; boosts trade values with NPCs
-	Is_Crystalline,    // Shines or catches specular lighting maps
-	Is_Weathered,      // Can age over time (like copper turning green)
-	Is_Anomalous,      // Defies standard engine laws (e.g., anti-gravity material)
+}
+Tools::enum{
+	Tool_Pickaxe,
+	Tool_Axe,
+	Tool_Shovel,
+	Tool_Hoe,
+	Tool_Shears,
+	Tool_Hammer,
+	Tool_Wrench,
 }
 Material_Info::struct{
 	reg_id:Material_ID,
@@ -178,9 +151,13 @@ Material_Info::struct{
 
 	name:string,
 	material_tags:	Material_Tags,
+
+	tex_id:reg.Reg_ID,
+
 	hardness:	f32,
 	durability:	i32,
-	col:		[3]f32,
+	has_tools:	bit_set[Tools],
+	col:		[4]f32,
 	tier:		Item_Tier,
 	rarity:		Item_Rarity,
 }
@@ -238,7 +215,15 @@ update_texture_facees::proc(){
 update_geometry_facees::proc(){
 	tg.update_indexed_gpu_data(&g.geometry_facees)
 }
-add_texture_face::proc(tex_id:reg.Reg_ID,tint:[4]f32={1,1,1,1},tex_id_2:reg.Reg_ID=tg.BLANK_TEX_ID,tint_2:[4]f32={0,0,0,0})->(index:int){
+add_texture_face::proc(
+	tex_id:reg.Reg_ID,
+	tint:[4]f32={1,1,1,1},
+	tex_id_2:reg.Reg_ID=tg.BLANK_TEX_ID,
+	tint_2:[4]f32={0,0,0,0},
+	mask_tex_id:reg.Reg_ID=tg.BLANK_TEX_ID,
+	mask_tint_l:[4]f32={0,0,0,0},
+	mask_tint_d:[4]f32={0,0,0,0},
+)->(index:int){
 	data:DF_FACE_TYPE
 
 	// data.uv[0] =  {0,0}
@@ -258,13 +243,26 @@ add_texture_face::proc(tex_id:reg.Reg_ID,tint:[4]f32={1,1,1,1},tex_id_2:reg.Reg_
 	data.layer_2 = texture_2.layer
 	data.tint_2 = tint_2
 
-
+	mask_texture:=tg.get_texture_by_id(mask_tex_id)
+	data.mask_index = cast(u32)mask_texture.groop_index
+	data.mask_layer = mask_texture.layer
+	data.mask_tint_l = mask_tint_l
+	data.mask_tint_d = mask_tint_d
 
 	index=tg.add_indexed_gpu_data(&g.texture_facees,data)
 	return
 }
 
 // resends the data to the gpu
+fill_sides_all_1_t::proc(index:int) -> (sides:[Model_Sides]int){
+	sides[.pos_x] = index
+	sides[.neg_x] = index
+	sides[.pos_y] = index
+	sides[.neg_y] = index
+	sides[.pos_z] = index
+	sides[.neg_z] = index
+	return
+}
 
 DF_Items::enum{
 	air,
@@ -284,6 +282,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
+		name = "Dirt",
 	}
 	grass_t_id:=add_texture_face(reg.id(Textures.Grass_Overlay),{.2,.7,.3,1})
 	grass_side_t_id:=add_texture_face(reg.id(Textures.Dirt),{1,1,1,1},reg.id(Textures.Grass_Side_Overlay),{.2,.7,.3,1})
@@ -303,6 +302,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
+		name = "Grass",
 	}
 	stone_slate_t_id:=add_texture_face(reg.id(Textures.Stone_Slate),{1,1,1,1})
 	i[.stone_slate] = Item_Info{
@@ -311,43 +311,139 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
+		name = "Slate",
 	}
-	return
-}
-fill_sides_all_1_t::proc(index:int) -> (sides:[Model_Sides]int){
-	sides[.pos_x] = index
-	sides[.neg_x] = index
-	sides[.pos_y] = index
-	sides[.neg_y] = index
-	sides[.pos_z] = index
-	sides[.neg_z] = index
 	return
 }
 
 // sand_hd:Item_HD
 DF_FACE_TYPE::tg.Vert_Face_Texure
 reg_items::proc(){
-	// tid:= add_texture_face(reg.id(Textures.Stone_Slate),DF_FACE_TYPE,tint = {1,1,1,1})
 	df_items:=creae_df_items_info()
 	for item, i in df_items{
 		g.df_items[i] = reg.add(&g.item_reg,item,reg.id(i))
 		// sand_hd=reg.add(&g.item_reg,sand_info,reg.id(DF_Items.dirt))
 	}
-	// sand_info:Item_Info={
-	// 	// texture_id = .Tile_Bace,
-	// 	// texture_face_index = cast(u16)add_texture_face(.Tile_Bace,DF_FACE_TYPE),
-	// 	texture_data = {sides = fill_sides_all_1_t(tid)},
-	// 	model_data = g.cube_face_geometry,
-		
-	// 	// texture = tg.get_texture_by_id(.Software_Hourglass_Sand_Time_Wait)
-	// }
-	// df_item_info:=creae_df_items_info()
-	// sand_hd=reg.add(&g.item_reg,sand_info,reg.id(DF_Items.dirt))
-	
+	iterator:=hm.iterator_make(&g.material_reg.data)
+	for mat,mat_hd in hm.iterate(&iterator){
+			log.log(.Debug,"\n\n\n\n\n\n\n\n\n\n\n\n\n waffles",mat.material_tags)
+		if .has_stone_v in mat.material_tags{
+			{
+				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1})
+				name:=st.concatenate({mat.name," Stone"})
+				item:Item_Info={
+					name = name,
+					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
+					model_data = g.cube_face_geometry,
+					texture_data = {sides = fill_sides_all_1_t(texture)},
+					is_occupied = true,
+					is_opaque = true,
+					is_solid = true,
+				}
+				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
+			}
+			{
+				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1},mask_tex_id = Textures_Dat[.Medium_Brick_Mask].id,mask_tint_l={.9,.9,1,1},mask_tint_d={1,1,.9,1})
+				name:=st.concatenate({mat.name," Medium Brick"})
+				item:Item_Info={
+					name = name,
+					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
+					model_data = g.cube_face_geometry,
+					texture_data = {sides = fill_sides_all_1_t(texture)},
+					is_occupied = true,
+					is_opaque = true,
+					is_solid = true,
+				}
+				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
+			}
+			{
+				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1},mask_tex_id = Textures_Dat[.Small_Brick_Mask].id,mask_tint_l={.9,.9,1,1},mask_tint_d={1,1,.9,1})
+				name:=st.concatenate({mat.name," Small Brick"})
+				item:Item_Info={
+					name = name,
+					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
+					model_data = g.cube_face_geometry,
+					texture_data = {sides = fill_sides_all_1_t(texture)},
+					is_occupied = true,
+					is_opaque = true,
+					is_solid = true,
+				}
+				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
+			}
+			{
+				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1},mask_tex_id = Textures_Dat[.Small_Cobblestone_Mask].id,mask_tint_l={.9,.9,1,1},mask_tint_d={1,1,.9,1})
+				name:=st.concatenate({mat.name," Cobblestone"})
+				item:Item_Info={
+					name = name,
+					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
+					model_data = g.cube_face_geometry,
+					texture_data = {sides = fill_sides_all_1_t(texture)},
+					is_occupied = true,
+					is_opaque = true,
+					is_solid = true,
+				}
+				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
+			}
+			{
+				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1},mask_tex_id = Textures_Dat[.Polished_Mask].id,mask_tint_l={.9,.9,1,1},mask_tint_d={1,1,.9,1})
+				name:=st.concatenate({mat.name," Polished"})
+				item:Item_Info={
+					name = name,
+					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
+					model_data = g.cube_face_geometry,
+					texture_data = {sides = fill_sides_all_1_t(texture)},
+					is_occupied = true,
+					is_opaque = true,
+					is_solid = true,
+				}
+				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
+			}
+			{
+				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1},mask_tex_id = Textures_Dat[.Large_Square_Tiles_Mask].id,mask_tint_l={.9,.9,1,1},mask_tint_d={1,1,.9,1})
+				name:=st.concatenate({mat.name," Large Square Tiles"})
+				item:Item_Info={
+					name = name,
+					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
+					model_data = g.cube_face_geometry,
+					texture_data = {sides = fill_sides_all_1_t(texture)},
+					is_occupied = true,
+					is_opaque = true,
+					is_solid = true,
+				}
+				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
+			}
+		}
+	}
+}
+
+DF_Materials::enum{
+	slate,
+}
+
+DF_STONE_HARDNESS::3
+DF_STONE_DURABILITY::3
+creae_df_materials_info::proc()->(df_items_info:[DF_Materials]Material_Info){
+	i:=&df_items_info
+
+
+	i[.slate] = Material_Info{
+		name =			"Slate",
+		material_tags =	{.has_stone_v,.Is_Organic,},
+		hardness =		DF_STONE_HARDNESS,
+		durability =	DF_STONE_DURABILITY,
+		col =			{.063,.063,.263,1},
+		tier =			.Non,
+		rarity =		.Common,
+		tex_id = Textures_Dat[.Stone_Slate].id,
+	}
+	return
 }
 
 reg_materials::proc(){
-
+	df_materials:=creae_df_materials_info()
+	for material, i in df_materials{
+		g.df_materials[i] = reg.add(&g.material_reg,material,reg.id(i))
+	}
 }
 
 
@@ -442,4 +538,81 @@ create_cube_face_geometry :: proc() -> Model_Data {
 	tg.update_indexed_gpu_data(&g.geometry_facees)
 
 	return result
+}
+
+
+item_info_list_ui_box::proc(ui_box_handle:tg.UI_Box_Handle){
+	ui_box,cl_inst,ok,vis:=tg.start_ui_box(ui_box_handle)
+	index:=cast(u32)ui_box_handle.idx
+	if !ok {return}
+
+	if !vis {return}
+	if cl.UI(cl.ID("item_info_list_ui_box_container",index))(tg.ui_box_dec(ui_box_handle,sizing ={cl.SizingFit({0,cast(f32)cl_inst.wh.x*.8}),cl.SizingFit({0,cast(f32)cl_inst.wh.y*.8})} , do_sizing = true,attachment = {.RightTop,.RightTop})) {
+
+		
+		if cl.UI(cl.ID("drag_box_item_info_list_ui_box",index))(
+			tg.ui_drag_box_dec(ui_box_handle,s.input_events.mouse_move)
+		){
+			cl.Text("Item Info List",tg.text_dec(text_size_id = .small))
+		}
+		tg.inspector_go_back_button(&ui_box.inspector,cast(u32)ui_box_handle.idx)
+
+	
+		pading:=tg.get_ui_pading(.small)
+		tg.clear_fields(&ui_box.inspector)
+		tg.collect_fields(&ui_box.inspector)
+		if cl.UI(cl.ID("item_info_list_constrante",index))(tg.defalt_box_dec(clip = {vertical=true,childOffset=cl.GetScrollOffset()},child_alignment = {.Left,.Top} )){
+			id:u32
+			iterator:=hm.iterator_make(&g.item_reg.data)
+			for item,item_hd in hm.iterate(&iterator){
+				if cl.UI(cl.ID("item_info_list_constrante_row_spacer_3",cast(u32)item_hd.idx))({layout = {sizing = {cl.SizingFit(),cl.SizingFit()},layoutDirection = .LeftToRight,},}){
+					cl.TextDynamic(item.name,tg.text_dec(text_size_id = .small))
+					if cl.Hovered(){
+						if tg.is_input_event(.ui_l_c){
+							g.temp_using_item_hd = item_hd
+						}
+					}
+				}
+			}
+		// 	for &fild ,fild_index in &ui_box.inspector.fields{
+		// 		if cl.UI(cl.ID("inspector_constrante_row",cast(u32)fild_index))({
+		// 			layout = {
+		// 				sizing = {cl.SizingGrow(),cl.SizingFit()},
+		// 				layoutDirection = .LeftToRight,
+		// 			},
+		// 		}
+		// 		){
+		// 			if cl.UI(cl.ID("inspector_constrante_row_spacer_1",cast(u32)fild_index))({layout = {sizing = {cl.SizingFit(),cl.SizingFit()},layoutDirection = .LeftToRight,},}){
+		// 				cl.TextDynamic(fild.name,tg.text_dec(text_size_id = .small))
+		// 			}
+		// 			if cl.UI(cl.ID("inspector_constrante_row_spacer_2",cast(u32)fild_index))({layout = {sizing = {cl.SizingGrow(),cl.SizingFit()},layoutDirection = .LeftToRight,},}){
+		// 				cl.Text("     ",tg.text_dec())
+		// 			}
+		// 			if cl.UI(cl.ID("inspector_constrante_row_spacer_3",cast(u32)fild_index))({layout = {sizing = {cl.SizingFit(),cl.SizingFit()},layoutDirection = .LeftToRight,},}){
+
+		// 			}
+		// 		}
+		// 	}
+		}
+		item_info_list_ui_box_click(ui_box_handle)
+	}
+}
+
+// ui_item::proc(item_hd:Item_HD){
+// 	item,ok:=reg.get(&g.item_reg,item_hd)
+// 	textur:=item.texture_data.sides[.pos_x]
+// 	if cl.UI(cl.ID("Player_larg_icon", cast(u32)player.info.l_player_icon_id+index))(tg.defalt_img_box_dec(cast(rawptr)&player.info.l_player_icon_gpu_hd,size = player_icon_size)) {
+// 	}
+
+// }
+
+item_info_list_ui_box_click::proc(ui_box_handle:tg.UI_Box_Handle){
+	ui_box,ok:=tg.get_ui_box(ui_box_handle)
+	if !ok {return}
+	if ui_box == nil{return}
+	if cl.Hovered(){
+		if tg.is_input_event(.ui_l_c,always_consume_d = true){
+			ui_box.last_interact = s.time.time
+		}
+	}
 }

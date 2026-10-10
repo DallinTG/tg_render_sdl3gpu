@@ -300,6 +300,9 @@ reg_blank_defalt_texture::proc(){
 	s.blank_texture_hd = hd
 }
 
+
+
+
 //this is slow and you should use get_texture_by_hd() insted
 get_texture_by_id::proc(id:reg.Reg_ID)->(tex:^Texture){//TODO THIS NEEDS TO BE REWORKED
 	ok:bool

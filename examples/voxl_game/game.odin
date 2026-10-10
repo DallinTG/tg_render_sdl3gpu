@@ -32,6 +32,7 @@ Game::struct{
 	w_map:Map,
 	debug_info:Vox_Render_Debug_Info,
 	df_items:[DF_Items]Item_HD,
+	df_materials:[DF_Materials]Material_HD,
 	item_reg:		Item_Reg,
 	material_reg:	Material_Reg,
 	texture_facees:	tg.Indexed_GPU_Data,
@@ -40,6 +41,7 @@ Game::struct{
 	
 	//TODO temp
 	cube_face_geometry:Model_Data,
+	temp_using_item_hd:Item_HD,
 	// t_chuck:Chunck,
 
 	settings:Vox_Render_Settings,
