@@ -162,8 +162,8 @@ Backing_Light_World_Data::struct{
 // }
 
 Light_Lev::struct{
-	block:[4]u8,
-	sun:[4]u8,
+	block:[3]u8,
+	sun:[3]u8,
 }
 Light_Palette_Data::struct{
 	light_lev:Light_Lev,
@@ -666,70 +666,101 @@ promote_light_palette_chunk::proc(chunk:^Light_Chunk_Data,preserve_data:bool=tru
 // }
 
 
-// set_blocks_in_chunk_by_col_pal_index::proc(
-// 	chunk:^Vox_Chunk_Data,
-// 	pal_index:u16,
-// 	xz:[2]u8,
-// 	count:u8=32,
-// ){
-// 	ab:=&chunk.backing_chunk_data_abstract
-// 	pinfo:=&PAL_INFO[ab.palette_size]
+setlight_in_chunk_by_col_pal_index::proc(
+	chunk:^Light_Chunk_Data,
+	pal_index:u16,
+	xz:[2]u8,
+	count:u8=32,
+){
+	ab:=&chunk.backing_light_data_abstract
+	pinfo:=&PAL_INFO[ab.palette_size]
 
-// 	if pinfo.index_shift == 0 || count == 0 {
-// 		return
-// 	}
+	if pinfo.index_shift == 0 || count == 0 {
+		return
+	}
 
-// 	base_index:=cast(u32)xz[0]*CHUNK_SIZE + cast(u32)xz[1]*CHUNK_SIZE*CHUNK_SIZE
-// 	word_index:=base_index>>u32(pinfo.index_shift)
+	base_index:=cast(u32)xz[0]*CHUNK_SIZE + cast(u32)xz[1]*CHUNK_SIZE*CHUNK_SIZE
+	word_index:=base_index>>u32(pinfo.index_shift)
 
-// 	value:=u32(pal_index)&pinfo.mask
-// 	full_value:=value*pinfo.fill_mask
+	value:=u32(pal_index)&pinfo.mask
+	full_value:=value*pinfo.fill_mask
 
-// 	fields_per_word:=u32(1)<<u32(pinfo.index_shift)
-// 	full_words:=cast(u32)count/fields_per_word
-// 	remaining:=cast(u32)count%fields_per_word
+	fields_per_word:=u32(1)<<u32(pinfo.index_shift)
+	full_words:=cast(u32)count/fields_per_word
+	remaining:=cast(u32)count%fields_per_word
 
-// 	for i:=u32(0); i<full_words; i+=1 {
-// 		ab.data[word_index+i]=full_value
-// 	}
+	for i:=u32(0); i<full_words; i+=1 {
+		ab.data[word_index+i]=full_value
+	}
 
-// 	if remaining != 0 {
-// 		shift:=remaining<<u32(pinfo.shift)
-// 		mask:=(u32(1)<<shift)-1
-// 		ab.data[word_index+full_words]=(ab.data[word_index+full_words]&~mask)|(value*pinfo.fill_mask&mask)
-// 	}
+	if remaining != 0 {
+		shift:=remaining<<u32(pinfo.shift)
+		mask:=(u32(1)<<shift)-1
+		ab.data[word_index+full_words]=(ab.data[word_index+full_words]&~mask)|(value*pinfo.fill_mask&mask)
+	}
 
-// 	mask_data,ok:=hm.get(&chunk.backing_mask_data.hm,chunk.vox_mask_hd)
-// 	if !ok{
-// 		// no maskes so no need to update them
-// 		return
-// 	}
-// 	mask_index:=cast(u32)xz[0]+cast(u32)xz[1]*CHUNK_SIZE
-// 	pal:=&ab.pal[pal_index]
+}
 
-// 	mask_bits:u32
-// 	if count == 32 {
-// 		mask_bits = ~u32(0)
-// 	} else {
-// 		mask_bits = (u32(1)<<u32(count))-1
-// 	}
+setlight_in_chunk_by_col_pal_index_range :: proc(
+	chunk: ^Light_Chunk_Data,
+	pal_index: u16,
+	xz: [2]u8,
+	start_y: u8,
+	count: u8,
+) {
+	ab := &chunk.backing_light_data_abstract
+	pinfo := &PAL_INFO[ab.palette_size]
 
-// 	if pal.is_occupied {
-// 		mask_data.is_occupied_mask[mask_index]|=mask_bits
-// 	} else {
-// 		mask_data.is_occupied_mask[mask_index]&=~mask_bits
-// 	}
-// 	if pal.is_solid {
-// 		mask_data.is_solid_mask[mask_index]|=mask_bits
-// 	} else {
-// 		mask_data.is_solid_mask[mask_index]&=~mask_bits
-// 	}
-// 	if pal.is_opaque {
-// 		mask_data.is_opaque_mask[mask_index]|=mask_bits
-// 	} else {
-// 		mask_data.is_opaque_mask[mask_index]&=~mask_bits
-// 	}
-// }
+	if pinfo.index_shift == 0 || count == 0 {
+		return
+	}
+
+	vox_index := u32(xz[0]) * CHUNK_SIZE +
+		u32(xz[1]) * CHUNK_SIZE * CHUNK_SIZE +
+		u32(start_y)
+
+	remaining := u32(count)
+	fields_per_word := u32(1) << u32(pinfo.index_shift)
+	value := u32(pal_index) & pinfo.mask
+	repeated_word := value * pinfo.fill_mask
+
+	// Write initial fields until the destination is word-aligned.
+	for remaining > 0 && vox_index % fields_per_word != 0 {
+		word_index := vox_index >> u32(pinfo.index_shift)
+		field_shift := (vox_index & u32(pinfo.field_mask)) << u32(pinfo.shift)
+		field_mask := pinfo.mask << field_shift
+
+		ab.data[word_index] =
+			(ab.data[word_index] & ~field_mask) |
+			((value << field_shift) & field_mask)
+
+		vox_index += 1
+		remaining -= 1
+	}
+
+	// Write complete words containing repeated palette indices.
+	for remaining >= fields_per_word {
+		word_index := vox_index >> u32(pinfo.index_shift)
+		ab.data[word_index] = repeated_word
+
+		vox_index += fields_per_word
+		remaining -= fields_per_word
+	}
+
+	// Write the trailing fields without overwriting neighboring indices.
+	for remaining > 0 {
+		word_index := vox_index >> u32(pinfo.index_shift)
+		field_shift := (vox_index & u32(pinfo.field_mask)) << u32(pinfo.shift)
+		field_mask := pinfo.mask << field_shift
+
+		ab.data[word_index] =
+			(ab.data[word_index] & ~field_mask) |
+			((value << field_shift) & field_mask)
+
+		vox_index += 1
+		remaining -= 1
+	}
+}
 
 
 // //preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
@@ -778,7 +809,7 @@ get_or_add_light_palette_index::proc(chunk:^Light_Chunk_Data,pal_d:Light_Palette
 	ad_chunk:=&chunk.backing_light_data_abstract
 	pal_count:=ad_chunk.pal_count^
 	for i in 0..<pal_count{
-		if ad_chunk.pal[i] == pal_d{
+		if ad_chunk.pal[i].light_lev == pal_d.light_lev {
 			return cast(u16)i,
 		}
 	}

@@ -109,6 +109,8 @@ Item_Info::struct{
 	tags:Item_Tags,
 	material_hd:Material_HD,
 	name:string,
+
+	light_emission:[3]u8,//rgb 0-31 
 	// texture_id:tg.Texture_ID_Types,
 	// texture_face_index:u16,
 
