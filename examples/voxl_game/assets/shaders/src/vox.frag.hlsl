@@ -5,16 +5,6 @@ struct Input{
 	float4 color : TEXCOORD0;
 	float2 uv : TEXCOORD1;
 	uint size : TEXCOORD2;
-
-	// uint   img_index : TEXCOORD3;
-	// uint   layer: TEXCOORD4;
-	// float4 img_1_tint : TEXCOORD5;
-
-	// uint   img_index_2 : TEXCOORD6;
-	// uint   layer_2: TEXCOORD7;
-	// float4 img_2_tint : TEXCOORD8;
-
-
 	float3 normal : TEXCOORD3;
 	uint   draw_index : TEXCOORD4;
 	float   shading: TEXCOORD5;
@@ -100,22 +90,6 @@ float4 main(Input input) : SV_Target0 {
 	uint layer_2 = tex.layer_2;
 	float4 img_2_tint = tex.tint_2;
 
-
-	// const float CLIP_EPSILON = 0.5;
-
-	// float2 uv_dx = abs(ddx(input.face_uv));
-	// float2 uv_dy = abs(ddy(input.face_uv));
-	
-	// float clip_epsilon_x = max(uv_dx.x, uv_dy.x);
-	// float clip_epsilon_y = max(uv_dx.y, uv_dy.y);
-	
-	// if (
-	// 	input.face_uv.x > 1.0 + clip_epsilon_x ||
-	// 	input.face_uv.y > 1.0 + clip_epsilon_y
-	// ) {
-	// 	discard;
-	// }
-
 	float2 lod_uv = input.uv / float(input.size);
 
 	Texture2DArray tex1 = g_Textures[img_index];
@@ -182,7 +156,9 @@ float4 main(Input input) : SV_Target0 {
 // Both light inputs are normalized to 0.0–1.0.
 // ------------------------------------------------------------
 
-	float3 sun = saturate(input.sun_light);
+	float SUN_STRENGTH = 0.5;
+	
+	float3 sun = saturate(input.sun_light) * SUN_STRENGTH;
 	float3 block = saturate(input.block_light);
 	
 	// Combine sunlight and colored block light.

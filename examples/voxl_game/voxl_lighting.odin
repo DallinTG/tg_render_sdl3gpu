@@ -498,6 +498,14 @@ get_light_in_chunk :: proc(vox_chunk_data:^Light_Chunk_Data,pos:[3]u8)->(light_l
 
 	return ab_chunk.pal[pal_index].light_lev
 }
+get_light_palette_by_index::proc(chunk:^Light_Chunk_Data,pal_index:u16)->Light_Palette_Data{
+
+	ab:=&chunk.backing_light_data_abstract
+	size:=chunk.backing_light_data_abstract.palette_size
+	assert(cast(int)pal_index <= len(ab.pal))
+	return ab.pal[pal_index]
+
+}
 get_light_in_chunk_index :: proc(vox_chunk_data:^Light_Chunk_Data,vox_index:u16)->(light_lev:Light_Lev){
 	ab_chunk:=vox_chunk_data.backing_light_data_abstract
 	pal_index:=get_light_palette_index(vox_chunk_data,vox_index)

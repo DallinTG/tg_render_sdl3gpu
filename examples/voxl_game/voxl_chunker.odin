@@ -1139,7 +1139,7 @@ gen_vox_data :: proc(
 		assert(q_ok)
 		for x in 0..<CHUNK_SIZE{
 			for z in 0..<CHUNK_SIZE{
-				add_chunk_lighting_cmd(q = q,cmd =Light_Q_CMD{light = {31,31,31},pos = {cast(u8)x,31,cast(u8)z}, type = .sun,op = .add})
+				append(&q.add_q,Light_Q_CMD{light = {31,31,31},pos = {cast(u8)x,31,cast(u8)z}, type = .sun})
 			}
 		}
 	}else{
@@ -1478,18 +1478,47 @@ do_a_gen_mesh_data_q::proc(w_map:^Map,q:Gen_Mesh_Data_Q_Data){
 // 	mesh_chunk_side(w_map,vox_data)
 // }
 
+Directions::enum{
+	pos_x,
+	neg_x,
+	pos_y,
+	neg_y,
+	pos_z,
+	neg_z,
+}
+DIR_OFFSETS:[Directions][3]int:{
+	.pos_x = {1,0,0},
+	.neg_x = {-1,0,0},
+	.pos_y = {0,1,0},
+	.neg_y = {0,-1,0},
+	.pos_z = {0,0,1},
+	.neg_z = {0,0,-1},
+}
 
 Light_Q_HM::hm.Dynamic_Handle_Map(Light_Q,Light_Q_HD)
 Light_Q_HD::distinct hm.Handle64
+Light_Q_Data::[dynamic; CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/8]Light_Q_CMD
+Light_Seed_Q_Data::[dynamic; CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/8]Light_Seed_Q_CMD
+Light_Remove_Q_Data::[dynamic; CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/8]Light_Remove_CMD
 Light_Q::struct{
 	handle:Light_Q_HD,
-	q:[dynamic; CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/6]Light_Q_CMD,
+	add_q:Light_Q_Data,
+	seed_q:Light_Seed_Q_Data,
+	remove_q:Light_Remove_Q_Data,
 }
 Light_Q_CMD::struct{
 	light:[3]u8,
 	pos:[3]u8,
 	type:Light_Q_T,
-	op:Light_Q_Op,
+}
+Light_Seed_Q_CMD::struct{
+	pos:[3]u8,
+	type:Light_Q_T,
+}
+Light_Remove_CMD :: struct {
+	pos:  [3]u8,
+	type: Light_Q_T,
+	channels: [3]bool,
 }
 Light_Q_T::enum u8{
 	block,
@@ -1505,7 +1534,6 @@ update_chunk_lighting::proc(t:Light_Chunk_Task) {
 
 	q, q_ok := hm.get(&t.w_map.light_qs_hm, t.light_q_hd)
 	assert( q_ok)
-	if len(q.q) == 0 {return}
 
 	vox_data, vox_data_ok := get_vox_chunk_data(t.w_map, t.vox_data_hd)
 	assert(vox_data_ok)
@@ -1515,93 +1543,328 @@ update_chunk_lighting::proc(t:Light_Chunk_Task) {
 
 	vox_mask, mask_ok := hm.get(&vox_data.backing_mask_data.hm, vox_data.vox_mask_hd,)
 	assert(mask_ok)
-	
-	#reverse for cmd,i in q.q{
-		switch cmd.type{
-		case .block:
 
-			vox:=get_vox_in_chunk(vox_data,cmd.pos)
-			item,item_ok:=reg.get(&g.item_reg,vox)
-			ok := set_light_at(light_data,cmd.pos,cmd.light,cmd.type,item)
-			unordered_remove(&q.q,i)
-			if !ok {continue}
-			val,val_ok:=get_light_at(light_data,cmd.pos+{1,0,0})
-			if val_ok {
-				dec_val:=dec_light_val(cmd.light)
-				if val_grater_val(dec_val,val.block){add_chunk_lighting_cmd(q,{pos = cmd.pos+{1,0,0},light = dec_val, type = cmd.type,op = cmd.op})}
-			}
-			val,val_ok=get_light_at(light_data,cast([3]u8)(cast([3]int)cmd.pos+{-1,0,0}))
-			if val_ok {
-				dec_val:=dec_light_val(cmd.light)
-				if val_grater_val(dec_val,val.block){add_chunk_lighting_cmd(q,{pos = cast([3]u8)(cast([3]int)cmd.pos+{-1,0,0}),light = dec_val, type = cmd.type,op = cmd.op})}
-			}
-			val,val_ok=get_light_at(light_data,cmd.pos+{0,1,0})
-			if val_ok {
-				dec_val:=dec_light_val(cmd.light)
-				if val_grater_val(dec_val,val.block){add_chunk_lighting_cmd(q,{pos = cmd.pos+{0,1,0},light = dec_val, type = cmd.type,op = cmd.op})}
-			}
-			val,val_ok=get_light_at(light_data,cast([3]u8)(cast([3]int)cmd.pos+{0,-1,0}))
-			if val_ok {
-				dec_val:=dec_light_val(cmd.light)
-				if val_grater_val(dec_val,val.block){add_chunk_lighting_cmd(q,{pos = cast([3]u8)(cast([3]int)cmd.pos+{0,-1,0}),light = dec_val, type = cmd.type,op = cmd.op})}
-			}
-			val,val_ok=get_light_at(light_data,cmd.pos+{0,0,1})
-			if val_ok {
-				dec_val:=dec_light_val(cmd.light)
-				if val_grater_val(dec_val,val.block){add_chunk_lighting_cmd(q,{pos = cmd.pos+{0,0,1},light = dec_val, type = cmd.type,op = cmd.op})}
-			}
-			val,val_ok=get_light_at(light_data,cast([3]u8)(cast([3]int)cmd.pos+{0,0,-1}))
-			if val_ok {
-				dec_val:=dec_light_val(cmd.light)
-				if val_grater_val(dec_val,val.block){add_chunk_lighting_cmd(q,{pos = cast([3]u8)(cast([3]int)cmd.pos+{0,0,-1}),light = dec_val, type = cmd.type,op = cmd.op})}
-			}
-		case .sun:
-			vox:=get_vox_in_chunk(vox_data,cmd.pos)
-			item,item_ok:=reg.get(&g.item_reg,vox)
-			ok := set_light_at(light_data,cmd.pos,cmd.light,cmd.type,item)
-			unordered_remove(&q.q,i)
-			if !ok {continue}
-			// unordered_remove(&q.q,i)
-
-			// val,val_ok:=get_light_at(light_data,cmd.pos+{1,0,0})
-			// if val_ok {
-			// 	dec_val:=dec_light_val(cmd.light)
-			// 	if val_grater_val(dec_val,val.sun){add_chunk_lighting_cmd(q,{pos = cmd.pos+{1,0,0},light = dec_val, type = cmd.type,op = cmd.op})}
-			// }
-			// val,val_ok=get_light_at(light_data,cast([3]u8)(cast([3]int)cmd.pos+{-1,0,0}))
-			// if val_ok {
-			// 	dec_val:=dec_light_val(cmd.light)
-			// 	if val_grater_val(dec_val,val.sun){add_chunk_lighting_cmd(q,{pos = cast([3]u8)(cast([3]int)cmd.pos+{-1,0,0}),light = dec_val, type = cmd.type,op = cmd.op})}
-			// }
-			val,val_ok:=get_light_at(light_data,cast([3]u8)(cast([3]int)cmd.pos+{0,-1,0}))
-			if val_ok {
-				// INFO WE do not dec on sunlight going down/-y
-				if val_grater_val(cmd.light,val.sun){add_chunk_lighting_cmd(q,{pos = cast([3]u8)(cast([3]int)cmd.pos+{0,-1,0}),light = cmd.light, type = cmd.type,op = cmd.op})}
-			}
-			// val,val_ok=get_light_at(light_data,cmd.pos+{0,0,1})
-			// if val_ok {
-			// 	dec_val:=dec_light_val(cmd.light)
-			// 	if val_grater_val(dec_val,val.sun){add_chunk_lighting_cmd(q,{pos = cmd.pos+{0,0,1},light = dec_val, type = cmd.type,op = cmd.op})}
-			// }
-			// val,val_ok=get_light_at(light_data,cast([3]u8)(cast([3]int)cmd.pos+{0,0,-1}))
-			// if val_ok {
-			// 	dec_val:=dec_light_val(cmd.light)
-			// 	if val_grater_val(dec_val,val.sun){add_chunk_lighting_cmd(q,{pos = cast([3]u8)(cast([3]int)cmd.pos+{0,0,-1}),light = dec_val, type = cmd.type,op = cmd.op})}
-			// }
-		}
+	#reverse for cmd,i in q.remove_q{
+		do_remove_chunk_lighting_cmd(q,vox_data,light_data,cmd)
+		unordered_remove(&q.remove_q,i)
 	} 
-	if len(q.q)>0{
+	if len(q.remove_q) <= 0 {
+		#reverse for cmd,i in q.add_q{
+			do_add_chunk_lighting_cmd(&q.add_q,vox_data,light_data,cmd)
+			unordered_remove(&q.add_q,i)
+		} 
+		#reverse for cmd,i in q.seed_q {
+			do_seed_chunk_lighting_cmd(&q.add_q,vox_data,light_data,cmd)
+			unordered_remove(&q.seed_q,i)
+		}
+	}
+	if  len(q.remove_q) > 0 || len(q.add_q) > 0  {
 		update_chunk_lighting(t)
 	}
 }
-add_chunk_lighting_cmd::proc(q:^Light_Q,cmd:Light_Q_CMD){
-	append(&q.q,cmd)
+
+do_add_chunk_lighting_cmd :: proc(
+	q: ^Light_Q_Data,
+	vox_data: ^Vox_Chunk_Data,
+	light_data: ^Light_Chunk_Data,
+	cmd: Light_Q_CMD,
+) {
+	old_lev,ok := get_light_chan_at(light_data,cmd.pos,cmd.type)
+	if !ok {return}
+
+	new_light,changed:=create_new_light_val(old_lev,cmd.light)
+	if !changed{return}
+
+	set_light:=set_light(light_data,cmd.pos,new_light,cmd.type)
+	if !set_light{return}
+	
+	queue_neighbor_light_cmds(q,vox_data,light_data,new_light,cmd.pos,cmd.type)
 }
 
-dec_light_val::proc(val:[3]u8)->(new_val:[3]u8){
-	if val.r > 1{new_val.r = val.r -1 }
-	if val.g > 1{new_val.g = val.g -1 }
-	if val.b > 1{new_val.b = val.b -1}
+queue_neighbor_light_cmds :: proc(
+	q: ^Light_Q_Data,
+	vox_data: ^Vox_Chunk_Data,
+	light_data: ^Light_Chunk_Data,
+	new_light:[3]u8,
+	og_pos:[3]u8,
+	type:Light_Q_T,
+	// cmd: Light_Q_CMD,
+) {
+
+	dec_light,did_dec:=dec_light_val(new_light)
+	dir_loop:for offset, dir in  DIR_OFFSETS{
+		neighbor_light := dec_light
+		if type == .sun && dir == .neg_y {
+			if new_light.r == 31 { neighbor_light.r = 31 }
+			if new_light.g == 31 { neighbor_light.g = 31 }
+			if new_light.b == 31 { neighbor_light.b = 31 }
+		}
+		if !did_dec{continue}
+
+		new_pos:=cast([3]int)og_pos+offset
+		for num in new_pos{
+			if num < 0 ||num>= CHUNK_SIZE{ continue dir_loop }
+		}
+		
+		pos:=cast([3]u8)new_pos
+
+		neighbor_vox_item_hd := get_vox_in_chunk(vox_data,pos)
+		neighbor_item:Item_Info
+		neighbor_item_ptr,neighbor_item_ok := reg.get(&g.item_reg,neighbor_vox_item_hd)
+		if neighbor_item_ok {neighbor_item = neighbor_item_ptr^}
+
+		if neighbor_item.is_opaque{continue}
+
+		old_nab_lev,ok := get_light_chan_at(light_data,pos,type)
+		if !ok {continue}
+
+		new_nab_light,changed:=create_new_light_val(old_nab_lev,neighbor_light)
+		if !changed{continue}
+		append(q,Light_Q_CMD{light=new_nab_light, pos = pos, type = type})
+	}
+}
+
+do_seed_chunk_lighting_cmd :: proc(
+	q: ^Light_Q_Data,
+	vox_data: ^Vox_Chunk_Data,
+	light_data: ^Light_Chunk_Data,
+	cmd: Light_Seed_Q_CMD,
+) {
+	target_vox := get_vox_in_chunk(vox_data,cmd.pos)
+	target_item: Item_Info
+	target_item_ptr,target_item_ok := reg.get(&g.item_reg,target_vox)
+	if target_item_ok { target_item = target_item_ptr^ }
+	if target_item.is_opaque { return }
+
+	dir_loop: for offset,dir in DIR_OFFSETS {
+		new_pos := cast([3]int)cmd.pos+offset
+		for num in new_pos {
+			if num < 0 || num >= CHUNK_SIZE {
+				continue dir_loop
+			}
+		}
+		pos := cast([3]u8)new_pos
+
+		neighbor_vox := get_vox_in_chunk(vox_data,pos)
+		neighbor_item: Item_Info
+		neighbor_item_ptr,neighbor_item_ok := reg.get(&g.item_reg,neighbor_vox)
+		if neighbor_item_ok { neighbor_item = neighbor_item_ptr^ }
+
+		if neighbor_item.is_opaque && (cmd.type == .sun || neighbor_item.light_emission == {}) {
+			continue dir_loop
+		}
+
+		neighbor_light,ok := get_light_chan_at(light_data,pos,cmd.type)
+		if !ok || neighbor_light == {} { continue }
+
+		seed_light,_ := dec_light_val(neighbor_light)
+
+		if cmd.type == .sun && dir == .pos_y {
+			if neighbor_light.r == 31 { seed_light.r = 31 }
+			if neighbor_light.g == 31 { seed_light.g = 31 }
+			if neighbor_light.b == 31 { seed_light.b = 31 }
+		}
+
+		if seed_light == {} { continue }
+
+		append(q,Light_Q_CMD{light=seed_light,pos=cmd.pos,type=cmd.type})
+	}
+}
+
+// do_remove_chunk_lighting_cmd :: proc(
+// 	q: ^Light_Q,
+// 	vox_data: ^Vox_Chunk_Data,
+// 	light_data: ^Light_Chunk_Data,
+// 	cmd: Light_Remove_CMD,
+// ) {
+// 	old_light, ok := get_light_chan_at(light_data, cmd.pos, cmd.type)
+// 	if !ok || old_light == {} {
+// 		return
+// 	}
+
+// 	current_vox := get_vox_in_chunk(vox_data, cmd.pos)
+// 	current_item:Item_Info
+// 	current_item_ptr, current_item_ok := reg.get(&g.item_reg, current_vox)
+// 	if current_item_ok { current_item = current_item_ptr^ }
+
+// 	// Save the old light above, then clear this position.
+// 	if !set_light(light_data, cmd.pos, {}, cmd.type) {
+// 		return
+// 	}
+
+// 	dir_loop: for offset, dir in DIR_OFFSETS {
+// 		new_pos := cast([3]int)cmd.pos + offset
+// 		for num in new_pos {
+// 			if num < 0 || num >= CHUNK_SIZE {
+// 				continue dir_loop
+// 			}
+// 		}
+// 		pos := cast([3]u8)new_pos
+
+// 		neighbor_vox := get_vox_in_chunk(vox_data, pos)
+// 		neighbor_item:Item_Info
+// 		neighbor_item_ptr, neighbor_item_ok := reg.get(&g.item_reg, neighbor_vox)
+// 		if neighbor_item_ok{
+// 			neighbor_item = neighbor_item_ptr^
+// 		}
+// 		if neighbor_item.is_opaque && neighbor_item.light_emission == {}{
+// 			continue
+// 		}
+
+// 		neighbor_light, ok := get_light_chan_at(light_data, pos, cmd.type)
+// 		if !ok || neighbor_light == {} {
+// 			continue
+// 		}
+// 		depends,relight:=get_light_remove_neighbor_state(old_light,neighbor_light,cmd.type,dir)
+
+// 		if depends {
+// 			append(&q.remove_q, Light_Remove_CMD{pos = pos,type = cmd.type,})
+
+// 			// If this neighbor emits block light, reseed it
+// 			// after the destruction queue has been drained.
+// 			if cmd.type == .block{
+// 				emission := neighbor_item.light_emission
+// 				if emission != {} {
+// 					append(&q.add_q, Light_Q_CMD{light = {emission.r,emission.g,emission.b,},pos = pos,type = .block,})
+// 				}
+// 			}
+
+// 			// Preserve channels that did not depend on this position.
+// 			if relight != {} {
+// 				append(&q.add_q, Light_Q_CMD{light = relight,pos = pos,type = cmd.type,})
+// 			}
+// 		} else {
+// 			if current_item.is_opaque { continue dir_loop }
+
+// 			relight, did_dec := dec_light_val(neighbor_light)
+// 			if cmd.type == .sun && dir == .pos_y {
+// 				relight = neighbor_light
+// 			} else if !did_dec {
+// 				continue
+// 			}
+
+// 			append(&q.add_q, Light_Q_CMD{light=relight,pos=cmd.pos,type=cmd.type})
+// 		}
+// 	}
+// }
+
+do_remove_chunk_lighting_cmd :: proc(
+	q: ^Light_Q,
+	vox_data: ^Vox_Chunk_Data,
+	light_data: ^Light_Chunk_Data,
+	cmd: Light_Remove_CMD,
+) {
+	old_light, ok := get_light_chan_at(light_data, cmd.pos, cmd.type)
+	if !ok { return }
+
+	remove_value := old_light
+	if cmd.channels[0] { remove_value.r = 0 }
+	if cmd.channels[1] { remove_value.g = 0 }
+	if cmd.channels[2] { remove_value.b = 0 }
+	if remove_value == old_light { return }
+
+	current_vox := get_vox_in_chunk(vox_data, cmd.pos)
+	current_item: Item_Info
+	current_item_ptr, current_item_ok := reg.get(&g.item_reg, current_vox)
+	if current_item_ok { current_item = current_item_ptr^ }
+
+	if !set_light(light_data, cmd.pos, remove_value, cmd.type) { return }
+
+	dir_loop: for offset, dir in DIR_OFFSETS {
+		new_pos := cast([3]int)cmd.pos + offset
+		for num in new_pos {
+			if num < 0 || num >= CHUNK_SIZE {
+				continue dir_loop
+			}
+		}
+		pos := cast([3]u8)new_pos
+
+		neighbor_vox := get_vox_in_chunk(vox_data, pos)
+		neighbor_item: Item_Info
+		neighbor_item_ptr, neighbor_item_ok := reg.get(&g.item_reg, neighbor_vox)
+		if neighbor_item_ok { neighbor_item = neighbor_item_ptr^ }
+
+		if neighbor_item.is_opaque && neighbor_item.light_emission == {} {
+			continue dir_loop
+		}
+
+		neighbor_light, neighbor_ok := get_light_chan_at(light_data, pos, cmd.type)
+		if !neighbor_ok || neighbor_light == {} { continue }
+
+		remove_channels, relight := get_light_remove_neighbor_state(
+			old_light,
+			neighbor_light,
+			cmd.type,
+			dir,
+			cmd.channels,
+		)
+
+		if remove_channels[0] || remove_channels[1] || remove_channels[2] {
+			append(&q.remove_q, Light_Remove_CMD{pos=pos,type=cmd.type,channels=remove_channels,})
+
+			if cmd.type == .block && neighbor_item.light_emission != {} {
+				emission := neighbor_item.light_emission
+				append(&q.add_q, Light_Q_CMD{light={emission.r,emission.g,emission.b},pos=pos,type=.block,})
+			}
+		}
+
+		if relight != {} && !current_item.is_opaque {
+			append(&q.seed_q,Light_Seed_Q_CMD{pos=cmd.pos,type=cmd.type})
+		}
+	}
+}
+
+get_light_remove_neighbor_state :: proc(
+	old_light: [3]u8,
+	neighbor_light: [3]u8,
+	light_type: Light_Q_T,
+	dir: Directions,
+	channels: [3]bool,
+) -> (remove_channels: [3]bool, relight: [3]u8) {
+	if channels[0] && neighbor_light.r > 0 {
+		if neighbor_light.r < old_light.r ||
+			(light_type == .sun && dir == .neg_y && old_light.r == 31 && neighbor_light.r == 31) {
+			remove_channels[0] = true
+		} else {
+			relight.r = neighbor_light.r
+		}
+	}
+
+	if channels[1] && neighbor_light.g > 0 {
+		if neighbor_light.g < old_light.g ||
+			(light_type == .sun && dir == .neg_y && old_light.g == 31 && neighbor_light.g == 31) {
+			remove_channels[1] = true
+		} else {
+			relight.g = neighbor_light.g
+		}
+	}
+
+	if channels[2] && neighbor_light.b > 0 {
+		if neighbor_light.b < old_light.b ||
+			(light_type == .sun && dir == .neg_y && old_light.b == 31 && neighbor_light.b == 31) {
+			remove_channels[2] = true
+		} else {
+			relight.b = neighbor_light.b
+		}
+	}
+
+	return
+}
+
+
+dec_light_val::proc(val:[3]u8)->(new_val:[3]u8,did_dec:bool){
+	if val.r > 1{
+		new_val.r = val.r -1 
+		did_dec = true
+	}
+	if val.g > 1{
+		new_val.g = val.g -1
+		did_dec = true
+	}
+	if val.b > 1{
+		new_val.b = val.b -1
+		did_dec = true
+	}
 	return
 }
 val_grater_val::proc(val_a:[3]u8,val_b:[3]u8)->(is_grater:bool){
@@ -1610,22 +1873,33 @@ val_grater_val::proc(val_a:[3]u8,val_b:[3]u8)->(is_grater:bool){
 	if val_a.b > val_b.b {return true}
 	return false
 }
-
-set_light_at :: proc(data: ^Light_Chunk_Data, pos: [3]u8, value: [3]u8, type: Light_Q_T,item:^Item_Info) -> (ok: bool) {
-	if item != nil {
-		if item.is_opaque {return false}
+create_new_light_val::proc(old_val:[3]u8,new_val:[3]u8)->(changed_val:[3]u8,changed:bool){
+	changed_val = old_val
+	if new_val.r > old_val.r {
+		changed_val.r = new_val.r
+		changed = true
 	}
+	if new_val.g > old_val.g {
+		changed_val.g = new_val.g
+		changed = true
+	}
+	if new_val.b > old_val.b {
+		changed_val.b = new_val.b
+		changed = true
+	}
+	return
+}
+
+set_light::proc(data: ^Light_Chunk_Data, pos: [3]u8, value: [3]u8, type: Light_Q_T,)->(ok:bool){
 	if pos[0] >= CHUNK_SIZE || pos[1] >= CHUNK_SIZE || pos[2] >= CHUNK_SIZE { return false }
 	index := pos_to_vox_index(pos)
 	old_pal := get_light_palette_index(data, index)
 	start_value := data.backing_light_data_abstract.pal[old_pal].light_lev
-	if type == .block {
-		if start_value.block == value { return false }
-		start_value.block = value
-	} else {
-		if start_value.sun == value { return false }
-		start_value.sun = value
+	switch type{
+	case .block: start_value.block = value
+	case .sun: start_value.sun = value
 	}
+
 	new_pal_index := get_or_add_light_palette_index(data, Light_Palette_Data{light_lev = start_value})
 	set_light_palette_index(data, index, new_pal_index)
 	return true
@@ -1643,6 +1917,20 @@ get_light_at :: proc(
 	return data.backing_light_data_abstract.pal[pal_index].light_lev, true 
 }
 
+get_light_chan_at :: proc(
+	data: ^Light_Chunk_Data,
+	pso: [3]u8,
+	type: Light_Q_T,
+) ->(value: [3]u8,ok:bool){
+	index:=pos_to_vox_index(pso)
+	if pso[0] >= CHUNK_SIZE || pso[1] >= CHUNK_SIZE || pso[2] >= CHUNK_SIZE { return {}, false }
+
+	pal_index:= get_light_palette_index(data, index)
+	if type == .block{
+		return data.backing_light_data_abstract.pal[pal_index].light_lev.block, true 
+	}
+	return data.backing_light_data_abstract.pal[pal_index].light_lev.sun, true 
+}
 
 mesh_chunk_side::proc(
 	w_map:^Map,
@@ -2322,15 +2610,6 @@ sample_corner_light :: proc(
 	        (bb & 31)
 }
 
-
-
-
-
-
-
-
-
-
 Destroy_Mesh_Data_Q_Data::struct{
 	mesh_data_hd:Chunk_Mesh_Data_HD,
 }
@@ -2572,10 +2851,105 @@ do_a_set_block_cmd_q::proc(w_map:^Map,q:Set_Block_CMD){
 	
 	p_index:=get_or_add_palette_index(chunk_vox,q.new_block)
 	pos_index:=pos_to_vox_index(q.pos_in_chunk)
+	old_item_hd:= get_vox_in_chunk(chunk_vox,q.pos_in_chunk)
 	set_palette_index(chunk_vox,pos_index,p_index)
+
+	
+	light_q_hd,err:=hm.add(&w_map.light_qs_hm,Light_Q{})
+	assert(err ==.None)
+	update_block_lighting_after_set(w_map,chunk_hd,q.pos_in_chunk,q.chunk_pos,old_item_hd,q.new_block.item,light_q_hd)
+
+
+	update_chunk_lighting(Light_Chunk_Task{
+		w_map=w_map,
+		chunk_hd=chunk_hd,
+		vox_data_hd=chunk.vox_data_hd,
+		light_q_hd=light_q_hd,
+	})
+
+	// if q.new_block == {}{
+	// 	destroy_block_lighting(w_map, chunk_hd,q.pos_in_chunk, old_item_hd ,light_q_hd)
+	// }
+	hm.remove(&w_map.light_qs_hm, light_q_hd)
 
 	add_to_chunk_needs_meshing_q(w_map,q.chunk_pos)
 }
+
+update_block_lighting_after_set :: proc(
+	w_map: ^Map,
+	chunk_hd: Chunk_HD,
+	pos: [3]u8,
+	chunk_pos: [4]int,
+	old_item_hd: Item_HD,
+	new_item_hd: Item_HD,
+	light_q_hd: Light_Q_HD,
+) {
+	chunk, chunk_ok := hm.get(&w_map.chunks, chunk_hd)
+	assert(chunk_ok)
+	vox_data, vox_ok := get_vox_chunk_data(w_map, chunk.vox_data_hd)
+	assert(vox_ok)
+	light, light_ok := get_light_chunk_data(w_map, chunk.light_data_hd)
+	assert(light_ok)
+	q, q_ok := hm.get(&w_map.light_qs_hm, light_q_hd)
+	assert(q_ok)
+
+	new_item: Item_Info
+	new_ptr, new_ok := reg.get(&g.item_reg, new_item_hd)
+	if new_ok { new_item = new_ptr^ }
+
+	append(&q.remove_q, Light_Remove_CMD{pos=pos,type=.sun,channels = true})
+	append(&q.remove_q, Light_Remove_CMD{pos=pos,type=.block,channels = true})
+
+	if !new_item.is_opaque {
+		li:[2]Light_Q_T={.sun,.block}
+		for light_type in li {
+			old_light, old_ok := get_light_chan_at(light,pos,light_type)
+			if !old_ok || old_light != {} { continue }
+
+			dir_loop: for offset, dir in DIR_OFFSETS {
+				new_pos := cast([3]int)pos + offset
+				for num in new_pos {
+					if num < 0 || num >= CHUNK_SIZE {
+						continue dir_loop
+					}
+				}
+				neighbor_pos := cast([3]u8)new_pos
+
+				neighbor_vox := get_vox_in_chunk(vox_data,neighbor_pos)
+				neighbor_item: Item_Info
+				neighbor_item_ptr, neighbor_item_ok := reg.get(&g.item_reg,neighbor_vox)
+				if neighbor_item_ok { neighbor_item = neighbor_item_ptr^ }
+
+				if neighbor_item.is_opaque && (light_type == .sun || neighbor_item.light_emission == {}) {
+					continue
+				}
+
+				neighbor_light, neighbor_light_ok := get_light_chan_at(light,neighbor_pos,light_type)
+				if !neighbor_light_ok || neighbor_light == {} { continue }
+
+				seed_light, did_dec := dec_light_val(neighbor_light)
+				if light_type == .sun && dir == .pos_y {
+					if neighbor_light.r == 31 { seed_light.r = 31 }
+					if neighbor_light.g == 31 { seed_light.g = 31 }
+					if neighbor_light.b == 31 { seed_light.b = 31 }
+				} else if !did_dec {
+					continue
+				}
+
+				append(&q.add_q,Light_Q_CMD{pos=pos,light=seed_light,type=light_type})
+			}
+		}
+	}
+
+	if new_item.light_emission != {} {
+		append(&q.add_q,Light_Q_CMD{
+			pos=pos,
+			light={new_item.light_emission.r,new_item.light_emission.g,new_item.light_emission.b},
+			type=.block,
+		})
+	}
+}
+
 
 init_chunker_thread::proc(){
 	g.chunker_thread = thread.create_and_start(do_chunkering,self_cleanup = false)

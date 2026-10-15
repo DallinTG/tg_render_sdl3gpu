@@ -271,6 +271,11 @@ DF_Items::enum{
 	dirt,
 	grass,
 	stone_slate,
+	glow_block,
+	glow_block_red,
+	glow_block_green,
+	glow_block_blue,
+	
 }
 creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 	i:=&df_items_info
@@ -314,6 +319,47 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 		is_opaque = true,
 		is_solid = true,
 		name = "Slate",
+	}
+
+	glow_block_t_id:=add_texture_face(reg.id(Textures.Stone_Slate),{1,1,1,1})
+	i[.glow_block] = Item_Info{
+		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
+		model_data = g.cube_face_geometry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
+		light_emission = {31,31,31},
+		name = "Glow Block",
+	}
+
+	i[.glow_block_red] = Item_Info{
+		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
+		model_data = g.cube_face_geometry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
+		light_emission = {31,0,0},
+		name = "Glow Block Red",
+	}
+
+	i[.glow_block_green] = Item_Info{
+		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
+		model_data = g.cube_face_geometry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
+		light_emission = {0,31,0},
+		name = "Glow Block Green",
+	}
+
+	i[.glow_block_blue] = Item_Info{
+		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
+		model_data = g.cube_face_geometry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
+		light_emission = {0,0,31},
+		name = "Glow Block Blue",
 	}
 	return
 }

@@ -525,6 +525,15 @@ get_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16)->u16{
 
 }
 
+get_palette_by_index::proc(chunk:^Vox_Chunk_Data,pal_index:u16)->Block_Palette_Data{
+
+	ab:=&chunk.backing_chunk_data_abstract
+	size:=chunk.backing_chunk_data_abstract.palette_size
+	assert(cast(int)pal_index <= len(ab.pal))
+	return ab.pal[pal_index]
+
+}
+
 
 set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16,){
 	ab:=&chunk.backing_chunk_data_abstract
