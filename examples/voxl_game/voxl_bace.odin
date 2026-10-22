@@ -60,11 +60,15 @@ draw_cube_by_face_item::proc(
 		face.texture_face_index = cast(u32)item.texture_data.sides[cast(Model_Sides)i]
 	}
 	for &face,i in &faces{
-		face.geometry_face_index = cast(u16)item.model_data.cube_indices[cast(Model_Sides)i]
+		model,ok:=reg.get(&g.block_model_reg,item.model)
+		if !ok {return}
+		face.geometry_face_index = cast(u16)g.all_block_models[model.start].cube_indices[cast(Model_Sides)i]
 	}
 	
 	tg.draw_feces(mesh,faces[:])
 }
+
+
 
 // get_block_pos_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,)->(chunk:[3]int,chunk_pos:[3]u8,w_pos:[3]f32,enter_side:Model_Sides){
 // 	look_mat:=lin.matrix3_from_yaw_pitch_roll_f32(
@@ -409,6 +413,15 @@ set_block_by_ray::proc(w_map:^Map,start_pos:[3]f32,look:tg.Look_Dir,){
 	}
 
 	b,ok:=reg.get(&g.item_reg,g.temp_using_item_hd)
-	add_to_set_block_cmd_q(w_map,Set_Block_CMD{chunk_pos = {chunk_pos.x,chunk_pos.y,chunk_pos.z,1},pos_in_chunk=cast([3]u8)temp_pos_in_chunk,new_block={is_occupied = b.is_occupied,is_opaque = b.is_opaque, is_solid = b.is_solid, item = b.handle}})
+	add_to_set_block_cmd_q(w_map,Set_Block_CMD{
+		chunk_pos = {chunk_pos.x,chunk_pos.y,chunk_pos.z,1},
+		pos_in_chunk=cast([3]u8)temp_pos_in_chunk,
+		new_block={
+			is_occupied = b.is_occupied,
+			is_opaque = b.is_opaque, 
+			is_solid = b.is_solid, 
+			item = b.handle,
+			stat = 1,
+		}})
 	
 }

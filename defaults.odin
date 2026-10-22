@@ -32,7 +32,7 @@ DEFALT_DEPTH_TEXTURE_CREATEINFO:sdl.GPUTextureCreateInfo:{
 	// height = ,// gests set during the create proc
 	layer_count_or_depth = 1,
 	num_levels = 1,
-	sample_count = ._4,
+	// sample_count = ._4,
 
 }
 DEFALT_MSAA_TEXTURE_CREATEINFO:sdl.GPUTextureCreateInfo:{
@@ -43,7 +43,7 @@ DEFALT_MSAA_TEXTURE_CREATEINFO:sdl.GPUTextureCreateInfo:{
 	// height = ,// gests set during the create proc
 	layer_count_or_depth = 1,
 	num_levels = 1,
-	sample_count = ._4,
+	// sample_count = ._4,
 
 }
 DEFALT_OPAQUET_DEPTH_STENCIL_STATE :sdl.GPUDepthStencilState:{
@@ -119,7 +119,6 @@ DEFALT_R_PASS_INFO:Render_Pass_Info:{
 	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =        DEFALT_OPAQUET_DEPTH_STENCIL_STATE,
-	// msaa_texture_createinfo =    DEFALT_MSAA_TEXTURE_CREATEINFO,
 	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
 	blend_state =                DEFALT_OPAQUET_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},
@@ -131,7 +130,6 @@ DEFALT_OPAQUE_PASS:Render_Pass_Info:{
 	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =        DEFALT_OPAQUET_DEPTH_STENCIL_STATE,
-	// msaa_texture_createinfo =    DEFALT_MSAA_TEXTURE_CREATEINFO,
 	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
 	blend_state =                DEFALT_OPAQUET_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},
@@ -142,7 +140,6 @@ DEFALT_MASKED_PASS:Render_Pass_Info:{
 	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =        DEFALT_MASKED_DEPTH_STENCIL_STATE,
-	// msaa_texture_createinfo =    DEFALT_MSAA_TEXTURE_CREATEINFO,
 	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
 	blend_state =                DEFALT_TRANSPARENT_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},
@@ -154,7 +151,6 @@ DEFALT_UI_PASS:Render_Pass_Info:{
 	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =        DEFALT_MASKED_DEPTH_STENCIL_STATE,
-	// msaa_texture_createinfo =    DEFALT_MSAA_TEXTURE_CREATEINFO,
 	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
 	blend_state =                DEFALT_UI_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},
@@ -167,7 +163,6 @@ DEFALT_TRANSPARENT_PASS:Render_Pass_Info:{
 	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =        DEFALT_TRANSPARENT_DEPTH_STENCIL_STATE,
-	// msaa_texture_createinfo =    DEFALT_MSAA_TEXTURE_CREATEINFO,
 	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
 	blend_state =                DEFALT_TRANSPARENT_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},
@@ -179,7 +174,6 @@ DEFALT_TEXT_PASS:Render_Pass_Info:{
 	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =        DEFALT_OVERIDE_DEPTH_STENCIL_STATE,
-	// msaa_texture_createinfo = DEFALT_MSAA_TEXTURE_CREATEINFO,
 	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
 	blend_state =                DEFALT_TRANSPARENT_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},

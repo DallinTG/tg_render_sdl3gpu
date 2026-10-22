@@ -155,6 +155,7 @@ Backing_Vox_World_Data::struct{
 
 Block_Palette_Data::struct{
 	item:Item_HD,
+	stat:u64,
 	count:u16,
 	is_solid:bool,
 	is_opaque:bool,

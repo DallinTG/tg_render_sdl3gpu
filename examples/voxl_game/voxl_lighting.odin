@@ -204,6 +204,7 @@ Light_Chunk_Data::struct{
 	// vox_mask_hd:Vox_Mask_HD,
 	pos:[4]int,
 	// vox_gened:bool,
+	mutex:atom.Atomic_RW_Mutex,
 }
 
 Light_Mask_HD::distinct hm.Handle64
@@ -246,7 +247,9 @@ delete_light_chunk_data::proc(w_map:^Map,light_chunk_hd:Light_Chunk_Data_HD)->(o
 	remove_chunk_data_ok:=remove_backing_light_data(&w_map.backing_world_light_data,light_chunk_data.backing_light_data_hd,light_chunk_data.backing_light_data_abstract.palette_size)
 	assert(remove_chunk_data_ok,"new_backing_chunk_vox_data !ok")
 	
+
 	err:runtime.Allocator_Error
+	atom.atomic_rw_mutex_guard(&light_chunk_data.mutex)
 	ok,err=hm.remove(&w_map.light_chunk_hm,light_chunk_hd)
 	assert(err ==.None)
 	return
@@ -487,18 +490,17 @@ remove_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_
 // }
 
 
-get_light_in_chunk :: proc(vox_chunk_data:^Light_Chunk_Data,pos:[3]u8)->(light_lev:Light_Lev){
-	// log.log(.Debug,"get_vox_in_chunk")
-	ab_chunk:=vox_chunk_data.backing_light_data_abstract
-	// palettes_info:=&ab_chunk.palette_info
-	// bits:=ab_chunk.palette_info.bits_per_vox
+get_light_in_chunk :: proc(light_chunk_data:^Light_Chunk_Data,pos:[3]u8)->(light_lev:Light_Lev){
+	atom.atomic_rw_mutex_shared_guard(&light_chunk_data.mutex)
 
+	ab_chunk:=light_chunk_data.backing_light_data_abstract
 	vox_index := pos_to_vox_index(pos)
-	pal_index:=get_light_palette_index(vox_chunk_data,vox_index)
+	pal_index:=get_light_palette_index(light_chunk_data,vox_index)
 
 	return ab_chunk.pal[pal_index].light_lev
 }
 get_light_palette_by_index::proc(chunk:^Light_Chunk_Data,pal_index:u16)->Light_Palette_Data{
+	atom.atomic_rw_mutex_shared_guard(&chunk.mutex)
 
 	ab:=&chunk.backing_light_data_abstract
 	size:=chunk.backing_light_data_abstract.palette_size
@@ -506,9 +508,11 @@ get_light_palette_by_index::proc(chunk:^Light_Chunk_Data,pal_index:u16)->Light_P
 	return ab.pal[pal_index]
 
 }
-get_light_in_chunk_index :: proc(vox_chunk_data:^Light_Chunk_Data,vox_index:u16)->(light_lev:Light_Lev){
-	ab_chunk:=vox_chunk_data.backing_light_data_abstract
-	pal_index:=get_light_palette_index(vox_chunk_data,vox_index)
+get_light_in_chunk_index :: proc(light_chunk_data:^Light_Chunk_Data,vox_index:u16)->(light_lev:Light_Lev){
+	atom.atomic_rw_mutex_shared_guard(&light_chunk_data.mutex)
+
+	ab_chunk:=light_chunk_data.backing_light_data_abstract
+	pal_index:=get_light_palette_index(light_chunk_data,vox_index)
 	return ab_chunk.pal[pal_index].light_lev
 }
 
@@ -556,39 +560,19 @@ set_light_palette_index::proc(chunk:^Light_Chunk_Data,vox_index:u16,pal_index:u1
 	mask:=pinfo.mask<<u32(bit_offset)
 	value:=u32(pal_index&u16(pinfo.mask))<<u32(bit_offset)
 
-	ab.data[word_index]=(ab.data[word_index]&~mask)|value
+	atom.atomic_rw_mutex_shared_guard(&chunk.mutex)
 
-	// mask_data,ok:=hm.get(&chunk.backing_mask_data.hm,chunk.vox_mask_hd)
-	// if !ok{
-	// 	// no maskes so no need to update them
-	// 	return
-	// }
+	ab.data[word_index]=(ab.data[word_index]&~mask)|value
 
 	pal:=&ab.pal[pal_index]
 	mask_index:=vox_index>>5
 	bit:=u32(1)<<(vox_index&31)
-
-	// if pal.is_occupied{
-	// 	mask_data.is_occupied_mask[mask_index]|=bit
-	// }else{
-	// 	mask_data.is_occupied_mask[mask_index]&=~bit
-	// }
-
-	// if pal.is_solid{
-	// 	mask_data.is_solid_mask[mask_index]|=bit
-	// }else{
-	// 	mask_data.is_solid_mask[mask_index]&=~bit
-	// }
-
-	// if pal.is_opaque{
-	// 	mask_data.is_opaque_mask[mask_index]|=bit
-	// }else{
-	// 	mask_data.is_opaque_mask[mask_index]&=~bit
-	// }
 }
 
 
 promote_light_palette_chunk::proc(chunk:^Light_Chunk_Data,preserve_data:bool=true){
+	atom.atomic_rw_mutex_guard(&chunk.mutex)
+
 	ab_chunk:=&chunk.backing_light_data_abstract
 	old_size:=ab_chunk.palette_size
 	old_pinfo:=&PAL_INFO[old_size]
@@ -611,68 +595,30 @@ promote_light_palette_chunk::proc(chunk:^Light_Chunk_Data,preserve_data:bool=tru
 		new_chunk.pal[i]=ab_chunk.pal[i]
 	}
 
-	if preserve_data && old_pinfo.bits_per_vox > 0{
-		fields_per_old_word:=1<<old_pinfo.index_shift
-
-		for i in 0..<len(ab_chunk.data){
-			old_data:=ab_chunk.data[i]
-
-			for field in 0..<fields_per_old_word{
-				old_shift:=u32(field)<<u32(old_pinfo.shift)
-				pal_index:=(old_data>>old_shift)&old_pinfo.mask
-
-				vox_index:u16=cast(u16)(i*fields_per_old_word+field)
-				new_word:=vox_index>>new_pinfo.index_shift
-				new_field:=vox_index&new_pinfo.field_mask
-				new_shift:=u32(new_field)<<u32(new_pinfo.shift)
-
-				new_chunk.data[new_word]|=pal_index<<new_shift
-			}
+	if preserve_data && old_pinfo.bits_per_vox > 0 {
+		for vox_i in 0..<CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE {
+			vox_index:u16 = cast(u16)vox_i
+	
+			old_data := ab_chunk.data[vox_index >> old_pinfo.index_shift]
+			old_field := vox_index & old_pinfo.field_mask
+			old_shift := u32(old_field) << u32(old_pinfo.shift)
+			pal_index := (old_data >> old_shift) & old_pinfo.mask
+	
+			new_word := vox_index >> new_pinfo.index_shift
+			new_field := vox_index & new_pinfo.field_mask
+			new_shift := u32(new_field) << u32(new_pinfo.shift)
+	
+			new_chunk.data[new_word] |= pal_index << new_shift
 		}
-
-		// if !hm.is_valid(&chunk.backing_mask_data.hm,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
-		// 	mask_data:Vox_Mask_Data
-		// 	item,item_ok:=reg.get(&g.item_reg,ab_chunk.pal[0].item)
-		// 	if item_ok{ // if !ok is air
-		// 		mask_data.is_occupied_mask = 1
-		// 		if item.is_opaque{
-		// 			mask_data.is_opaque_mask = 1
-		// 		}
-		// 		if item.is_solid{
-		// 			mask_data.is_solid_mask = 1
-		// 		}
-		// 	}
-		// 	atom.mutex_lock(&chunk.backing_mask_data.Mutex)
-		// 	chunk.vox_mask_hd = hm.dynamic_add(&chunk.backing_mask_data.hm, mask_data)
-		// 	atom.mutex_unlock(&chunk.backing_mask_data.Mutex)
-		// }
-	}else{
-		// if !hm.is_valid(&chunk.backing_mask_data.hm,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
-		// 	atom.mutex_lock(&chunk.backing_mask_data.Mutex)
-		// 	chunk.vox_mask_hd = hm.dynamic_add(&chunk.backing_mask_data.hm, Vox_Mask_Data{})
-		// 	atom.mutex_unlock(&chunk.backing_mask_data.Mutex)
-		// }
 	}
+
 
 	chunk.backing_light_data_hd=new_hd
 	chunk.backing_light_data_abstract=new_chunk
+	
+	
 	remove_backing_light_data(chunk.backing_light_world_data,old_hd,old_size)
 }
-
-
-// set_block_in_chunk::proc(
-// 	chunk:^Vox_Chunk_Data,
-// 	pos:[3]u8,
-// 	item_hd:Item_HD,
-// ){
-
-// 	vox_index:=pos_to_vox_index(pos)
-// 	pal_index:=get_or_add_palette_index_by_item_hd(chunk,item_hd)
-// 	set_palette_index(chunk,vox_index,pal_index)
-
-
-// }
-
 
 setlight_in_chunk_by_col_pal_index::proc(
 	chunk:^Light_Chunk_Data,
@@ -680,6 +626,7 @@ setlight_in_chunk_by_col_pal_index::proc(
 	xz:[2]u8,
 	count:u8=32,
 ){
+	atom.atomic_rw_mutex_shared_guard(&chunk.mutex)
 	ab:=&chunk.backing_light_data_abstract
 	pinfo:=&PAL_INFO[ab.palette_size]
 
@@ -716,6 +663,8 @@ setlight_in_chunk_by_col_pal_index_range :: proc(
 	start_y: u8,
 	count: u8,
 ) {
+	atom.atomic_rw_mutex_shared_guard(&chunk.mutex)
+
 	ab := &chunk.backing_light_data_abstract
 	pinfo := &PAL_INFO[ab.palette_size]
 
@@ -770,52 +719,13 @@ setlight_in_chunk_by_col_pal_index_range :: proc(
 	}
 }
 
-
-// //preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
-// //if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
-// get_or_add_palette_index_by_item_hd::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,preserve_data:bool=true)->(pal_index:u16){
-// 	ad_chunk:=&chunk.backing_chunk_data_abstract
-// 	pal_count:=ad_chunk.pal_count^
-// 	for i in 0..<pal_count{
-// 		if ad_chunk.pal[i].item == item_hd{
-// 			return cast(u16)i,
-// 		}
-// 	}
-
-// 	if cast(int)pal_count >= len(ad_chunk.pal){
-// 		promote_palette_chunk(chunk,preserve_data)
-// 		ad_chunk=&chunk.backing_chunk_data_abstract
-// 	}
-// 	is_occupied:bool
-// 	is_opaque:bool
-// 	is_solid:bool
-// 	item,item_ok:=reg.get(&g.item_reg,item_hd)
-// 	if item_ok{
-// 		is_occupied = item.is_occupied
-// 		is_opaque = item.is_opaque
-// 		is_solid = item.is_solid
-// 	}else{
-// 		is_occupied = false
-// 		is_opaque = false
-// 		is_solid = false
-// 	}
-// 	ad_chunk.pal[pal_count]=Block_Palette_Data{
-// 		item=item_hd,
-// 		count=0,
-// 		is_occupied=is_occupied,
-// 		is_opaque=is_opaque,
-// 		is_solid=is_solid,
-// 	}
-// 	ad_chunk.pal_count^+=1
-
-// 	return pal_count
-// }
-
 //preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
 //if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
 get_or_add_light_palette_index::proc(chunk:^Light_Chunk_Data,pal_d:Light_Palette_Data,preserve_data:bool=true)->(pal_index:u16){
+	atom.atomic_rw_mutex_shared_lock(&chunk.mutex)
 	ad_chunk:=&chunk.backing_light_data_abstract
 	pal_count:=ad_chunk.pal_count^
+	atom.atomic_rw_mutex_shared_unlock(&chunk.mutex)
 	for i in 0..<pal_count{
 		if ad_chunk.pal[i].light_lev == pal_d.light_lev {
 			return cast(u16)i,
@@ -825,36 +735,11 @@ get_or_add_light_palette_index::proc(chunk:^Light_Chunk_Data,pal_d:Light_Palette
 	if cast(int)pal_count >= len(ad_chunk.pal){
 		promote_light_palette_chunk(chunk,preserve_data)
 		ad_chunk=&chunk.backing_light_data_abstract
+		pal_count = ad_chunk.pal_count^
 	}
-
+	atom.atomic_rw_mutex_shared_lock(&chunk.mutex)
 	ad_chunk.pal[pal_count]=pal_d
 	ad_chunk.pal_count^+=1
-
+	atom.atomic_rw_mutex_shared_unlock(&chunk.mutex)
 	return pal_count
 }
-
-
-// //returns false if there is no next size
-// get_next_palett_size::proc(size:Palette_Sizes)->(next_size:Palette_Sizes){
-// 	switch size{
-// 	case .u0:return .u1
-// 	case .u1:return .u2
-// 	case .u2:return .u4
-// 	case .u4:return .u8
-// 	case .u8:return .u16
-// 	case .u16:assert(false, "no next palett size")
-// 	}
-// 	return
-// }
-
-// get_prev_palett_size::proc(size:Palette_Sizes)->(prev_size:Palette_Sizes){
-// 	switch size{
-// 	case .u0:assert(false, "no next palett size")
-// 	case .u1:return .u0
-// 	case .u2:return .u1
-// 	case .u4:return .u2
-// 	case .u8:return .u4
-// 	case .u16:return .u8
-// 	}
-// 	return
-// }

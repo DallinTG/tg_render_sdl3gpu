@@ -114,7 +114,8 @@ Item_Info::struct{
 	// texture_id:tg.Texture_ID_Types,
 	// texture_face_index:u16,
 
-	model_data:Model_Data,
+	// model_data:Model_Data,
+	model:Block_Model_HD,
 	texture_data:Texture_Data,
 
 	tier:		Item_Tier,
@@ -185,10 +186,6 @@ Item_Rarity::enum{
 }
 
 
-Model_Data :: struct {
-	cube_indices:[Model_Sides]int,
-	extra_count:int,
-}
 Texture_Data :: struct {
 	sides:[Model_Sides]int,
 	extra_count:int,
@@ -198,6 +195,7 @@ init_all_item_data::proc(){
 	init_texture_facees()
 	init_geometry_facees()
 	g.cube_face_geometry =  create_cube_face_geometry()
+	g.bot_slab_face_geometry = create_slab_face_geometry()
 	reg_materials()
 	reg_items()
 	
@@ -285,7 +283,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 	dirt_t_id:=add_texture_face(reg.id(Textures.Dirt))
 	i[.dirt] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(dirt_t_id)},
-		model_data = g.cube_face_geometry,
+		model = g.cube_face_geometry,
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
@@ -305,7 +303,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 				.extra = {},
 			}
 		},
-		model_data = g.cube_face_geometry,
+		model = g.cube_face_geometry,
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
@@ -314,7 +312,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 	stone_slate_t_id:=add_texture_face(reg.id(Textures.Stone_Slate),{1,1,1,1})
 	i[.stone_slate] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(stone_slate_t_id)},
-		model_data = g.cube_face_geometry,
+		model = g.cube_face_geometry,
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
@@ -324,7 +322,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 	glow_block_t_id:=add_texture_face(reg.id(Textures.Stone_Slate),{1,1,1,1})
 	i[.glow_block] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
-		model_data = g.cube_face_geometry,
+		model = g.cube_face_geometry,
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
@@ -334,7 +332,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 
 	i[.glow_block_red] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
-		model_data = g.cube_face_geometry,
+		model = g.cube_face_geometry,
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
@@ -344,7 +342,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 
 	i[.glow_block_green] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
-		model_data = g.cube_face_geometry,
+		model = g.cube_face_geometry,
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
@@ -354,7 +352,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 
 	i[.glow_block_blue] = Item_Info{
 		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
-		model_data = g.cube_face_geometry,
+		model = g.cube_face_geometry,
 		is_occupied = true,
 		is_opaque = true,
 		is_solid = true,
@@ -382,7 +380,7 @@ reg_items::proc(){
 				item:Item_Info={
 					name = name,
 					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
-					model_data = g.cube_face_geometry,
+					model = g.cube_face_geometry,
 					texture_data = {sides = fill_sides_all_1_t(texture)},
 					is_occupied = true,
 					is_opaque = true,
@@ -396,7 +394,7 @@ reg_items::proc(){
 				item:Item_Info={
 					name = name,
 					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
-					model_data = g.cube_face_geometry,
+					model = g.cube_face_geometry,
 					texture_data = {sides = fill_sides_all_1_t(texture)},
 					is_occupied = true,
 					is_opaque = true,
@@ -410,7 +408,7 @@ reg_items::proc(){
 				item:Item_Info={
 					name = name,
 					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
-					model_data = g.cube_face_geometry,
+					model = g.cube_face_geometry,
 					texture_data = {sides = fill_sides_all_1_t(texture)},
 					is_occupied = true,
 					is_opaque = true,
@@ -424,7 +422,7 @@ reg_items::proc(){
 				item:Item_Info={
 					name = name,
 					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
-					model_data = g.cube_face_geometry,
+					model = g.cube_face_geometry,
 					texture_data = {sides = fill_sides_all_1_t(texture)},
 					is_occupied = true,
 					is_opaque = true,
@@ -438,7 +436,7 @@ reg_items::proc(){
 				item:Item_Info={
 					name = name,
 					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
-					model_data = g.cube_face_geometry,
+					model = g.cube_face_geometry,
 					texture_data = {sides = fill_sides_all_1_t(texture)},
 					is_occupied = true,
 					is_opaque = true,
@@ -452,7 +450,21 @@ reg_items::proc(){
 				item:Item_Info={
 					name = name,
 					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
-					model_data = g.cube_face_geometry,
+					model = g.cube_face_geometry,
+					texture_data = {sides = fill_sides_all_1_t(texture)},
+					is_occupied = true,
+					is_opaque = true,
+					is_solid = true,
+				}
+				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
+			}
+			{
+				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1},mask_tex_id = Textures_Dat[.Large_Square_Tiles_Mask].id,mask_tint_l={.9,.9,1,1},mask_tint_d={1,1,.9,1})
+				name:=st.concatenate({mat.name," Large Square Tiles Slab"})
+				item:Item_Info={
+					name = name,
+					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
+					model = g.bot_slab_face_geometry,
 					texture_data = {sides = fill_sides_all_1_t(texture)},
 					is_occupied = true,
 					is_opaque = true,
@@ -495,98 +507,7 @@ reg_materials::proc(){
 }
 
 
-create_cube_face_geometry :: proc() -> Model_Data {
 
-	result: Model_Data
-
-
-	result.cube_indices[.pos_x] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			uv =  {{0,0},{0,1},{1,1},{1,0}},
-			pos = {
-				{ 1, 1, 1, 1},
-				{ 1, 0, 1, 1},
-				{ 1, 0, 0, 1},
-				{ 1, 1, 0, 1},
-			},
-			starting_shade = .65
-		},
-	)
-
-	result.cube_indices[.neg_x] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			uv =  {{0,0},{0,1},{1,1},{1,0}},
-			pos = {
-				{ 0, 1, 0, 1},
-				{ 0, 0, 0, 1},
-				{ 0, 0, 1, 1},
-				{ 0, 1, 1, 1},
-			},
-			starting_shade = .65
-		},
-	)
-
-	result.cube_indices[.pos_y] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			uv =  {{0,0},{0,1},{1,1},{1,0}},
-			pos = {
-				{ 0, 1, 0, 1},
-				{ 0, 1, 1, 1},
-				{ 1, 1, 1, 1},
-				{ 1, 1, 0, 1},
-			},
-			starting_shade = 1
-		},
-	)
-
-	result.cube_indices[.neg_y] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			uv =  {{0,0},{0,1},{1,1},{1,0}},
-			pos = {
-				{ 1, 0, 0, 1},
-				{ 1, 0, 1, 1},
-				{ 0, 0, 1, 1},
-				{ 0, 0, 0, 1},
-			},
-			starting_shade = .5
-		},
-	)
-
-	result.cube_indices[.pos_z] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			uv =  {{0,0},{0,1},{1,1},{1,0}},
-			pos = {
-				{ 0, 1, 1, 1},
-				{ 0, 0, 1, 1},
-				{ 1, 0, 1, 1},
-				{ 1, 1, 1, 1},
-			},
-			starting_shade = .8
-		},
-	)
-
-	result.cube_indices[.neg_z] = tg.add_indexed_gpu_data(
-		&g.geometry_facees,
-		tg.Vert_Face_Geometry{
-			uv =  {{0,0},{0,1},{1,1},{1,0}},
-			pos = {
-				{ 1, 1, 0, 1},
-				{ 1, 0, 0, 1},
-				{ 0, 0, 0, 1},
-				{ 0, 1, 0, 1},
-			},
-			starting_shade = .8
-		},
-	)
-	tg.update_indexed_gpu_data(&g.geometry_facees)
-
-	return result
-}
 
 
 item_info_list_ui_box::proc(ui_box_handle:tg.UI_Box_Handle){

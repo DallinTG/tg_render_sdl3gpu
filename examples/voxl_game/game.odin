@@ -1,5 +1,6 @@
 package voxl_game
 
+import "../../sstring"
 import "base:runtime"
 import "core:time"
 import tg"../../../tg_render_sdl3gpu"
@@ -30,17 +31,25 @@ g:^Game
 Game::struct{
 	
 	w_map:Map,
+	w_state:World_State,
+	
 	debug_info:Vox_Render_Debug_Info,
 	df_items:[DF_Items]Item_HD,
 	df_materials:[DF_Materials]Material_HD,
 	item_reg:		Item_Reg,
 	material_reg:	Material_Reg,
+	block_model_reg:Block_Model_Reg,
+	all_block_models:[dynamic]Model_Data,
+	all_face_data:[dynamic]Face_Data,
 	texture_facees:	tg.Indexed_GPU_Data,
 	geometry_facees:tg.Indexed_GPU_Data,
 	
 	
 	//TODO temp
-	cube_face_geometry:Model_Data,
+	cube_face_geometry:Block_Model_HD,
+	top_slab_face_geometry:Block_Model_HD,
+	bot_slab_face_geometry:Block_Model_HD,
+
 	temp_using_item_hd:Item_HD,
 	// t_chuck:Chunck,
 

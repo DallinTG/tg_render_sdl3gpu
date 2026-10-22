@@ -49,8 +49,8 @@ State :: struct{
 	tracking_allocator: mem.Tracking_Allocator,
 	
 	
-	swap_chain_texture_format:	sdl.GPUTextureFormat,
-	depth_texture_format:		sdl.GPUTextureFormat,
+	// swap_chain_texture_format:	sdl.GPUTextureFormat,
+	// depth_texture_format:		sdl.GPUTextureFormat,
 	
 	textures_reg:reg.Registry(Texture, Texture_HD),
 	white_texture_hd:Texture_HD,
@@ -90,27 +90,23 @@ State :: struct{
 	is_ui_l_click:proc()->(bool),//TODO This needs to be removed
 	is_ui_r_click:proc()->(bool),//TODO This needs to be removed
 
-
-
+	g_render_settings:G_Render_Settings,
 
 }
+G_Render_Settings::struct{
+	swap_chain_texture_format:	sdl.GPUTextureFormat,
+	depth_texture_format:		sdl.GPUTextureFormat,
+
+	msaa_samp_count:			Sample_Count,
+}
+DF_G_RENDER_SETTINGS:G_Render_Settings:{
+	msaa_samp_count = ._4
+}
+
 Clay_Instances_Handle_Map :: hm.Dynamic_Handle_Map(Clay_Instance, Clay_I_Handle)
 Font_Handle_Map           :: hm.Dynamic_Handle_Map(Font, Font_Handle)
 Meshe_Handle_Map          :: hm.Dynamic_Handle_Map(Mesh, Mesh_Handle)
 Shader_Handle_Map         :: hm.Dynamic_Handle_Map(Shader, Shader_Handle)
-Window_Handle_Map         :: hm.Dynamic_Handle_Map(Window, Window_Handle)
-Window_Handle :: distinct Handle
-Window::struct{
-	handle:Window_Handle,
-	data:^sdl.Window,
-	swap_chain_format:sdl.GPUTextureFormat,
-	// swap_chain:^sdl.GPUTexture,//TODO move this to Render_Target:
-	// msaa_tex:^sdl.GPUTexture,
-	Render_Target:Render_Target,
-	last_frame_updated:u64,
-	// msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
-	
-}
 
 Init_Dec ::struct{
 	win_name:string,
@@ -128,38 +124,6 @@ INIT_DEC:Init_Dec:{
 
 
 
-R_Pass ::struct{
-	window_hd: Window_Handle,
-	// render_cmd_buf :^sdl.GPUCommandBuffer,
-	frame_data:^Frame_Data,//this points to the spisific data that is globl to the curent frame
-	info:Render_Pass_Info,
-	render_pas: ^sdl.GPURenderPass,
-	pipeline: ^sdl.GPUGraphicsPipeline,
-	sampler: ^sdl.GPUSampler,
-	
-	msaa_texture: ^sdl.GPUTexture,
-	
-	texture_sampler_binding:[dynamic]sdl.GPUTextureSamplerBinding,//this gets rebuilt per frame
-
-	// win_size:[2]i32,
-	ubo:UBO,
-	render_target:^Render_Target,
-
-	name:string, // used for debuging
-}
-
-Render_Pass_Info::struct{
-	// load_op : sdl.GPULoadOp, 
-	clear_color : [4]f32,
-	has_depth_stencil_target:bool,
-	// depth_texture_createinfo : sdl.GPUTextureCreateInfo,
-	// depth_msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
-	// msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
-	depth_stencil_state : sdl.GPUDepthStencilState,
-	rasterizer_state : sdl.GPURasterizerState,
-	blend_state : sdl.GPUColorTargetBlendState,
-	vertex_input_state : sdl.GPUVertexInputState,
-}
 
 Vec2 :: [2]f32
 Vec3 :: [3]f32
@@ -252,6 +216,7 @@ init :: proc(state:^State=nil,init_settings:Init_Settings=DF_INIT_SETTINGS, allo
 	}
 	new_state = s
 	
+	s.g_render_settings = DF_G_RENDER_SETTINGS
 	s.frame_allocator = runtime.arena_allocator(&s.frame_arena)
 	s.allocator = allocator
 	ok = sdl.Init(init_settings.init_flags)
@@ -315,10 +280,10 @@ init :: proc(state:^State=nil,init_settings:Init_Settings=DF_INIT_SETTINGS, allo
 
 	try_depth_format::proc(format: sdl.GPUTextureFormat){
 		if sdl.GPUTextureSupportsFormat(s.gpu_device, format, .D2, {.DEPTH_STENCIL_TARGET}){
-			s.depth_texture_format = format
+			s.g_render_settings.depth_texture_format = format
 		}
 	}
-	s.depth_texture_format = .D16_UNORM
+	s.g_render_settings.depth_texture_format = .D16_UNORM
 	try_depth_format(.D32_FLOAT)
 	try_depth_format(.D24_UNORM)
 	
@@ -331,6 +296,20 @@ init :: proc(state:^State=nil,init_settings:Init_Settings=DF_INIT_SETTINGS, allo
 	return
 }
 
+Window_Handle_Map         :: hm.Dynamic_Handle_Map(Window, Window_Handle)
+Window_Handle :: distinct Handle
+Window::struct{
+	handle:Window_Handle,
+	data:^sdl.Window,
+	swap_chain_format:sdl.GPUTextureFormat,
+	// swap_chain:^sdl.GPUTexture,//TODO move this to Render_Target:
+	// msaa_tex:^sdl.GPUTexture,
+	Render_Target:Render_Target,
+	last_frame_updated:u64,
+	// msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
+}
+
+
 init_window::proc(dec:Init_Dec=INIT_DEC)->(window_hd:Window_Handle){
 	win_name:=frame_cstring(dec.win_name)
 	window_data := sdl.CreateWindow(win_name,dec.win_size.x,dec.win_size.y,{})
@@ -341,14 +320,16 @@ init_window::proc(dec:Init_Dec=INIT_DEC)->(window_hd:Window_Handle){
 	
 	// ok = sdl.SetGPUSwapchainParameters(s.gpu_device,window_data,sdl.GPUSwapchainComposition{},sdl.GPUPresentMode{})
 	
+	win_dec:=dec
+	win_dec.msaa_txture_createinfo.sample_count = Sample_Count_To_SDL_Sample_Count[s.g_render_settings.msaa_samp_count]
 	window:Window={
 		data = window_data,
 		swap_chain_format = sdl.GetGPUSwapchainTextureFormat(s.gpu_device, window_data),
 		Render_Target = Render_Target{
-			msaa_texture_createinfo = dec.msaa_txture_createinfo
+			msaa_texture_createinfo = win_dec.msaa_txture_createinfo
 		}
 	}
-	s.swap_chain_texture_format = window.swap_chain_format
+	s.g_render_settings.swap_chain_texture_format = window.swap_chain_format
 	window_hd = hm.add(&s.windows,window)
 
 	swapchane_ok:=sdl.SetGPUSwapchainParameters(s.gpu_device,window.data,.SDR,.IMMEDIATE)
@@ -378,6 +359,58 @@ start_tick::proc()->(app_should_close:bool){//returns true if app_should_close
 		}
 	}
 	return s.app_should_close 
+}
+
+
+R_Pass ::struct{
+	window_hd: Window_Handle,
+	// render_cmd_buf :^sdl.GPUCommandBuffer,
+	frame_data:^Frame_Data,//this points to the spisific data that is globl to the curent frame
+	info:Render_Pass_Info,
+	render_pas: ^sdl.GPURenderPass,
+	pipeline: [Sample_Count][GPU_Pipeline_Vs]^sdl.GPUGraphicsPipeline,
+	sampler: ^sdl.GPUSampler,
+	
+	msaa_texture: ^sdl.GPUTexture,
+	
+	texture_sampler_binding:[dynamic]sdl.GPUTextureSamplerBinding,//this gets rebuilt per frame
+
+	// win_size:[2]i32,
+	ubo:UBO,
+	render_target:^Render_Target,
+
+	name:string, // used for debuging
+}
+
+Render_Pass_Info::struct{
+	// load_op : sdl.GPULoadOp, 
+	clear_color : [4]f32,
+	has_depth_stencil_target:bool,
+	// depth_texture_createinfo : sdl.GPUTextureCreateInfo,
+	// depth_msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
+	// msaa_texture_createinfo : sdl.GPUTextureCreateInfo,
+	depth_stencil_state : sdl.GPUDepthStencilState,
+	rasterizer_state : sdl.GPURasterizerState,
+	blend_state : sdl.GPUColorTargetBlendState,
+	vertex_input_state : sdl.GPUVertexInputState,
+}
+
+GPU_Pipeline_Vs::enum{
+	triangle_list,
+	line_list,
+}
+Sample_Count::enum{
+	_1,
+	_2,
+	_4,
+	_8,
+}
+
+Sample_Count_To_SDL_Sample_Count:[Sample_Count]sdl.GPUSampleCount={
+	._1 = ._1,
+	._2 = ._2,
+	._4 = ._4,
+	._8 = ._8,
 }
 
 
@@ -416,26 +449,44 @@ create_render_pass :: proc (
 		num_color_targets = 1,
 		color_target_descriptions=&(sdl.GPUColorTargetDescription{
 			// format = window.swap_chain_format,
-			format = s.swap_chain_texture_format,
+			format = s.g_render_settings.swap_chain_texture_format,
 			blend_state = pass.info.blend_state,
 		}),
 		has_depth_stencil_target = pass.info.has_depth_stencil_target,
-		depth_stencil_format = s.depth_texture_format,
+		depth_stencil_format = s.g_render_settings.depth_texture_format,
 		
 	}
-	pass.pipeline = sdl.CreateGPUGraphicsPipeline(s.gpu_device,sdl.GPUGraphicsPipelineCreateInfo{
-		vertex_shader = vert_shader.shader,
-		fragment_shader = frag_shader.shader,
-		primitive_type = .TRIANGLELIST,
-		vertex_input_state = pass.info.vertex_input_state,
-		depth_stencil_state = pass.info.depth_stencil_state,
-		rasterizer_state = pass.info.rasterizer_state,
-		target_info = target_info,
-		multisample_state = sdl.GPUMultisampleState{
-			sample_count= ._4,
-			// enable_alpha_to_coverage = true,
-		},
-	})
+	for msa in Sample_Count{
+		pass.pipeline[msa][.triangle_list] = sdl.CreateGPUGraphicsPipeline(s.gpu_device,sdl.GPUGraphicsPipelineCreateInfo{
+			vertex_shader = vert_shader.shader,
+			fragment_shader = frag_shader.shader,
+			primitive_type = .TRIANGLELIST,
+			// primitive_type = .LINELIST,
+			vertex_input_state = pass.info.vertex_input_state,
+			depth_stencil_state = pass.info.depth_stencil_state,
+			rasterizer_state = pass.info.rasterizer_state,
+			target_info = target_info,
+			multisample_state = sdl.GPUMultisampleState{
+				sample_count= Sample_Count_To_SDL_Sample_Count[msa],
+				// enable_alpha_to_coverage = true,
+			},
+		})
+	
+		pass.pipeline[msa][.line_list] = sdl.CreateGPUGraphicsPipeline(s.gpu_device,sdl.GPUGraphicsPipelineCreateInfo{
+			vertex_shader = vert_shader.shader,
+			fragment_shader = frag_shader.shader,
+			primitive_type = .TRIANGLELIST,
+			// primitive_type = .LINELIST,
+			vertex_input_state = pass.info.vertex_input_state,
+			depth_stencil_state = pass.info.depth_stencil_state,
+			rasterizer_state = pass.info.rasterizer_state,
+			target_info = target_info,
+			multisample_state = sdl.GPUMultisampleState{
+				sample_count=  Sample_Count_To_SDL_Sample_Count[msa],
+				// enable_alpha_to_coverage = true,
+			},
+		})
+	}
 	resize_dynamic_array(&pass.texture_sampler_binding,5)
 	return pass
 }
@@ -452,6 +503,7 @@ do_render_pass::proc(
 	indexed_gpu_data:[]^Indexed_GPU_Data,
 	indirect_cmds:[]Mesh_Handle,
 	type:Render_Type = .vertex,
+	pipeline_vs:GPU_Pipeline_Vs = .triangle_list,
 ){
 
 	if pass == nil {
@@ -472,7 +524,7 @@ do_render_pass::proc(
 	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
 	pass.ubo = {mvp = proj_mat * view_mat * modl_mat, viewport_size = cast([2]f32)cam.texture_size}
 
-	sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline)
+	sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline[s.g_render_settings.msaa_samp_count][pipeline_vs])
 
 	sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 0, &pass.ubo,size_of(pass.ubo))
 	
@@ -616,7 +668,7 @@ check_and_resize_all_frame_buffers::proc(
 	
 			cam.texture_size = render_target.wh
 			sdl.ReleaseGPUTexture(s.gpu_device, cam.depth_texture)
-			cdtci.format =  s.depth_texture_format
+			cdtci.format =  s.g_render_settings.depth_texture_format
 			cdtci.width = cast(u32)cam.texture_size.x
 			cdtci.height = cast(u32)cam.texture_size.y
 			if cam.texture_size.x > 0 && cam.texture_size.y > 0 {
@@ -636,7 +688,7 @@ check_and_resize_all_frame_buffers::proc(
 			rtci.height = cast(u32)render_target.wh.y
 			
 			sdl.ReleaseGPUTexture(s.gpu_device, render_target.msaa_tex)
-			rtci.format =  s.swap_chain_texture_format
+			rtci.format =  s.g_render_settings.swap_chain_texture_format
 			rtci.width = cast(u32)render_target.wh.x
 			rtci.height = cast(u32)render_target.wh.y
 			if render_target.wh.x > 0 && render_target.wh.y > 0 {
@@ -652,7 +704,7 @@ check_and_resize_all_frame_buffers::proc(
 		if ok{
 			log.log(.Info,"\nnew cam.depth_texture == nil",render_target.wh,[2]i32{cast(i32)cam.texture_size.x,cast(i32)cam.texture_size.y},"\n")
 
-			cdtci.format =  s.depth_texture_format
+			cdtci.format =  s.g_render_settings.depth_texture_format
 			cdtci.width = cast(u32)cam.texture_size.x
 			cdtci.height = cast(u32)cam.texture_size.y
 			if cam.texture_size.x > 0 && cam.texture_size.y > 0 {
@@ -668,7 +720,7 @@ check_and_resize_all_frame_buffers::proc(
 		if ok{
 			log.log(.Info,"\nnew pass.msaa_texture == nil",render_target.wh,[2]i32{cast(i32)render_target.wh.x,cast(i32)render_target.wh.y},"\n")
 
-			rtci.format =  s.swap_chain_texture_format
+			rtci.format =  s.g_render_settings.swap_chain_texture_format
 			rtci.width = cast(u32)render_target.wh.x
 			rtci.height = cast(u32)render_target.wh.y
 			if render_target.wh.x > 0 && render_target.wh.y > 0 {
@@ -832,13 +884,6 @@ get_window_size::proc(window_hd:Window_Handle)-> (win_size:[2]i32) {
 	ok:=sdl.GetWindowSizeInPixels(win.data,&win_size.x,&win_size.y)
 	return win_size
 }
-// blit_to_window::proc(pass:R_Pass, win_hd:Window_Handle){
-// 	blit_info:sdl.GPUBlitInfo={
-	
-// 	}
-// 	win:=get_render_target(win_hd)
-// 	sdl.BlitGPUTexture(s.render_cmd_buf,blit_info)
-// }
 
 //cam___________________________________________________________________________
 Camera_Types::enum{
@@ -865,12 +910,13 @@ Look_Dir::struct{
 create_camera::proc(
 	type:Camera_Types = .perspective,
 	depth_texture_createinfo:sdl.GPUTextureCreateInfo = DEFALT_DEPTH_TEXTURE_CREATEINFO,
-	
 )->(cam:Camera){
+	dec:=depth_texture_createinfo
+	dec.sample_count = Sample_Count_To_SDL_Sample_Count[s.g_render_settings.msaa_samp_count]
 	cam = {
 		type = type,
 		zoom = 1,
-		depth_texture_createinfo = depth_texture_createinfo,
+		depth_texture_createinfo = dec,
 	}
 	return
 }
