@@ -145,30 +145,18 @@ Backing_Vox_World_Data::struct{
 	u16_chunk_data:	U16_Backing_Chunk_Data_HM,
 }
 
-// Palette_Data::struct{
-// 	item:Item_HD,
-// 	count:u16,
-// 	is_solid:bool,
-// 	is_opaque:bool,
-// 	is_occupied:bool,
-// }
+Block_State::struct{
+	state:u32,
+	pad:u16,
+	offset:u16,
+}
 
 Block_Palette_Data::struct{
 	item:Item_HD,
-	stat:u64,
-	count:u16,
-	is_solid:bool,
-	is_opaque:bool,
-	is_occupied:bool,
+	state:Block_State,
+	count:u16, // Number of voxel chains containing this node.
+	multy_block_index:u16, // 0 means this is the end of the chain; palette index 0 is reserved for empty cells.
 }
-
-// Light_Palette_Data::struct{
-// 	item:Item_HD,
-// 	count:u16,
-// 	is_solid:bool,
-// 	is_opaque:bool,
-// 	is_occupied:bool,
-// }
 
 Backing_Vox_Chunk_Data_HD::distinct hm.Handle64
 
@@ -486,16 +474,10 @@ pos_to_vox_index::proc(pos:[3]u8,)->(vox_index:u16){
 }
 
 
-get_vox_in_chunk :: proc(vox_chunk_data:^Vox_Chunk_Data,pos:[3]u8)->(item_hd:Item_HD){
-	// log.log(.Debug,"get_vox_in_chunk")
-	ab_chunk:=vox_chunk_data.backing_chunk_data_abstract
-	// palettes_info:=&ab_chunk.palette_info
-	// bits:=ab_chunk.palette_info.bits_per_vox
-
-	vox_index := pos_to_vox_index(pos)
+get_vox_in_chunk :: proc(vox_chunk_data:^Vox_Chunk_Data,pos:[3]u8)->(block:Block_Palette_Data){
+	vox_index:=pos_to_vox_index(pos)
 	pal_index:=get_palette_index(vox_chunk_data,vox_index)
-
-	return ab_chunk.pal[pal_index].item
+	return get_palette_by_index(vox_chunk_data,pal_index)
 }
 get_vox_in_chunk_index :: proc(vox_chunk_data:^Vox_Chunk_Data,vox_index:u16)->(item_hd:Item_HD){
 	ab_chunk:=vox_chunk_data.backing_chunk_data_abstract
@@ -527,64 +509,91 @@ get_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16)->u16{
 }
 
 get_palette_by_index::proc(chunk:^Vox_Chunk_Data,pal_index:u16)->Block_Palette_Data{
-
 	ab:=&chunk.backing_chunk_data_abstract
-	size:=chunk.backing_chunk_data_abstract.palette_size
-	assert(cast(int)pal_index <= len(ab.pal))
+	assert(pal_index < ab.pal_count^)
 	return ab.pal[pal_index]
-
 }
 
+update_vox_mask_bits::proc(chunk:^Vox_Chunk_Data,mask_index:u32,mask_bits:u32,item_hd:Item_HD){
+	mask_data,ok:=hm.get(&chunk.backing_mask_data.hm,chunk.vox_mask_hd)
+	if !ok {
+		return
+	}
+
+	item,item_ok:=reg.get(&g.item_reg,item_hd)
+	is_occupied:=false
+	is_solid:=false
+	is_opaque:=false
+	if item_ok {
+		is_occupied=item.is_occupied
+		is_solid=item.is_solid
+		is_opaque=item.is_opaque
+	}
+
+	if is_occupied {
+		mask_data.is_occupied_mask[mask_index]|=mask_bits
+	} else {
+		mask_data.is_occupied_mask[mask_index]&=~mask_bits
+	}
+	if is_solid {
+		mask_data.is_solid_mask[mask_index]|=mask_bits
+	} else {
+		mask_data.is_solid_mask[mask_index]&=~mask_bits
+	}
+	if is_opaque {
+		mask_data.is_opaque_mask[mask_index]|=mask_bits
+	} else {
+		mask_data.is_opaque_mask[mask_index]&=~mask_bits
+	}
+}
+
+change_palette_chain_count::proc(chunk:^Vox_Chunk_Data,pal_index:u16,add:bool){
+	ab:=&chunk.backing_chunk_data_abstract
+	current_index:=pal_index
+
+	for _ in 0..<ab.pal_count^ {
+		assert(current_index < ab.pal_count^,"invalid palette index in multiblock chain")
+		if add {
+			ab.pal[current_index].count += 1
+		} else {
+			assert(ab.pal[current_index].count > 0,"palette chain count underflow")
+			ab.pal[current_index].count -= 1
+		}
+		next:=ab.pal[current_index].multy_block_index
+		if next == 0 {
+			return
+		}
+		current_index=next
+	}
+	assert(false,"cycle detected in multiblock palette chain")
+}
 
 set_palette_index::proc(chunk:^Vox_Chunk_Data,vox_index:u16,pal_index:u16,){
 	ab:=&chunk.backing_chunk_data_abstract
-	size:=chunk.backing_chunk_data_abstract.palette_size
-	pinfo:=&PAL_INFO[size]
-
+	size:=ab.palette_size
 	old_pal_index:=get_palette_index(chunk,vox_index)
-	if size == .u0{
+	if old_pal_index == pal_index {
 		return
 	}
+	if size == .u0 {
+		assert(pal_index == 0)
+		return
+	}
+	assert(pal_index < ab.pal_count^)
 
-	ab.pal[old_pal_index].count -= 1
-	ab.pal[pal_index].count += 1
+	change_palette_chain_count(chunk,old_pal_index,false)
+	change_palette_chain_count(chunk,pal_index,true)
 
-
+	pinfo:=&PAL_INFO[size]
 	word_index:=vox_index>>pinfo.index_shift
 	bit_offset:=(vox_index&pinfo.field_mask)<<pinfo.shift
-
 	mask:=pinfo.mask<<u32(bit_offset)
 	value:=u32(pal_index&u16(pinfo.mask))<<u32(bit_offset)
-
 	ab.data[word_index]=(ab.data[word_index]&~mask)|value
 
-	mask_data,ok:=hm.get(&chunk.backing_mask_data.hm,chunk.vox_mask_hd)
-	if !ok{
-		// no maskes so no need to update them
-		return
-	}
-
-	pal:=&ab.pal[pal_index]
-	mask_index:=vox_index>>5
+	mask_index:=cast(u32)(vox_index>>5)
 	bit:=u32(1)<<(vox_index&31)
-
-	if pal.is_occupied{
-		mask_data.is_occupied_mask[mask_index]|=bit
-	}else{
-		mask_data.is_occupied_mask[mask_index]&=~bit
-	}
-
-	if pal.is_solid{
-		mask_data.is_solid_mask[mask_index]|=bit
-	}else{
-		mask_data.is_solid_mask[mask_index]&=~bit
-	}
-
-	if pal.is_opaque{
-		mask_data.is_opaque_mask[mask_index]|=bit
-	}else{
-		mask_data.is_opaque_mask[mask_index]&=~bit
-	}
+	update_vox_mask_bits(chunk,mask_index,bit,ab.pal[pal_index].item)
 }
 
 
@@ -611,7 +620,7 @@ promote_palette_chunk::proc(chunk:^Vox_Chunk_Data,preserve_data:bool=true){
 		new_chunk.pal[i]=ab_chunk.pal[i]
 	}
 
-	if preserve_data && old_pinfo.bits_per_vox > 0{
+	if preserve_data && old_pinfo.bits_per_vox > 0 {
 		fields_per_old_word:=1<<old_pinfo.index_shift
 
 		for i in 0..<len(ab_chunk.data){
@@ -629,29 +638,27 @@ promote_palette_chunk::proc(chunk:^Vox_Chunk_Data,preserve_data:bool=true){
 				new_chunk.data[new_word]|=pal_index<<new_shift
 			}
 		}
+	}
 
-		if !hm.is_valid(&chunk.backing_mask_data.hm,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
-			mask_data:Vox_Mask_Data
+	if !hm.is_valid(&chunk.backing_mask_data.hm,chunk.vox_mask_hd) && new_size != .u0 && old_size == .u0 {
+		mask_data:Vox_Mask_Data
+		if preserve_data {
 			item,item_ok:=reg.get(&g.item_reg,ab_chunk.pal[0].item)
-			if item_ok{ // if !ok is air
-				mask_data.is_occupied_mask = 1
-				if item.is_opaque{
-					mask_data.is_opaque_mask = 1
+			if item_ok {
+				if item.is_occupied {
+					mask_data.is_occupied_mask=~u32(0)
 				}
-				if item.is_solid{
-					mask_data.is_solid_mask = 1
+				if item.is_opaque {
+					mask_data.is_opaque_mask=~u32(0)
+				}
+				if item.is_solid {
+					mask_data.is_solid_mask=~u32(0)
 				}
 			}
-			atom.mutex_lock(&chunk.backing_mask_data.Mutex)
-			chunk.vox_mask_hd = hm.dynamic_add(&chunk.backing_mask_data.hm, mask_data)
-			atom.mutex_unlock(&chunk.backing_mask_data.Mutex)
 		}
-	}else{
-		if !hm.is_valid(&chunk.backing_mask_data.hm,chunk.vox_mask_hd) && new_size!=.u0 && old_size == .u0{
-			atom.mutex_lock(&chunk.backing_mask_data.Mutex)
-			chunk.vox_mask_hd = hm.dynamic_add(&chunk.backing_mask_data.hm, Vox_Mask_Data{})
-			atom.mutex_unlock(&chunk.backing_mask_data.Mutex)
-		}
+		atom.mutex_lock(&chunk.backing_mask_data.Mutex)
+		chunk.vox_mask_hd=hm.dynamic_add(&chunk.backing_mask_data.hm,mask_data)
+		atom.mutex_unlock(&chunk.backing_mask_data.Mutex)
 	}
 
 	chunk.backing_chunk_data_hd=new_hd
@@ -664,16 +671,94 @@ set_block_in_chunk::proc(
 	chunk:^Vox_Chunk_Data,
 	pos:[3]u8,
 	item_hd:Item_HD,
+	state:Block_State={},
 ){
-
 	vox_index:=pos_to_vox_index(pos)
-	pal_index:=get_or_add_palette_index_by_item_hd(chunk,item_hd)
+	pal_index:=get_or_add_palette_index(chunk,Block_Palette_Data{
+		item=item_hd,
+		state=state,
+	})
 	set_palette_index(chunk,vox_index,pal_index)
+}
 
+append_palette_child::proc(chunk:^Vox_Chunk_Data,pal_index:u16,child_pal_index:u16,depth:u16=0)->u16{
+	ab:=&chunk.backing_chunk_data_abstract
+	assert(pal_index < ab.pal_count^)
+	assert(child_pal_index != 0,"palette index 0 is reserved for an empty cell")
+	assert(depth < ab.pal_count^,"cycle detected while appending multiblock")
+	node:=ab.pal[pal_index]
 
+	if node.multy_block_index == 0 {
+		node.multy_block_index=child_pal_index
+	} else {
+		node.multy_block_index=append_palette_child(chunk,node.multy_block_index,child_pal_index,depth+1)
+	}
+	node.count=0
+	return get_or_add_palette_index(chunk,node)
+}
+
+// Adds a block at the end of the cell's existing chain. An empty cell gets a root block.
+set_child_block_in_chunk::proc(
+	chunk:^Vox_Chunk_Data,
+	pos:[3]u8,
+	item_hd:Item_HD,
+	state:Block_State={},
+){
+	vox_index:=pos_to_vox_index(pos)
+	old_pal_index:=get_palette_index(chunk,vox_index)
+	if old_pal_index == 0 {
+		set_block_in_chunk(chunk,pos,item_hd,state)
+		return
+	}
+
+	child_pal_index:=get_or_add_palette_index(chunk,Block_Palette_Data{
+		item=item_hd,
+		state=state,
+	})
+	new_pal_index:=append_palette_child(chunk,old_pal_index,child_pal_index)
+	set_palette_index(chunk,vox_index,new_pal_index)
+}
+
+truncate_palette_chain::proc(chunk:^Vox_Chunk_Data,pal_index:u16,target_pal_index:u16,depth:u16=0)->(new_pal_index:u16,found:bool){
+	ab:=&chunk.backing_chunk_data_abstract
+	assert(pal_index < ab.pal_count^)
+	assert(depth < ab.pal_count^,"cycle detected while destroying multiblock")
+	node:=ab.pal[pal_index]
+	if pal_index == target_pal_index {
+		return 0,true
+	}
+	if node.multy_block_index == 0 {
+		return pal_index,false
+	}
+	new_child_index:u16
+	new_child_index,found=truncate_palette_chain(chunk,node.multy_block_index,target_pal_index,depth+1)
+	if !found {
+		return pal_index,false
+	}
+	node.multy_block_index=new_child_index
+	node.count=0
+	return get_or_add_palette_index(chunk,node),true
+}
+
+// Removes the selected block and every child after it. target_pal_index is the palette
+// node hit by the raycast, not merely the cell's root palette index.
+destroy_block_in_chunk::proc(chunk:^Vox_Chunk_Data,pos:[3]u8,target_pal_index:u16)->(destroyed:bool){
+	vox_index:=pos_to_vox_index(pos)
+	old_pal_index:=get_palette_index(chunk,vox_index)
+	if old_pal_index == 0 {
+		return false
+	}
+
+	new_pal_index,found:=truncate_palette_chain(chunk,old_pal_index,target_pal_index)
+	if !found {
+		return false
+	}
+	set_palette_index(chunk,vox_index,new_pal_index)
+	return true
 }
 
 
+// Bulk initialization helper. It does not update palette counts; the caller must do that after writing.
 set_blocks_in_chunk_by_col_pal_index::proc(
 	chunk:^Vox_Chunk_Data,
 	pal_index:u16,
@@ -682,6 +767,8 @@ set_blocks_in_chunk_by_col_pal_index::proc(
 ){
 	ab:=&chunk.backing_chunk_data_abstract
 	pinfo:=&PAL_INFO[ab.palette_size]
+	assert(pal_index < ab.pal_count^)
+	assert(count <= CHUNK_SIZE)
 
 	if pinfo.index_shift == 0 || count == 0 {
 		return
@@ -707,95 +794,42 @@ set_blocks_in_chunk_by_col_pal_index::proc(
 		ab.data[word_index+full_words]=(ab.data[word_index+full_words]&~mask)|(value*pinfo.fill_mask&mask)
 	}
 
-	mask_data,ok:=hm.get(&chunk.backing_mask_data.hm,chunk.vox_mask_hd)
-	if !ok{
-		// no maskes so no need to update them
-		return
-	}
 	mask_index:=cast(u32)xz[0]+cast(u32)xz[1]*CHUNK_SIZE
-	pal:=&ab.pal[pal_index]
-
 	mask_bits:u32
 	if count == 32 {
-		mask_bits = ~u32(0)
+		mask_bits=~u32(0)
 	} else {
-		mask_bits = (u32(1)<<u32(count))-1
+		mask_bits=(u32(1)<<u32(count))-1
 	}
-
-	if pal.is_occupied {
-		mask_data.is_occupied_mask[mask_index]|=mask_bits
-	} else {
-		mask_data.is_occupied_mask[mask_index]&=~mask_bits
-	}
-	if pal.is_solid {
-		mask_data.is_solid_mask[mask_index]|=mask_bits
-	} else {
-		mask_data.is_solid_mask[mask_index]&=~mask_bits
-	}
-	if pal.is_opaque {
-		mask_data.is_opaque_mask[mask_index]|=mask_bits
-	} else {
-		mask_data.is_opaque_mask[mask_index]&=~mask_bits
-	}
+	update_vox_mask_bits(chunk,mask_index,mask_bits,ab.pal[pal_index].item)
 }
 
 
-//preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
-//if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
-get_or_add_palette_index_by_item_hd::proc(chunk:^Vox_Chunk_Data,item_hd:Item_HD,preserve_data:bool=true)->(pal_index:u16){
-	ad_chunk:=&chunk.backing_chunk_data_abstract
-	pal_count:=ad_chunk.pal_count^
-	for i in 0..<pal_count{
-		if ad_chunk.pal[i].item == item_hd{
-			return cast(u16)i,
-		}
-	}
-
-	if cast(int)pal_count >= len(ad_chunk.pal){
-		promote_palette_chunk(chunk,preserve_data)
-		ad_chunk=&chunk.backing_chunk_data_abstract
-	}
-	is_occupied:bool
-	is_opaque:bool
-	is_solid:bool
-	item,item_ok:=reg.get(&g.item_reg,item_hd)
-	if item_ok{
-		is_occupied = item.is_occupied
-		is_opaque = item.is_opaque
-		is_solid = item.is_solid
-	}else{
-		is_occupied = false
-		is_opaque = false
-		is_solid = false
-	}
-	ad_chunk.pal[pal_count]=Block_Palette_Data{
-		item=item_hd,
-		count=0,
-		is_occupied=is_occupied,
-		is_opaque=is_opaque,
-		is_solid=is_solid,
-	}
-	ad_chunk.pal_count^+=1
-
-	return pal_count
-}
-
-//preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
-//if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
+// Do not recycle count==0 entries here: bulk generation assigns palette counts after its column writes.
 get_or_add_palette_index::proc(chunk:^Vox_Chunk_Data,pal_d:Block_Palette_Data,preserve_data:bool=true)->(pal_index:u16){
+	pal_d:=pal_d
 	ad_chunk:=&chunk.backing_chunk_data_abstract
+	if pal_d.multy_block_index != 0 {
+		assert(pal_d.multy_block_index < ad_chunk.pal_count^,"invalid child palette index")
+	}
 	pal_count:=ad_chunk.pal_count^
 	for i in 0..<pal_count{
-		if ad_chunk.pal[i] == pal_d{
+		if ad_chunk.pal[i].item == pal_d.item &&
+		   ad_chunk.pal[i].state == pal_d.state &&
+		   ad_chunk.pal[i].multy_block_index == pal_d.multy_block_index
+		{
 			return cast(u16)i,
 		}
 	}
 
 	if cast(int)pal_count >= len(ad_chunk.pal){
+		assert(ad_chunk.palette_size != .u16,"voxel palette is full")
 		promote_palette_chunk(chunk,preserve_data)
 		ad_chunk=&chunk.backing_chunk_data_abstract
+		pal_count=ad_chunk.pal_count^
 	}
 
+	pal_d.count=0
 	ad_chunk.pal[pal_count]=pal_d
 	ad_chunk.pal_count^+=1
 
@@ -826,4 +860,25 @@ get_prev_palett_size::proc(size:Palette_Sizes)->(prev_size:Palette_Sizes){
 	case .u16:return .u8
 	}
 	return
+}
+
+
+block_offset_to_u16::proc(offset:[3]f32)->(result:u16) {
+	for axis in 0..<3 {
+		magnitude:=cast(u16)(math.abs(offset[axis])*16.0+0.5)
+		magnitude=min(magnitude,15)
+		value:=magnitude
+		if offset[axis] < 0 {value|=0x10}
+		result|=value<<u16(axis*5)
+	}
+	return result
+}
+block_offset_from_u16::proc(packed:u16)->(result:[3]f32) {
+	for axis in 0..<3 {
+		value:=(packed>>u16(axis*5))&0x1F
+		magnitude:=value&0x0F
+		result[axis]=cast(f32)magnitude/16.0
+		if value&0x10 != 0 {result[axis]=-result[axis]}
+	}
+	return result
 }

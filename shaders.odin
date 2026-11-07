@@ -28,6 +28,8 @@ Shader :: struct{
 	handle: Shader_Handle,
 	shader:^sdl.GPUShader,
 	shader_info:Shader_Info,
+	data:[]u8,
+	format:sdl.GPUShaderFormatFlag,
 }
 
 Shader_Info :: struct {
@@ -35,7 +37,7 @@ Shader_Info :: struct {
 	storage_textures: u32,
 	storage_buffers: u32,
 	uniform_buffers: u32,
-	inputs:[dynamic]struct{
+	inputs:[dynamic;100]struct{
 		name:string,
 		type:Vertex_Element_Format_json, //needs to be cast to sdl.GPUVertexElementFormat
 		// type_t:sdl.GPUVertexElementFormat,
@@ -60,29 +62,44 @@ get_shader::proc(shader_hd:Shader_Handle) -> (shader:^Shader){
 	return shader
 }
 
+SHADER_STAGE_TO_SDL_STAGE:[Shader_Stage]sdl.GPUShaderStage:{
+	.vert = .VERTEX,
+	.frag = .FRAGMENT,
+	.comp = .VERTEX,
+}
+Shader_Stage::enum{
+	vert,
+	frag,
+	comp,
+}
+
 load_shader::proc(
 	data:[]u8,
 	info:Shader_Info,
-	stage:sdl.GPUShaderStage,
+	stage:Shader_Stage,
 	format:sdl.GPUShaderFormatFlag = .SPIRV,
 	entrypoint:string = "main",
 )->(shader_hd:Shader_Handle){
-
+	SHADER_STAGE_TO_SDL_STAGE:=SHADER_STAGE_TO_SDL_STAGE
 	entrypoint:=frame_cstring(entrypoint)
+
 	shader_sdl:=sdl.CreateGPUShader(s.gpu_device,{
 		code_size = len(data),
 		code = raw_data(data),
 		entrypoint = entrypoint,
 		format = {format},
-		stage = stage,
+		stage = SHADER_STAGE_TO_SDL_STAGE[stage],
 		num_uniform_buffers = info.uniform_buffers,
 		num_samplers = info.samplers,
 		num_storage_buffers = info.storage_buffers,
 		num_storage_textures = info.storage_textures,
 	})
+	
 	shader_data:Shader={
 		shader_info = info,
 		shader=shader_sdl,
+		data = data,
+		format = format,
 	}
 	shader_hd = hm.add(&s.shaders,shader_data)
 	return
@@ -101,14 +118,16 @@ load_shader_file::proc(
 
 	format:sdl.GPUShaderFormatFlag
 	format_ext:string
-	stage:sdl.GPUShaderStage
+	stage:Shader_Stage
 	entrypoint:string = "main"
 	
 	switch filepath.ext(file_path){
 	case ".vert":
-		stage = .VERTEX
+		stage = .vert
 	case ".frag":
-		stage = .FRAGMENT
+		stage = .frag
+	case ".comp":
+		stage = .comp
 	}
 	
 	suported_formats:= sdl.GetGPUShaderFormats(s.gpu_device)
@@ -137,7 +156,7 @@ load_shader_file::proc(
 		data,ok=os.read_entire_file_from_path(true_file_path,s.frame_allocator)
 		if ok != nil{ log.error("cant find ",file_path, " or ", true_file_path) }
 	}
-	
+
 	shader_hd=load_shader(data = data, stage = stage, info = info, format = format, entrypoint=entrypoint)
 	return shader_hd
 }

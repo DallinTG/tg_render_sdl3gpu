@@ -14,6 +14,7 @@ Image :: struct {
 
 
 Src :: enum {
+	 Vox_comp ,
 	 Ui_Shader_vert ,
 	 Vox_frag ,
 	 Sand_Sim_Shader_frag ,
@@ -21,6 +22,7 @@ Src :: enum {
 	 Ui_Shader_frag ,
 	 Vox_vert ,
 	 Sand_Sim_Shader_vert ,
+	 Dynamic_Vox_vert ,
 	 Shader_frag ,
 }
 

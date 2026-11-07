@@ -53,6 +53,7 @@ Mesh_GPU::struct{
 	index_buf:^sdl.GPUBuffer,
 	transfer_buf:^sdl.GPUTransferBuffer,
 	index_count:u32,
+	vertex_count:u32,
 	attribute_type:typeid,
 }
 Mesh::struct{
@@ -77,7 +78,15 @@ CUBE_INDEXES:[]u32:{
 	0+4*5, 1+4*5, 2+4*5, 0+4*5, 2+4*5, 3+4*5,
 }
 
-create_mesh::proc(attribute_type:typeid, max_num_verts:int = 50000, max_num_indices:int = 50000*2, type:Buffer_Types = .dynamic_buff, debug_name:string = "not_named") ->(mesh_hd:Mesh_Handle){
+create_mesh::proc(
+	attribute_type:typeid, 
+	max_num_verts:int = 50000, 
+	max_num_indices:int = 50000*2, 
+	type:Buffer_Types =  .dynamic_buff,
+	usage:sdl.GPUBufferUsageFlags={.GRAPHICS_STORAGE_READ}, 
+	debug_name:string = "not_named"
+) ->(mesh_hd:Mesh_Handle){
+
 	cpu_mesh:Mesh_CPU
 	cpu_mesh.attribute_type = attribute_type
 	mesh_attribute_info:=type_info_of(cpu_mesh.attribute_type)
@@ -95,24 +104,31 @@ create_mesh::proc(attribute_type:typeid, max_num_verts:int = 50000, max_num_indi
 		mesh.cpu.attribute_size = mesh_attribute_info.size
 		mesh.cpu.name = debug_name
 	}
+
+
 	if vertices_byte_size> 0{
-		switch type{
-		case .dynamic_buff,.static_buff,.no_tranfer_buff:
-			mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
-				usage={.GRAPHICS_STORAGE_READ},
-				size = cast(u32)vertices_byte_size,
-			})
-		case .indirect_cmd_buff:
-			mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
-				usage={.INDIRECT},
-				size = cast(u32)vertices_byte_size,
-			})
-		}
+	mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
+		usage=usage,
+		size = cast(u32)vertices_byte_size,
+	})
+
+		// switch type{
+		// case .dynamic_buff,.static_buff,.no_tranfer_buff:
+		// 	mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
+		// 		usage={.GRAPHICS_STORAGE_READ},
+		// 		size = cast(u32)vertices_byte_size,
+		// 	})
+		// case .indirect_cmd_buff:
+		// 	mesh.gpu.vertex_buf = sdl.CreateGPUBuffer(s.gpu_device,{
+		// 		usage={.INDIRECT,.COMPUTE_STORAGE_READ,.COMPUTE_STORAGE_WRITE},
+		// 		size = cast(u32)vertices_byte_size,
+		// 	})
+		// }
 	}
 
 	if indices_byte_size> 0{
 		mesh.gpu.index_buf = sdl.CreateGPUBuffer(s.gpu_device,{
-			usage={.GRAPHICS_STORAGE_READ},
+			usage=usage,
 			size = cast(u32)indices_byte_size,
 		})
 	}
@@ -141,7 +157,7 @@ update_mesh::proc(mesh_hd:Mesh_Handle){
 	mesh:=get_mesh(mesh_hd)
 	vertices_byte_size := len(mesh.cpu.vertex_buf.buffer.buf)
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
-	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, false)//TODO may be ablle to remove the mem copyes by seting the transfer buff as cpu data
+	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf, true)//TODO may be ablle to remove the mem copyes by seting the transfer buff as cpu data
 	// mem.copy(transfer_mem, raw_data(mesh.cpu.vertex_buf.buffer.buf), cast(int)vertices_byte_size)
 	copy(transfer_mem[:vertices_byte_size],mesh.cpu.vertex_buf.buffer.buf[:])
 	mem.copy(transfer_mem[vertices_byte_size:], raw_data(mesh.cpu.index_buf), indices_byte_size)
@@ -162,7 +178,7 @@ update_mesh::proc(mesh_hd:Mesh_Handle){
 				buffer = mesh.gpu.vertex_buf, 
 				size = cast(u32)vertices_byte_size,
 			},
-			cycle = false,
+			cycle = true,
 		)
 	}
 
@@ -177,15 +193,13 @@ update_mesh::proc(mesh_hd:Mesh_Handle){
 				buffer = mesh.gpu.index_buf,
 				size = cast(u32)indices_byte_size,
 			},
-			cycle = false,
+			cycle = true,
 		)
 	}
-
+	mesh.gpu.vertex_count = cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
 	mesh.gpu.index_count = mesh.cpu.index_buf_used
 	sdl.EndGPUCopyPass(copy_pass)
 	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
-
-	
 	// sdl.ReleaseGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 }
 get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){

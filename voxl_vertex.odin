@@ -22,11 +22,20 @@ import sdl3i"vendor:sdl3/image"
 import "core:sort"
 import "core:slice"
 
+Dynamic_Vert_Face::struct{
+	pos:[4]f32,
+	light: [4]u32,
+	col:[4]f32,
+	block_pos:u16,
+	geometry_face_index:u16,
+	texture_face_index:u32,
+}
 
 Vert_Face::struct{
 	block_pos:u16,
 	geometry_face_index:u16,
-	texture_face_index:u32,
+	texture_face_index:u16,
+	block_offset:u16,
 	light: [4]u32,
 }
 Vert_Face_Texure::struct{
@@ -49,13 +58,7 @@ Vert_Face_Texure::struct{
 	mask_tint_l:[4]f32,
 	mask_tint_d:[4]f32,
 }
-Vert_Face_Geometry::struct{
-	uv:[4][2]f32,
-	pos:[4][4]f32,
-	normal: [4]f32,
-	starting_shade:f32,
-	_pading:[3]f32,
-}
+
 
 
 Indexed_GPU_Data::struct{
@@ -66,7 +69,7 @@ Indexed_GPU_Data::struct{
 }
 
 init_indexed_gpu_data::proc(vert_type:typeid,debug_name:="Face_Texure_Mesh",bind_to_vert:bool = true,bind_to_frag:bool = true)->(indexed_gpu_data:Indexed_GPU_Data){
-	indexed_gpu_data.mesh_hd = create_mesh(vert_type,debug_name = debug_name)
+	indexed_gpu_data.mesh_hd = create_mesh(vert_type,debug_name = debug_name,usage = {.GRAPHICS_STORAGE_READ})
 	indexed_gpu_data.bind_to_vert = bind_to_vert
 	indexed_gpu_data.bind_to_frag = bind_to_frag
 	return

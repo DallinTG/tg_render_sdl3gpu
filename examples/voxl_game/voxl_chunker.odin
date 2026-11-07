@@ -38,6 +38,9 @@ Vox_Render_Settings::struct{
 	y_render_distance:int,
 	lod_levels:int,
 	lod_depth:int,
+	test:string,
+	waf:[8]int,
+	waf_6:[4]string,
 }
 DF_VOX_RENDER_SETTINGS:Vox_Render_Settings:{
 	do_chunk_back_face_culling = true,
@@ -105,8 +108,8 @@ Map::struct{
 	did_work:bool,
 	renderer_saw_work:bool,
 
-	stream_chunk_pos: [3]int,
-	stream_chunk_pos_valid: bool,
+	// stream_chunk_pos: [3]int,
+	// stream_chunk_pos_valid: bool,
 	chunks_map_rw_mutex: atom.Atomic_RW_Mutex,
 	chunks_map:map[[4]int]Chunk_HD,
 	chunks:Chunks_Handle_Map,
@@ -120,7 +123,11 @@ Map::struct{
 	gpu_mesh_data_hm:GPU_Mesh_Data_HM,
 
 	draw_cmd_buf_hd:tg.Mesh_Handle,
+	draw_cmd_buf_comped_hd:tg.Mesh_Handle,
 	map_mesh_hd:tg.Mesh_Handle,
+	dynamic_map_mesh_hd:tg.Mesh_Handle,
+	drawing_map_mesh_hd:tg.Mesh_Handle,
+
 	light_qs_hm:Light_Q_HM,
 	chunk_shader_data:tg.Indexed_GPU_Data,
 	
@@ -162,11 +169,12 @@ Chunk::struct{
 	mesh_q_state:[Model_Sides]Q_State,
 	gpu_mesh_data_hd:GPU_Mesh_Data_HD,
 
-	chunk_shader_data:Chunk_Shader_Data,
+	// chunk_shader_data:Chunk_Shader_Data,
 }
 
 Chunk_Shader_Data::struct{
 	pos:[4]i32,
+	side:Model_Sides,
 }
 
 Chunks_Mesh_Data_Handle_Map::hm.Dynamic_Handle_Map(Chunk_Mesh_Data,Chunk_Mesh_Data_HD)
@@ -184,7 +192,7 @@ GPU_Mesh_Data_HM::hm.Dynamic_Handle_Map(GPU_Mesh_Data,GPU_Mesh_Data_HD)
 GPU_Mesh_Data_HD::distinct hm.Handle64
 GPU_Mesh_Data::struct{
 	handle:GPU_Mesh_Data_HD,
-	chunk_shader_data:Chunk_Shader_Data,
+	chunk_shader_data:	[Model_Sides]Chunk_Shader_Data,
 	draw_cmd:			[Model_Sides]sdl.GPUIndirectDrawCommand,
 	range_in_map_mesh:	[Model_Sides]tg.Free_List_Range,
 	face_count:int
@@ -272,7 +280,7 @@ start_light_chunk_task::proc(w_map:^Map, task:Light_Chunk_Task){
 		pos.xyz+=offset
 
 		atom.atomic_rw_mutex_shared_lock(&w_map.chunks_map_rw_mutex)
-		nab_chunk_hd ,nab_chunk_hd_ok := w_map.chunks_map[pos]
+		nab_chunk_hd ,nab_chunk_hd_ok := get_chunk_by_pos_safe(w_map,pos)
 		atom.atomic_rw_mutex_shared_unlock(&w_map.chunks_map_rw_mutex)
 		if !nab_chunk_hd_ok {continue}
 		new_task.nabors_chunk_hd[dir] = nab_chunk_hd
@@ -458,7 +466,7 @@ get_chunk::proc(w_map:^Map,chunk_hd:Chunk_HD)->(chunk:^Chunk,ok:bool){
 	return chunk, ok
 }
 
-Model_Sides::enum{
+Model_Sides::enum u32{
 	pos_x,
 	neg_x,
 	pos_y,
@@ -507,28 +515,28 @@ init_map::proc(w_map:^Map){
 
 
 	tg.free_list_init(&w_map.chunks_in_mesh,MAX_NUM_CHUNKS)
-	w_map.draw_cmd_buf_hd = tg.create_mesh(sdl.GPUIndirectDrawCommand,MAX_NUM_CHUNKS,{},type = .indirect_cmd_buff, debug_name = "w_map GPUIndirectDrawCommand buffer")
-	w_map.chunk_shader_data.mesh_hd = tg.create_mesh(Chunk_Shader_Data,MAX_NUM_CHUNKS,{},type = .dynamic_buff, debug_name = "Chunk shader data buffer")
+	w_map.draw_cmd_buf_hd = tg.create_mesh(sdl.GPUIndirectDrawCommand,MAX_NUM_CHUNKS,{},type = .indirect_cmd_buff, usage = {.INDIRECT,.COMPUTE_STORAGE_READ}, debug_name = "w_map GPUIndirectDrawCommand buffer")
+	w_map.draw_cmd_buf_comped_hd = tg.create_mesh(sdl.GPUIndirectDrawCommand,MAX_NUM_CHUNKS,{},type = .indirect_cmd_buff, usage = {.INDIRECT,.COMPUTE_STORAGE_WRITE,}, debug_name = "w_map GPUIndirectDrawCommand comped buffer")
+
+	w_map.chunk_shader_data.mesh_hd = tg.create_mesh(Chunk_Shader_Data,MAX_NUM_CHUNKS,{},type = .dynamic_buff, usage = {.GRAPHICS_STORAGE_READ,.COMPUTE_STORAGE_READ}, debug_name = "Chunk shader data buffer")
 	w_map.chunk_shader_data.bind_to_vert = true
 	w_map.chunk_shader_data.bind_to_frag = false
-	w_map.map_mesh_hd = tg.create_mesh(tg.Vert_Face,MAX_FACE_COUNT,{},type = .no_tranfer_buff, debug_name = "w_map Chunk buffer mesh")
+	w_map.map_mesh_hd = tg.create_mesh(tg.Vert_Face, MAX_FACE_COUNT,{},type = .no_tranfer_buff, usage = {.GRAPHICS_STORAGE_READ}, debug_name = "w_map Chunk buffer mesh")
+	w_map.dynamic_map_mesh_hd = tg.create_mesh(tg.Dynamic_Vert_Face, type = .dynamic_buff, debug_name = "dynamic w_map Chunk buffer mesh")
+	w_map.drawing_map_mesh_hd = tg.create_mesh(tg.Vertex_Data, type = .dynamic_buff, debug_name = "dynamic w_map Chunk buffer mesh")
 	w_map.chunck_transfer_buffer = sdl.CreateGPUTransferBuffer(s.gpu_device,{
 		usage = .UPLOAD,
 		size = cast(u32)(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * size_of(tg.Vert_Face)),
 	})
 }
 
-MAX_CHUNKS_TO_Q_AT_ONE_TIME :: 500
+MAX_CHUNKS_TO_Q_AT_ONE_TIME :: 50
 
 
 removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,)->(did_work:bool){
 
 	chunk_pos:=pos_to_chunck_pos(pos)
-	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
 
-	}else{
-		return
-	}
 
 	xz_rad:=g.settings.xz_render_distance+3
 	y_rad:=g.settings.y_render_distance+3
@@ -595,8 +603,8 @@ nearest_valid_chunk_pos :: proc(v, lod_lev:int) -> int {
 
 
 adding_chunks_around_pos :: proc(w_map:^Map, pos:[3]f32) -> (did_work:bool) {
-	if g.debug_info.chunks_mesh_data_len > 500 {return}
-	if g.debug_info.light_qs_hm_len > 500{return}
+	if g.debug_info.chunks_mesh_data_len > 0 {return}
+	if g.debug_info.light_qs_hm_len > 0{return}
 
 	chunk_pos := pos_to_chunck_pos(pos)
 	// log.log(.Info, "new Chunk loop")
@@ -722,46 +730,47 @@ adding_chunks_around_pos :: proc(w_map:^Map, pos:[3]f32) -> (did_work:bool) {
 	return
 }
 
-update_w_map_draw_cmds_buff::proc(w_map:^Map,cam:^tg.Camera){
+update_w_map_draw_cmds_buff::proc(w_map:^Map){
 	mesh:=tg.get_mesh(w_map.draw_cmd_buf_hd)
+	mesh_2:=tg.get_mesh(w_map.draw_cmd_buf_comped_hd)
 	chunck_shader_data:=tg.get_mesh(w_map.chunk_shader_data.mesh_hd)
 	w_map.chunk_shader_data.count = 0
 	tmep_full_count:int
 	tg.clear_mesh_cpu(&mesh.cpu)
 	tg.clear_mesh_cpu(&chunck_shader_data.cpu)
 
-	view_mat, proj_mat:=tg.make_view_mat_proj_mat(cam)
-	frustum:=make_frustum(view_mat, proj_mat)
+	// view_mat, proj_mat:=tg.make_view_mat_proj_mat(cam)
+	// frustum:=make_frustum(view_mat, proj_mat)
 
 
 
 	itor:=hm.iterator_make(&w_map.gpu_mesh_data_hm)
 	loop:for gpu_mesh, gpu_mesh_hd in hm.iterate(&itor) {
-		cam_chunk_pos:=pos_to_chunck_pos(cam.pos)
-		if should_cull_chunk(&frustum,gpu_mesh.chunk_shader_data.pos){
-			continue
-		}
+		// cam_chunk_pos:=pos_to_chunck_pos(cam.pos)
+		// if should_cull_chunk(&frustum,gpu_mesh.chunk_shader_data.pos){
+		// 	continue
+		// }
 		for draw_cmd, side in gpu_mesh.draw_cmd{
 
 			tmep_full_count+=1
-			if draw_cmd.num_vertices == 0{
-				continue
-			}
-			if should_cull_chunk_side(side,gpu_mesh.chunk_shader_data.pos, cast([3]i32)cam_chunk_pos){
-				continue
-			}
+			// if draw_cmd.num_vertices == 0{
+			// 	continue
+			// }
+			// if should_cull_chunk_side(side,gpu_mesh.chunk_shader_data.pos, cast([3]i32)cam_chunk_pos){
+			// 	continue
+			// }
 			draw_cmd_:[1]sdl.GPUIndirectDrawCommand=draw_cmd
 			tg.append_to_mesh(&mesh.cpu,{},draw_cmd_[:])
-			chunck_shader_data_:[1]Chunk_Shader_Data=gpu_mesh.chunk_shader_data
+			chunck_shader_data_:[1]Chunk_Shader_Data=gpu_mesh.chunk_shader_data[side]
 			tg.append_to_mesh(&chunck_shader_data.cpu,{},chunck_shader_data_[:])
-			// log.log(.Debug,"draw_cmd",draw_cmd,)
 			w_map.chunk_shader_data.count+=1
-			// log.log(.Debug,gpu_mesh.chunk_shader_data)
-
 		}
 	}
+
 	tg.update_mesh(w_map.draw_cmd_buf_hd)
 	tg.update_mesh(w_map.chunk_shader_data.mesh_hd)
+	mesh.gpu.index_count = cast(u32)w_map.chunk_shader_data.count
+	mesh_2.gpu.index_count =  cast(u32)w_map.chunk_shader_data.count
 }
 
 should_cull_chunk_side :: proc(
@@ -915,7 +924,7 @@ should_cull_chunk :: proc(frustum: ^Frustum, chunk_pos: [4]i32) -> bool {
 }
 
 render_map::proc(w_map:^Map){
-	tg.do_render_pass(&g.vox_pass, &g.cam, {w_map.map_mesh_hd},{&g.texture_facees,&g.geometry_facees, &w_map.chunk_shader_data}, {w_map.draw_cmd_buf_hd},type = .face)
+	tg.do_render_pass(&g.vox_pass, &g.cam, {w_map.map_mesh_hd},{&g.texture_facees,&g.geometry_facees, &w_map.chunk_shader_data}, {w_map.draw_cmd_buf_comped_hd},type = .face)
 }
 
 
@@ -950,7 +959,11 @@ manage_all_w_map_q::proc(w_map:^Map)->(did_work:bool){
 	did_work = manage_gen_mesh_data_q(w_map)
 
 
-	did_work = manage_upload_mesh_data_q(w_map)
+	did_work_mesh:= manage_upload_mesh_data_q(w_map)
+	if did_work_mesh{
+		did_work = true
+		update_w_map_draw_cmds_buff(&g.w_map)
+	}
 
 	did_work = manage_destroy_chunk_q(w_map)
 	did_work = manage_destroy_vox_data_q(w_map)
@@ -968,12 +981,6 @@ manage_all_w_map_q::proc(w_map:^Map)->(did_work:bool){
 
 
     get_w_map_debug_info(w_map)
-	if !w_map.stream_chunk_pos_valid ||  chunk_pos != w_map.stream_chunk_pos{
-		w_map.stream_chunk_pos = chunk_pos
-		w_map.stream_chunk_pos_valid = true
-	}else{
-		return
-	}
 
 	return
 
@@ -1156,12 +1163,12 @@ gen_chunk_vox_data::proc(w_map:^Map,q:Gen_Vox_Data_Q_Data,index:int){
 	assert(light_q_ok)
 
 	vox_chunk.pos = q.pos
-	chunk.chunk_shader_data.pos = {
-		cast(i32)q.pos.x,
-		cast(i32)q.pos.y,
-		cast(i32)q.pos.z,
-		cast(i32)q.pos.w,
-	}
+	// chunk.chunk_shader_data.pos = {
+	// 	cast(i32)q.pos.x,
+	// 	cast(i32)q.pos.y,
+	// 	cast(i32)q.pos.z,
+	// 	cast(i32)q.pos.w,
+	// }
 
 	start_gen_vox_dat_task(w_map,Gen_Vox_Data_Task{w_map = w_map,vox_data_hd=vox_chunk_hd,chunk_hd = q.data_hd,light_q_hd = light_q_hd })
 }
@@ -1169,11 +1176,124 @@ gen_chunk_vox_data::proc(w_map:^Map,q:Gen_Vox_Data_Q_Data,index:int){
 
 
 
+// gen_vox_data :: proc(
+// 	t:Gen_Vox_Data_Task,
+// 	// w_map:^Map,
+// 	// vox_chunk_hd:Vox_Chunk_Data_HD,
+// 	// chunk:^Chunk,
+// ){
+// 	chunk,chunk_ok:=hm.get(&t.w_map.chunks,t.chunk_hd)
+// 	assert(chunk_ok)
+// 	vox_chunk,vox_chunk_ok:=hm.get(&t.w_map.vox_chunk_hm,t.vox_data_hd)
+// 	assert(vox_chunk_ok)
+// 	light,light_ok:=hm.get(&t.w_map.light_chunk_hm,chunk.light_data_hd)
+// 	assert(light_ok)
+
+// 	pos:=vox_chunk.pos
+// 	vox_chunk.pos = pos
+// 	lod_lev := pos.w
+
+
+// 	xz_scl:f64 = 0.001
+// 	y_scl:f64 = 600.0
+
+// 	world_x_start := pos.x * CHUNK_SIZE
+// 	world_y_start := pos.y * CHUNK_SIZE
+// 	world_z_start := pos.z * CHUNK_SIZE
+
+	
+// 	grass_pal_index := get_or_add_palette_index_by_item_hd(vox_chunk, g.df_items[.grass])
+// 	stone_pal_index := get_or_add_palette_index_by_item_hd(vox_chunk, g.df_items[.stone_slate])
+
+// 	chunk_has_changed:bool
+
+// 	sun_masks:[CHUNK_SIZE * CHUNK_SIZE]u32
+// 	sun_count:=0
+
+// 	for x := 0; x < CHUNK_SIZE; x += 1 {
+// 		world_x := world_x_start + x * lod_lev + lod_lev / 2
+
+// 		for z := 0; z < CHUNK_SIZE; z += 1 {
+// 			world_z := world_z_start + z * lod_lev + lod_lev / 2
+
+// 			height := nos.noise_2d(
+// 				6223378936854776807,
+// 				{
+// 					cast(f64)world_x * xz_scl,
+// 					cast(f64)world_z * xz_scl,
+// 				},
+// 			)
+
+// 			height_x := nos.noise_2d(
+// 				6223378936854776807,
+// 				{
+// 					cast(f64)(world_x + lod_lev) * xz_scl,
+// 					cast(f64)world_z * xz_scl,
+// 				},
+// 			)
+
+// 			height_z := nos.noise_2d(
+// 				6223378936854776807,
+// 				{
+// 					cast(f64)world_x * xz_scl,
+// 					cast(f64)(world_z + lod_lev) * xz_scl,
+// 				},
+// 			)
+
+// 			change_x := math.abs(height_x - height)
+// 			change_z := math.abs(height_z - height)
+
+// 			height_change := max(change_x/cast(f32)lod_lev, change_z/cast(f32)lod_lev)
+// 			is_steep := height_change > 0.003
+
+// 			height = (height + 1.0) * 0.5
+// 			height = math.pow(height, 2.5)
+
+// 			world_height := cast(int)(height * cast(f32)y_scl)
+// 			solid_height := (world_height - world_y_start) / lod_lev
+
+// 			mask_index := x + z*CHUNK_SIZE
+			
+// 			if solid_height <= 0 {
+// 				sun_masks[mask_index] = 0xFFFF_FFFF
+// 				sun_count += CHUNK_SIZE
+// 				continue
+// 			}
+			
+// 			if solid_height > CHUNK_SIZE {
+// 				solid_height = CHUNK_SIZE
+// 			}
+			
+// 			if solid_height < CHUNK_SIZE {
+// 				sun_masks[mask_index] = 0xFFFF_FFFF << u32(solid_height)
+// 				sun_count += CHUNK_SIZE-solid_height
+// 			}
+
+// 			if is_steep {
+// 				set_blocks_in_chunk_by_col_pal_index(
+// 					vox_chunk,
+// 					stone_pal_index,
+// 					{cast(u8)x, cast(u8)z},
+// 					cast(u8)solid_height,
+// 				)
+// 			} else {
+// 				set_blocks_in_chunk_by_col_pal_index(
+// 					vox_chunk,
+// 					grass_pal_index,
+// 					{cast(u8)x, cast(u8)z},
+// 					cast(u8)solid_height,
+// 				)
+// 			}
+// 		}
+// 	}
+
+// 	init_worldgen_sun_light(light,sun_masks[:],sun_count)
+
+	
+// }
+
 gen_vox_data :: proc(
 	t:Gen_Vox_Data_Task,
-	// w_map:^Map,
-	// vox_chunk_hd:Vox_Chunk_Data_HD,
-	// chunk:^Chunk,
 ){
 	chunk,chunk_ok:=hm.get(&t.w_map.chunks,t.chunk_hd)
 	assert(chunk_ok)
@@ -1183,9 +1303,8 @@ gen_vox_data :: proc(
 	assert(light_ok)
 
 	pos:=vox_chunk.pos
-	vox_chunk.pos = pos
 	lod_lev := pos.w
-
+	assert(lod_lev > 0)
 
 	xz_scl:f64 = 0.001
 	y_scl:f64 = 600.0
@@ -1194,41 +1313,47 @@ gen_vox_data :: proc(
 	world_y_start := pos.y * CHUNK_SIZE
 	world_z_start := pos.z * CHUNK_SIZE
 
-	
-	grass_pal_index := get_or_add_palette_index_by_item_hd(vox_chunk, g.df_items[.grass])
-	stone_pal_index := get_or_add_palette_index_by_item_hd(vox_chunk, g.df_items[.stone_slate])
+	// Cache the noise samples shared between neighboring columns.
+	// The extra row and column provide the height_x and height_z samples.
+	height_samples:[CHUNK_SIZE+1][CHUNK_SIZE+1]f32
 
-	chunk_has_changed:bool
+	for z := 0; z <= CHUNK_SIZE; z += 1 {
+		world_z := world_z_start + z * lod_lev + lod_lev / 2
 
-	for x := 0; x < CHUNK_SIZE; x += 1 {
-		world_x := world_x_start + x * lod_lev + lod_lev / 2
+		for x := 0; x <= CHUNK_SIZE; x += 1 {
+			world_x := world_x_start + x * lod_lev + lod_lev / 2
 
-		for z := 0; z < CHUNK_SIZE; z += 1 {
-			world_z := world_z_start + z * lod_lev + lod_lev / 2
-
-			height := nos.noise_2d(
+			height_samples[z][x] = nos.noise_2d(
 				6223378936854776807,
 				{
 					cast(f64)world_x * xz_scl,
 					cast(f64)world_z * xz_scl,
 				},
 			)
+		}
+	}
 
-			height_x := nos.noise_2d(
-				6223378936854776807,
-				{
-					cast(f64)(world_x + lod_lev) * xz_scl,
-					cast(f64)world_z * xz_scl,
-				},
-			)
+	sun_masks:[CHUNK_SIZE * CHUNK_SIZE]u32
+	sun_count:=0
 
-			height_z := nos.noise_2d(
-				6223378936854776807,
-				{
-					cast(f64)world_x * xz_scl,
-					cast(f64)(world_z + lod_lev) * xz_scl,
-				},
-			)
+	grass_pal_index:u16
+	stone_pal_index:u16
+	has_grass_pal:=false
+	has_stone_pal:=false
+
+	grass_count:=0
+	stone_count:=0
+	solid_count:=0
+
+	air_pal_index:u16
+	has_air_pal:=false
+
+	// X is now the inner loop so column writes are contiguous in memory.
+	for z := 0; z < CHUNK_SIZE; z += 1 {
+		for x := 0; x < CHUNK_SIZE; x += 1 {
+			height := height_samples[z][x]
+			height_x := height_samples[z][x+1]
+			height_z := height_samples[z+1][x]
 
 			change_x := math.abs(height_x - height)
 			change_z := math.abs(height_z - height)
@@ -1242,49 +1367,76 @@ gen_vox_data :: proc(
 			world_height := cast(int)(height * cast(f32)y_scl)
 			solid_height := (world_height - world_y_start) / lod_lev
 
+			mask_index := x + z*CHUNK_SIZE
+			sun_masks[mask_index] = 0
+
+			// if solid_height <= 0 {
+			// 	sun_masks[mask_index] = 0xFFFF_FFFF
+			// 	sun_count += CHUNK_SIZE
+			// 	continue
+			// }
+
 			if solid_height <= 0 {
+				sun_masks[mask_index] = 0xFFFF_FFFF
+				sun_count += CHUNK_SIZE
+			
+				if !has_air_pal {
+					air_pal_index = get_or_add_palette_index(vox_chunk,Block_Palette_Data{item=g.df_items[.air],state={},})
+					has_air_pal = true
+				}
 				continue
 			}
+		
 
 			if solid_height > CHUNK_SIZE {
 				solid_height = CHUNK_SIZE
 			}
 
-			chunk_has_changed = true
+			if solid_height < CHUNK_SIZE {
+				sun_masks[mask_index] = 0xFFFF_FFFF << u32(solid_height)
+				sun_count += CHUNK_SIZE-solid_height
+			}
 
 			if is_steep {
-				set_blocks_in_chunk_by_col_pal_index(
-					vox_chunk,
-					stone_pal_index,
-					{cast(u8)x, cast(u8)z},
-					cast(u8)solid_height,
-				)
+				if !has_stone_pal {
+					stone_pal_index = get_or_add_palette_index(vox_chunk,Block_Palette_Data{item=g.df_items[.stone_slate],state={},})
+					has_stone_pal = true
+				}
+
+				set_blocks_in_chunk_by_col_pal_index(vox_chunk,stone_pal_index,{cast(u8)x,cast(u8)z},cast(u8)solid_height)
+				stone_count += solid_height
 			} else {
-				set_blocks_in_chunk_by_col_pal_index(
-					vox_chunk,
-					grass_pal_index,
-					{cast(u8)x, cast(u8)z},
-					cast(u8)solid_height,
-				)
+				if !has_grass_pal {
+					grass_pal_index = get_or_add_palette_index(vox_chunk,Block_Palette_Data{item=g.df_items[.grass],state={},})
+					has_grass_pal = true
+				}
+
+				set_blocks_in_chunk_by_col_pal_index(vox_chunk,grass_pal_index,{cast(u8)x,cast(u8)z},cast(u8)solid_height)
+				grass_count += solid_height
 			}
+
+			solid_count += solid_height
 		}
 	}
-	if chunk_has_changed {
-		q, q_ok := hm.get(&t.w_map.light_qs_hm, t.light_q_hd)
-		assert(q_ok)
-		for x in 0..<CHUNK_SIZE{
-			for z in 0..<CHUNK_SIZE{
-				append(&q.add_q,Light_Q_CMD{light = {31,31,31},pos = {cast(u8)x,31,cast(u8)z}, type = .sun})
-			}
+
+	// The chunk starts uniformly as palette index 0 (air).
+	// The column setter writes packed indices directly, so update counts once here.
+	if solid_count > 0 {
+		ab := &vox_chunk.backing_chunk_data_abstract
+		vox_count := CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE
+
+		ab.pal[0].count = cast(u16)(vox_count-solid_count)
+
+		if has_grass_pal {
+			ab.pal[grass_pal_index].count = cast(u16)grass_count
 		}
-	}else{
-		if pos.y >0{
-			light.backing_light_data_abstract.pal[0] = Light_Palette_Data{light_lev = Light_Lev{block={},sun={31,31,31}},count = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE}
-		}else{
-			light.backing_light_data_abstract.pal[0] = Light_Palette_Data{light_lev = Light_Lev{block={},sun={0,0,0}},count = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE}
+
+		if has_stone_pal {
+			ab.pal[stone_pal_index].count = cast(u16)stone_count
 		}
 	}
-	
+
+	init_worldgen_sun_light(light,sun_masks[:],sun_count)
 }
 
 Check_Needs_Meshing_Q_Data::struct{
@@ -1314,235 +1466,123 @@ check_needs_meshing_q::proc(w_map:^Map,q:Check_Needs_Meshing_Q_Data){
 }
 
 
-check_if_chunk_needs_meshing::proc(w_map:^Map,pos:[4]int){
-	chunk_hd,ok:= get_chunk_by_pos_safe(w_map,pos)
+check_if_chunk_needs_meshing :: proc(w_map:^Map,pos:[4]int) {
+	chunk_hd,ok := get_chunk_by_pos_safe(w_map,pos)
 	assert(ok)
-	chunk_data,chunk_data_ok:=hm.dynamic_get(&w_map.chunks,chunk_hd)
+
+	chunk_data,chunk_data_ok := hm.dynamic_get(&w_map.chunks,chunk_hd)
 	assert(chunk_data_ok)
-	vox_hd:=chunk_data.vox_data_hd
-	vox_data,vox_data_ok:=hm.dynamic_get(&w_map.vox_chunk_hm,vox_hd)
+
+	vox_hd := chunk_data.vox_data_hd
+	vox_data,vox_data_ok := hm.dynamic_get(&w_map.vox_chunk_hm,vox_hd)
 	assert(vox_data_ok)
-	if atom.atomic_load(&vox_data.vox_gened) == false {return}
-	next_side:for side in Model_Sides{
-		opposite_side:=side
-		key:=pos
-		lower_lod_key:[4][4]int={pos,pos,pos,pos,}
-		lod_size:= pos.w
-		switch side {
-		case .pos_x:
-			opposite_side = .neg_x
-			key += {lod_size,0,0,0}
-			lower_lod_key = key
-		
-			if lod_size > 1 {
-				half := lod_size/2
-		
-				lower_lod_key[0][3] = half
-				lower_lod_key[1] = lower_lod_key[0] + {0,half,0,0}
-				lower_lod_key[1][3] = half
-				lower_lod_key[2] = lower_lod_key[1] + {0,0,half,0}
-				lower_lod_key[2][3] = half
-				lower_lod_key[3] = lower_lod_key[0] + {0,0,half,0}
-				lower_lod_key[3][3] = half
-			}
-		
-		case .neg_x:
-			opposite_side = .pos_x
-			key += {-lod_size,0,0,0}
-			lower_lod_key = key
-		
-			if lod_size > 1 {
-				half := lod_size/2
-		
-				lower_lod_key[0][3] = half
-				lower_lod_key[1] = lower_lod_key[0] + {0,half,0,0}
-				lower_lod_key[1][3] = half
-				lower_lod_key[2] = lower_lod_key[1] + {0,0,half,0}
-				lower_lod_key[2][3] = half
-				lower_lod_key[3] = lower_lod_key[0] + {0,0,half,0}
-				lower_lod_key[3][3] = half
-			}
-		
-		case .pos_y:
-			opposite_side = .neg_y
-			key += {0,lod_size,0,0}
-			lower_lod_key = key
-		
-			if lod_size > 1 {
-				half := lod_size/2
-		
-				lower_lod_key[0][3] = half
-				lower_lod_key[1] = lower_lod_key[0] + {half,0,0,0}
-				lower_lod_key[1][3] = half
-				lower_lod_key[2] = lower_lod_key[1] + {0,0,half,0}
-				lower_lod_key[2][3] = half
-				lower_lod_key[3] = lower_lod_key[0] + {0,0,half,0}
-				lower_lod_key[3][3] = half
-			}
-		
-		case .neg_y:
-			opposite_side = .pos_y
-			key += {0,-lod_size,0,0}
-			lower_lod_key = key
-		
-			if lod_size > 1 {
-				half := lod_size/2
-		
-				lower_lod_key[0][3] = half
-				lower_lod_key[1] = lower_lod_key[0] + {half,0,0,0}
-				lower_lod_key[1][3] = half
-				lower_lod_key[2] = lower_lod_key[1] + {0,0,half,0}
-				lower_lod_key[2][3] = half
-				lower_lod_key[3] = lower_lod_key[0] + {0,0,half,0}
-				lower_lod_key[3][3] = half
-			}
-		
-		case .pos_z:
-			opposite_side = .neg_z
-			key += {0,0,lod_size,0}
-			lower_lod_key = key
-		
-			if lod_size > 1 {
-				half := lod_size/2
-		
-				lower_lod_key[0][3] = half
-				lower_lod_key[1] = lower_lod_key[0] + {half,0,0,0}
-				lower_lod_key[1][3] = half
-				lower_lod_key[2] = lower_lod_key[1] + {0,half,0,0}
-				lower_lod_key[2][3] = half
-				lower_lod_key[3] = lower_lod_key[0] + {0,half,0,0}
-				lower_lod_key[3][3] = half
-			}
-		
-		case .neg_z:
-			opposite_side = .pos_z
-			key += {0,0,-lod_size,0}
-			lower_lod_key = key
-		
-			if lod_size > 1 {
-				half := lod_size/2
-		
-				lower_lod_key[0][3] = half
-				lower_lod_key[1] = lower_lod_key[0] + {half,0,0,0}
-				lower_lod_key[1][3] = half
-				lower_lod_key[2] = lower_lod_key[1] + {0,half,0,0}
-				lower_lod_key[2][3] = half
-				lower_lod_key[3] = lower_lod_key[0] + {0,half,0,0}
-				lower_lod_key[3][3] = half
-			}
-		
-		case .extra:
-			continue next_side
-		}
 
+	if !atom.atomic_load(&vox_data.vox_gened) {return}
 
-		has_4_neighbors:bool
+	lod_size := pos.w
+
+	next_side: for side in Model_Sides {
+		if side == .extra {continue next_side}
+
+		opposite_side := OPPOSITE_MODEL_SIDE_r[side]
+
+		offset := model_side_to_offset(side)
+		key := pos
+		key += {offset[0]*lod_size,offset[1]*lod_size,offset[2]*lod_size,0}
+
 		neighbor_chunk_hds:[4]Chunk_HD
 		neighbor_chunk_ok:bool
-		neighbor_chunk_hds[0], neighbor_chunk_ok = get_chunk_by_pos_safe(w_map,key)
-		if !neighbor_chunk_ok{
-			if lod_size > 1{
-				has_4_neighbors = true
-				nab_lod_0_ok:bool
-				nab_lod_1_ok:bool
-				nab_lod_2_ok:bool
-				nab_lod_3_ok:bool
-				neighbor_chunk_hds[0], nab_lod_0_ok = get_chunk_by_pos_safe(w_map,lower_lod_key[0])
-				neighbor_chunk_hds[1], nab_lod_1_ok = get_chunk_by_pos_safe(w_map,lower_lod_key[1])
-				neighbor_chunk_hds[2], nab_lod_2_ok = get_chunk_by_pos_safe(w_map,lower_lod_key[2])
-				neighbor_chunk_hds[3], nab_lod_3_ok = get_chunk_by_pos_safe(w_map,lower_lod_key[3])
-				if !nab_lod_0_ok  {continue next_side}
-				if !nab_lod_1_ok  {continue next_side}
-				if !nab_lod_2_ok  {continue next_side}
-				if !nab_lod_3_ok  {continue next_side}
-				
-			}else{
+		neighbor_chunk_hds[0],neighbor_chunk_ok = get_chunk_by_pos_safe(w_map,key)
+
+		has_4_neighbors := false
+		neighbor_count := 1
+
+		if !neighbor_chunk_ok {
+			if lod_size <= 1 {continue next_side}
+
+			half := lod_size/2
+
+			u_offset,v_offset:[4]int
+			switch side {
+			case .pos_x, .neg_x:
+				u_offset = {0,half,0,0}
+				v_offset = {0,0,half,0}
+			case .pos_y, .neg_y:
+				u_offset = {half,0,0,0}
+				v_offset = {0,0,half,0}
+			case .pos_z, .neg_z:
+				u_offset = {half,0,0,0}
+				v_offset = {0,half,0,0}
+			case .extra:
 				continue next_side
+			}
+
+			lower_lod_base := key
+			lower_lod_base.w = half
+
+			lower_lod_key:[4][4]int
+			lower_lod_key[0] = lower_lod_base
+			lower_lod_key[1] = lower_lod_base + u_offset
+			lower_lod_key[2] = lower_lod_base + u_offset + v_offset
+			lower_lod_key[3] = lower_lod_base + v_offset
+
+			has_4_neighbors = true
+			neighbor_count = 4
+
+			for i in 0..<4 {
+				lower_ok:bool
+				neighbor_chunk_hds[i],lower_ok = get_chunk_by_pos_safe(w_map,lower_lod_key[i])
+				if !lower_ok {continue next_side}
 			}
 		}
 
 		neighbor_chunks:[4]^Chunk
-		if !has_4_neighbors{
-			neighbor_chunk_ok:bool
-			neighbor_chunks[0],neighbor_chunk_ok=get_chunk(w_map,neighbor_chunk_hds[0])
+
+		for i in 0..<neighbor_count {
+			neighbor_chunk,neighbor_chunk_ok := get_chunk(w_map,neighbor_chunk_hds[i])
 			if !neighbor_chunk_ok {continue next_side}
-		}else{
-			for &neighbor_chunk,i in &neighbor_chunks{
-				neighbor_chunk_ok:bool
-				neighbor_chunk,neighbor_chunk_ok=get_chunk(w_map,neighbor_chunk_hds[i])
-				
-				if !neighbor_chunk_ok {continue next_side}
-				
-			}
+			neighbor_chunks[i] = neighbor_chunk
 		}
 
-		neighbor_vox_chunks:[4]^Vox_Chunk_Data
-		if  !has_4_neighbors{
-			neighbor_vox_data,neighbor_vox_data_ok:=get_vox_chunk_data(w_map,neighbor_chunks[0].vox_data_hd)
-			if  !neighbor_vox_data.vox_gened{
-				continue next_side
-			}
-			if !neighbor_vox_data_ok {
-				continue next_side
-			}
-		}else{
-			for &neighbor_chunk,i in &neighbor_chunks{
-				neighbor_vox_data_ok:bool
-				neighbor_vox_chunks[i],neighbor_vox_data_ok=get_vox_chunk_data(w_map,neighbor_chunk.vox_data_hd)
-				if !neighbor_vox_chunks[i].vox_gened  {continue next_side}
-				if !neighbor_vox_data_ok {continue next_side}
-				
-			}
+		for i in 0..<neighbor_count {
+			neighbor_vox_data,neighbor_vox_data_ok := get_vox_chunk_data(w_map,neighbor_chunks[i].vox_data_hd)
+			if !neighbor_vox_data_ok {continue next_side}
+			if !atom.atomic_load(&neighbor_vox_data.vox_gened) {continue next_side}
 		}
 
+		neighbor_vox_chunk_hd:[4]Vox_Chunk_Data_HD
 
-		// for offset,dir in FULL_DIR_OFFSETS_r{
-		// 	new_pos:=chunk_data.pos
-		// 	new_pos.xyz+=offset * lod_size
-			
-		// 	nab_chunk_hd,ok:=w_map.chunks_map[new_pos]
-		// 	if !ok {continue next_side}
-		// 	nab_chunk,nab_chunk_ok:=hm.get(&w_map.chunks,nab_chunk_hd)
-		// 	if !nab_chunk_ok{continue next_side}
-		// 	if nab_chunk.light_data_q_state == .usable||nab_chunk.light_data_q_state == .in_q{continue}
-		// 	continue next_side
+		if has_4_neighbors {
+			for i in 0..<4 {
+				neighbor_vox_chunk_hd[i] = neighbor_chunks[i].vox_data_hd
+			}
+		}else{
+			neighbor_vox_hd := neighbor_chunks[0].vox_data_hd
+			neighbor_vox_chunk_hd = {neighbor_vox_hd,neighbor_vox_hd,neighbor_vox_hd,neighbor_vox_hd}
+		}
 
-		// }
-		
+		add_to_gen_mesh_data_q(
+			w_map = w_map,
+			chunk_hd = chunk_hd,
+			vox_chunk_hd = vox_hd,
+			neighbor_vox_chunk_hd = neighbor_vox_chunk_hd,
+			has_4_neighbors = has_4_neighbors,
+			side = side,
+		)
+
 		if !has_4_neighbors {
-			add_to_gen_mesh_data_q(
-			    w_map = w_map,
-			    chunk_hd = chunk_hd,
-				// neighbor_chunk_hd =	neighbor_chunk_hd,
-			    vox_chunk_hd = chunk_data.vox_data_hd,
-			    neighbor_vox_chunk_hd = {neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd,neighbor_chunks[0].vox_data_hd},
-				has_4_neighbors = has_4_neighbors,
-			    side = side,
-			)
-
 			add_to_gen_mesh_data_q(
 				w_map = w_map,
 				chunk_hd = neighbor_chunk_hds[0],
-				// neighbor_chunk_hd = chunk_hd,
 				vox_chunk_hd = neighbor_chunks[0].vox_data_hd,
-				neighbor_vox_chunk_hd ={chunk_data.vox_data_hd,chunk_data.vox_data_hd,chunk_data.vox_data_hd,chunk_data.vox_data_hd,},
-				has_4_neighbors = has_4_neighbors,
+				neighbor_vox_chunk_hd = {vox_hd,vox_hd,vox_hd,vox_hd},
+				has_4_neighbors = false,
 				side = opposite_side,
-			)
-		// Mesh the neighbor too
-		}else if has_4_neighbors{	
-			add_to_gen_mesh_data_q(
-				w_map = w_map,
-				chunk_hd = chunk_hd,
-				// neighbor_chunk_hd = chunk_hd,
-				vox_chunk_hd = chunk_data.vox_data_hd,
-				neighbor_vox_chunk_hd = {neighbor_chunks[0].vox_data_hd,neighbor_chunks[1].vox_data_hd,neighbor_chunks[2].vox_data_hd,neighbor_chunks[3].vox_data_hd},
-				has_4_neighbors = has_4_neighbors,
-				side = side,
 			)
 		}
 	}
 }
+
 
 Destroy_Vox_Data_Q_Data::struct{
 	data_hd:Vox_Chunk_Data_HD,
@@ -1826,8 +1866,8 @@ fill_out_light_chunk_info::proc(t:Light_Chunk_Task)->(info:Lighting_Chunk_Info){
 	light_data, light_data_ok := get_light_chunk_data(t.w_map, chunk.light_data_hd)
 	assert(light_data_ok)
 
-	vox_mask, mask_ok := hm.get(&vox_data.backing_mask_data.hm, vox_data.vox_mask_hd,)
-	assert(mask_ok)
+	// vox_mask, mask_ok := hm.get(&vox_data.backing_mask_data.hm, vox_data.vox_mask_hd,)
+	// assert(mask_ok)
 
 	info.light_chunk = light_data
 	info.light_q = q
@@ -1859,8 +1899,6 @@ fill_out_light_chunk_info::proc(t:Light_Chunk_Task)->(info:Lighting_Chunk_Info){
 	return
 }
 update_chunk_lighting::proc(t:Light_Chunk_Task) {
-
-
 	info:=fill_out_light_chunk_info(t)
 	if len(info.light_q.remove_q) > 0 {
 		update_chunk_lighting_remove(t)
@@ -1934,7 +1972,7 @@ queue_neighbor_light_cmds :: proc(
 		vox_data,light_chunk_data,light_q,loc_pos,ok:=get_lighting_data_at_pos(info,pos,)
 		if !ok {continue}
 
-		neighbor_vox_item_hd := get_vox_in_chunk(vox_data,loc_pos)
+		neighbor_vox_item_hd := get_vox_in_chunk(vox_data,loc_pos).item
 		neighbor_item:Item_Info
 		neighbor_item_ptr,neighbor_item_ok := reg.get(&g.item_reg,neighbor_vox_item_hd)
 		if neighbor_item_ok {neighbor_item = neighbor_item_ptr^}
@@ -1956,7 +1994,7 @@ do_seed_chunk_lighting_cmd :: proc(
 ) {
 	target_vox := get_vox_in_chunk(info.vox_data,cmd.pos)
 	target_item: Item_Info
-	target_item_ptr,target_item_ok := reg.get(&g.item_reg,target_vox)
+	target_item_ptr,target_item_ok := reg.get(&g.item_reg,target_vox.item)
 	if target_item_ok { target_item = target_item_ptr^ }
 	if target_item.is_opaque { return }
 
@@ -1967,7 +2005,7 @@ do_seed_chunk_lighting_cmd :: proc(
 
 		neighbor_vox := get_vox_in_chunk(vox_data,loc_pos)
 		neighbor_item: Item_Info
-		neighbor_item_ptr,neighbor_item_ok := reg.get(&g.item_reg,neighbor_vox)
+		neighbor_item_ptr,neighbor_item_ok := reg.get(&g.item_reg,neighbor_vox.item)
 		if neighbor_item_ok { neighbor_item = neighbor_item_ptr^ }
 
 		if neighbor_item.is_opaque && (cmd.type == .sun || neighbor_item.light_emission == {}) {
@@ -2004,7 +2042,7 @@ do_remove_chunk_lighting_cmd :: proc(
 	if cmd.channels[2] { remove_value.b = 0 }
 	if remove_value == old_light { return }
 
-	current_vox := get_vox_in_chunk(info.vox_data, cmd.pos)
+	current_vox := get_vox_in_chunk(info.vox_data, cmd.pos).item
 	current_item: Item_Info
 	current_item_ptr, current_item_ok := reg.get(&g.item_reg, current_vox)
 	if current_item_ok { current_item = current_item_ptr^ }
@@ -2016,7 +2054,7 @@ do_remove_chunk_lighting_cmd :: proc(
 		vox_data,light_chunk_data,light_q,loc_pos,ok:=get_lighting_data_at_pos(info,pos,)
 		if !ok {continue}
 
-		neighbor_vox := get_vox_in_chunk(vox_data, loc_pos)
+		neighbor_vox := get_vox_in_chunk(vox_data, loc_pos).item
 		neighbor_item: Item_Info
 		neighbor_item_ptr, neighbor_item_ok := reg.get(&g.item_reg, neighbor_vox)
 		if neighbor_item_ok { neighbor_item = neighbor_item_ptr^ }
@@ -2257,7 +2295,7 @@ notify_chunk_lighting_ready :: proc(w_map:^Map,chunk_hd:Chunk_HD) {
 		neighbor_pos:=chunk.pos
 		neighbor_pos.xyz += offset * lod_size
 
-		neighbor_chunk_hd,neighbor_exists:=w_map.chunks_map[neighbor_pos]
+		neighbor_chunk_hd,neighbor_exists:=get_chunk_by_pos_safe(w_map,neighbor_pos)
 		if !neighbor_exists {
 			chunk.lighting_redy_mask += {direction}
 			continue
@@ -2296,7 +2334,7 @@ init_chunk_lighting_ready_mask :: proc(w_map:^Map,chunk_hd:Chunk_HD) {
 		neighbor_pos:=chunk.pos
 		neighbor_pos.xyz += offset * lod_size
 
-		neighbor_chunk_hd,neighbor_exists:=w_map.chunks_map[neighbor_pos]
+		neighbor_chunk_hd,neighbor_exists:=get_chunk_by_pos_safe(w_map,neighbor_pos)
 		if !neighbor_exists {
 			chunk.lighting_redy_mask += {direction}
 			continue
@@ -2351,7 +2389,7 @@ mesh_chunk_side::proc(
 		new_pos:=chunk.pos
 		new_pos.xyz+=offset
 		
-		nab_chunk_hd,ok:=w_map.chunks_map[new_pos]
+		nab_chunk_hd,ok:=get_chunk_by_pos_safe(w_map,new_pos)
 		if !ok {continue}
 		nab_chunk,nab_chunk_ok:=hm.get(&w_map.chunks,nab_chunk_hd)
 		if !nab_chunk_ok{continue}
@@ -2361,297 +2399,699 @@ mesh_chunk_side::proc(
 	start_mesh_chunk_task(w_map,Mesh_Chunk_Task{w_map,chunk_hd,vox_data_hd,neighbor_vox_hd,neighbor_light_data_hd,mesh_data_hd,has_4_neighbors,side})
 }
 
+Mask_Lookup :: struct {
+	edge_value: int,
+	edge_divisor: int,
+	edge_offset: int,
+	inside_offset: int,
+	y_shift: int,
+}
+
+MASK_LOOKUP :[Model_Sides]Mask_Lookup: {
+	.pos_x=	{edge_value=CHUNK_SIZE-1,edge_divisor=1,edge_offset=-(CHUNK_SIZE-1),inside_offset=1},
+	.neg_x=	{edge_value=0,edge_divisor=1,edge_offset=CHUNK_SIZE-1,inside_offset=-1},
+	.pos_y=	{y_shift=1},
+	.neg_y=	{y_shift=-1},
+	.pos_z=	{edge_value=CHUNK_SIZE-1,edge_divisor=CHUNK_SIZE,edge_offset=-CHUNK_SIZE*(CHUNK_SIZE-1),inside_offset=CHUNK_SIZE},
+	.neg_z=	{edge_value=0,edge_divisor=CHUNK_SIZE,edge_offset=CHUNK_SIZE*(CHUNK_SIZE-1),inside_offset=-CHUNK_SIZE},
+	.extra=	{},
+}
+
+
+Meshing_Chunk_Info :: struct {
+	vox_data: ^Vox_Chunk_Data,
+	neighbor_vox_data: [4]^Vox_Chunk_Data,
+	side: Model_Sides,
+	has_4_neighbors: bool,
+}
+get_meshing_data_at_pos :: proc(
+	info: ^Meshing_Chunk_Info,
+	pso: [3]int,
+) -> (vox_data: ^Vox_Chunk_Data, neighbor_vox_data: ^Vox_Chunk_Data, local_pos: [3]u8, neighbor_pos: [3]u8, ok: bool) {
+	assert(info != nil)
+
+	if info.vox_data == nil {return}
+	if pso.x < 0 || pso.x >= CHUNK_SIZE || pso.y < 0 || pso.y >= CHUNK_SIZE || pso.z < 0 || pso.z >= CHUNK_SIZE {return}
+
+	local_pos = cast([3]u8)pso
+	vox_data = info.vox_data
+
+	if info.side == .extra {
+		neighbor_vox_data = info.vox_data
+		neighbor_pos = local_pos
+		return vox_data,neighbor_vox_data,local_pos,neighbor_pos,true
+	}
+
+	pos := pso
+	switch info.side {
+	case .pos_x: pos.x += 1
+	case .neg_x: pos.x -= 1
+	case .pos_y: pos.y += 1
+	case .neg_y: pos.y -= 1
+	case .pos_z: pos.z += 1
+	case .neg_z: pos.z -= 1
+	case .extra:
+	}
+
+	crossed_boundary := pos.x < 0 || pos.x >= CHUNK_SIZE || pos.y < 0 || pos.y >= CHUNK_SIZE || pos.z < 0 || pos.z >= CHUNK_SIZE
+
+	if !crossed_boundary {
+		neighbor_vox_data = info.vox_data
+		neighbor_pos = cast([3]u8)pos
+		return vox_data,neighbor_vox_data,local_pos,neighbor_pos,true
+	}
+
+	if info.has_4_neighbors {return}
+
+	neighbor_vox_data = info.neighbor_vox_data[0]
+	if neighbor_vox_data == nil {return}
+
+	if pos.x < 0 {pos.x = CHUNK_SIZE-1} else if pos.x >= CHUNK_SIZE {pos.x = 0}
+	if pos.y < 0 {pos.y = CHUNK_SIZE-1} else if pos.y >= CHUNK_SIZE {pos.y = 0}
+	if pos.z < 0 {pos.z = CHUNK_SIZE-1} else if pos.z >= CHUNK_SIZE {pos.z = 0}
+
+	neighbor_pos = cast([3]u8)pos
+	return vox_data,neighbor_vox_data,local_pos,neighbor_pos,true
+}
+
+
 mesh_by_bit_mask :: proc(
 	t:Mesh_Chunk_Task,
 ) -> (face_count: int) {
 
-	chunk_vox_data, vox_ok := get_vox_chunk_data(t.w_map, t.vox_data_hd)
-	if !vox_ok {log.log(.Error, "failed, vox_data_hd not valid", t.vox_data_hd);return}
-	
-	neighbor_vox, neighbor_vox_ok := get_vox_chunk_data(t.w_map, t.neighbor_vox_hd[0])
-	if !neighbor_vox_ok {log.log(.Error, "failed, neighbor_vox_data_hd not valid", t.neighbor_vox_hd);return}
-	mesh,mesh_ok:=hm.get(&t.w_map.chunks_mesh_data,t.mesh_hd)
+	mesh,mesh_ok := hm.get(&t.w_map.chunks_mesh_data,t.mesh_hd)
 	assert(mesh_ok)
+	mesh.face_count = 0
 
-	chunk_data, chunk_ok := hm.get(&t.w_map.chunks, t.chunk_hd)
-	if !chunk_ok {log.log(.Error, "failed, vox_data_hd not valid", t.vox_data_hd);return}
-	
-	chunk_light_data, light_ok := hm.get(&t.w_map.light_chunk_hm, chunk_data.light_data_hd,)
+	if t.side == .extra {return}
+
+	chunk_vox_data,vox_ok := get_vox_chunk_data(t.w_map,t.vox_data_hd)
+	if !vox_ok {log.log(.Error,"failed, vox_data_hd not valid",t.vox_data_hd);return}
+
+	chunk_data,chunk_ok := hm.get(&t.w_map.chunks,t.chunk_hd)
+	if !chunk_ok {log.log(.Error,"failed, chunk_hd not valid",t.chunk_hd);return}
+
+	chunk_light_data,light_ok := hm.get(&t.w_map.light_chunk_hm,chunk_data.light_data_hd)
 	assert(light_ok)
 
-	neighbors_vox:[4]^Vox_Chunk_Data
-	if t.has_4_neighbors{
-		for hd,i in t.neighbor_vox_hd{
-			neighbor_vox_4_ok:bool
-			neighbors_vox[i] ,neighbor_vox_4_ok = get_vox_chunk_data(t.w_map, hd)
-			if !neighbor_vox_4_ok {log.log(.Error, "failed, neighbor_vox_data_hd not valid", t.neighbor_vox_hd);return}
-		}
-	}
-	chunk_ab := &chunk_vox_data.backing_chunk_data_abstract
-	assert(chunk_ab.pal_count != nil)
-	chunk_pal_count := chunk_ab.pal_count^
 	assert(chunk_vox_data.backing_mask_data != nil)
 	assert(chunk_vox_data.backing_world_data != nil)
 
-	texture_cache: []u32
-	geometry_cache: []u16
-	switch chunk_ab.palette_size{
-	case .u0, .u1, .u2, .u4, .u8:
-		t_texture_cache:[255]u32
-		t_geometry_cache:[255]u16
-		texture_cache  = t_texture_cache[:]
-		geometry_cache = t_geometry_cache[:]
-	case .u16:
-		t_texture_cache:[CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE]u32
-		t_geometry_cache:[CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE]u16
-		texture_cache  = t_texture_cache[:]
-		geometry_cache = t_geometry_cache[:]
-	}
+	neighbors_vox:[4]^Vox_Chunk_Data
+	neighbor_vox:^Vox_Chunk_Data
 
-	pal_loop:for i in 0..<chunk_pal_count {
-		item, ok := reg.get(&g.item_reg, chunk_ab.pal[i].item)
-		if ok {
-			texture_cache[i] = cast(u32)item.texture_data.sides[t.side]
-			model,ok:=reg.get(&g.block_model_reg,item.model)
-			if !ok {
-				fmt.print(item,"\n\n",item.model,"\n")
-				continue pal_loop
-			}
-			geometry_cache[i] = cast(u16)g.all_block_models[model.start+cast(int)chunk_ab.pal[i].stat].cube_indices[t.side]
-		}
-	}
-	mesh.face_count = 0
-	chunk_mask, chunk_mask_ok := hm.get(&chunk_vox_data.backing_mask_data.hm,chunk_vox_data.vox_mask_hd,)
-	// assert(chunk_mask_ok)
-	neighbor_mask, neighbor_mask_ok := hm.get(&neighbor_vox.backing_mask_data.hm,neighbor_vox.vox_mask_hd,)
-	// assert(neighbor_mask_ok)
-	cur_neighbor_mask:[CHUNK_SIZE * CHUNK_SIZE]u32
-	if neighbor_mask != nil{
-		cur_neighbor_mask=neighbor_mask.is_opaque_mask
-	}
-
-
-	current_masks: [CHUNK_SIZE * CHUNK_SIZE]u32
-	neighbor_masks: [CHUNK_SIZE * CHUNK_SIZE]u32
-	
 	if t.has_4_neighbors {
-		n_mask_0,n_mask_0_ok := hm.get(&neighbors_vox[0].backing_mask_data.hm,neighbors_vox[0].vox_mask_hd);
-		assert(n_mask_0_ok)
-		n_mask_1,n_mask_1_ok := hm.get(&neighbors_vox[1].backing_mask_data.hm,neighbors_vox[1].vox_mask_hd)
-		assert(n_mask_1_ok)
-		n_mask_2,n_mask_2_ok := hm.get(&neighbors_vox[2].backing_mask_data.hm,neighbors_vox[2].vox_mask_hd)
-		assert(n_mask_2_ok)
-		n_mask_3,n_mask_3_ok := hm.get(&neighbors_vox[3].backing_mask_data.hm,neighbors_vox[3].vox_mask_hd)
-		assert(n_mask_3_ok)
-	
-		masks := [4][CHUNK_SIZE*CHUNK_SIZE]u32{
-			n_mask_0.is_opaque_mask,
-			n_mask_1.is_opaque_mask,
-			n_mask_2.is_opaque_mask,
-			n_mask_3.is_opaque_mask,
+		for i in 0..<4 {
+			neighbor_vox_ok:bool
+			neighbors_vox[i],neighbor_vox_ok = get_vox_chunk_data(t.w_map,t.neighbor_vox_hd[i])
+			if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",t.neighbor_vox_hd);return}
 		}
-
-	
-		#partial switch t.side {
-		case .pos_x, .neg_x:
-			cur_neighbor_mask = sample_4_neighbor_masks_x(masks,t.side)
-		case .pos_y, .neg_y:
-			cur_neighbor_mask = sample_4_neighbor_masks_y(masks,t.side)
-		case .pos_z, .neg_z:
-			cur_neighbor_mask = sample_4_neighbor_masks_z(masks,t.side)
-		}
-
-	}
-	switch t.side {
-	case .pos_x:
-		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
-			current_masks[i] = chunk_mask.is_occupied_mask[i]
-
-			if i % CHUNK_SIZE == CHUNK_SIZE - 1 {
-				neighbor_masks[i] = cur_neighbor_mask[i-CHUNK_SIZE+1]
-			} else {
-				neighbor_masks[i] = chunk_mask.is_opaque_mask[i+1]
-			}
-		}
-
-	case .neg_x:
-		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
-			current_masks[i] = chunk_mask.is_occupied_mask[i]
-
-			if i % CHUNK_SIZE == 0 {
-				neighbor_masks[i] = cur_neighbor_mask[i+CHUNK_SIZE-1]
-			} else {
-				neighbor_masks[i] = chunk_mask.is_opaque_mask[i-1]
-			}
-		}
-
-	case .pos_y:
-		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
-			current_masks[i] = chunk_mask.is_occupied_mask[i]
-			neighbor_masks[i] = chunk_mask.is_opaque_mask[i] >> 1
-
-			if neighbor_mask_ok {
-				neighbor_masks[i] |= (cur_neighbor_mask[i] & 1) << 31
-			} else {
-				neighbor_masks[i] |= u32(1) << 31
-			}
-		}
-
-	case .neg_y:
-		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
-			current_masks[i] = chunk_mask.is_occupied_mask[i]
-			neighbor_masks[i] = chunk_mask.is_opaque_mask[i] << 1
-
-			if neighbor_mask_ok {
-				neighbor_masks[i] |= cur_neighbor_mask[i] >> 31
-			} else {
-				neighbor_masks[i] |= 1
-			}
-		}
-
-	case .pos_z:
-		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
-			current_masks[i] = chunk_mask.is_occupied_mask[i]
-
-			if i >= CHUNK_SIZE * (CHUNK_SIZE-1) {
-				neighbor_masks[i] = cur_neighbor_mask[i % CHUNK_SIZE]
-			} else {
-				neighbor_masks[i] = chunk_mask.is_opaque_mask[i+CHUNK_SIZE]
-			}
-		}
-
-	case .neg_z:
-		for i := 0; i < CHUNK_SIZE * CHUNK_SIZE; i += 1 {
-			current_masks[i] = chunk_mask.is_occupied_mask[i]
-
-			if i < CHUNK_SIZE {
-				neighbor_masks[i] = cur_neighbor_mask[i + CHUNK_SIZE * (CHUNK_SIZE-1)]
-			} else {
-				neighbor_masks[i] = chunk_mask.is_opaque_mask[i-CHUNK_SIZE]
-			}
-		}
-
-	case .extra:
-		log.log(.Warning, "ono")
-		return
+		neighbor_vox = neighbors_vox[0]
+	}else{
+		neighbor_vox_data,neighbor_vox_ok := get_vox_chunk_data(t.w_map,t.neighbor_vox_hd[0])
+		if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",t.neighbor_vox_hd);return}
+		neighbor_vox = neighbor_vox_data
 	}
 
-	for index := 0; index < CHUNK_SIZE * CHUNK_SIZE; index += 1 {
-		visible_mask := current_masks[index] & ~neighbor_masks[index]
+	chunk_mask,chunk_mask_ok := hm.get(&chunk_vox_data.backing_mask_data.hm,chunk_vox_data.vox_mask_hd)
+	if !chunk_mask_ok {log.log(.Error,"failed, chunk mask not valid",chunk_vox_data.vox_mask_hd);return}
 
-		x := index % CHUNK_SIZE
+	neighbor_mask,neighbor_mask_ok := hm.get(&neighbor_vox.backing_mask_data.hm,neighbor_vox.vox_mask_hd)
+
+	sampled_neighbor_mask:[CHUNK_SIZE * CHUNK_SIZE]u32
+	cur_neighbor_mask:^[CHUNK_SIZE * CHUNK_SIZE]u32
+
+	if t.has_4_neighbors {
+		masks:[4][CHUNK_SIZE * CHUNK_SIZE]u32
+
+		for i in 0..<4 {
+			n_mask,n_mask_ok := hm.get(&neighbors_vox[i].backing_mask_data.hm,neighbors_vox[i].vox_mask_hd)
+			if !n_mask_ok {log.log(.Error,"failed, neighbor mask not valid",t.neighbor_vox_hd[i]);return}
+			masks[i] = n_mask.is_opaque_mask
+		}
+
+		switch t.side {
+		case .pos_x,.neg_x:
+			sampled_neighbor_mask = sample_4_neighbor_masks_x(masks,t.side)
+		case .pos_y,.neg_y:
+			sampled_neighbor_mask = sample_4_neighbor_masks_y(masks,t.side)
+		case .pos_z,.neg_z:
+			sampled_neighbor_mask = sample_4_neighbor_masks_z(masks,t.side)
+		case .extra:
+		}
+
+		cur_neighbor_mask = &sampled_neighbor_mask
+	}else if neighbor_mask_ok {
+		cur_neighbor_mask = &neighbor_mask.is_opaque_mask
+	}
+
+	meshing_chunk_info:Meshing_Chunk_Info={
+		vox_data = chunk_vox_data,
+		neighbor_vox_data = neighbor_vox,
+		side = t.side,
+		has_4_neighbors = t.has_4_neighbors,
+	}
+	MASK_LOOKUP_r:=MASK_LOOKUP
+	lookup := MASK_LOOKUP_r[t.side]
+
+	boundary_axis := int(t.side)/2
+	boundary_positive := (int(t.side)&1) == 0
+
+	neighbor_offset:[3]f32
+	neighbor_offset[boundary_axis]=1
+	if !boundary_positive {
+		neighbor_offset[boundary_axis]=-1
+	}
+
+	for index in 0..<CHUNK_SIZE * CHUNK_SIZE {
+
+		current_mask := chunk_mask.is_occupied_mask[index]
+		opaque_mask := chunk_mask.is_opaque_mask[index]
+
+		neighbor_mask_value:u32
+
+		if lookup.y_shift == 1 {
+			neighbor_mask_value = opaque_mask >> 1
+			if neighbor_mask_ok {
+				neighbor_mask_value |= (cur_neighbor_mask[index] & 1) << 31
+			}else{
+				neighbor_mask_value |= u32(1) << 31
+			}
+		}else if lookup.y_shift == -1 {
+			neighbor_mask_value = opaque_mask << 1
+			if neighbor_mask_ok {
+				neighbor_mask_value |= cur_neighbor_mask[index] >> 31
+			}else{
+				neighbor_mask_value |= 1
+			}
+		}else{
+			edge_index := (index / lookup.edge_divisor) % CHUNK_SIZE
+			if edge_index == lookup.edge_value {
+				if cur_neighbor_mask != nil {
+					neighbor_mask_value = cur_neighbor_mask[index+lookup.edge_offset]
+				}
+			}else{
+				neighbor_mask_value = chunk_mask.is_opaque_mask[index+lookup.inside_offset]
+			}
+		}
+
+		visible_mask := current_mask & ~(neighbor_mask_value & opaque_mask)
+
+		x := index & (CHUNK_SIZE-1)
 		z := index / CHUNK_SIZE
+
 		for visible_mask != 0 {
+
 			y := bits.count_trailing_zeros(visible_mask)
-			visible_mask &= visible_mask - 1
+			visible_mask &= visible_mask-1
 
+			vox_data,neighbor_vox_data,local_pos,neighbor_pos,ok := get_meshing_data_at_pos(&meshing_chunk_info,{x,cast(int)y,z})
+			if !ok {continue}
 
-			vox_index := cast(u16)(cast(u16)y + cast(u16)x * CHUNK_SIZE + cast(u16)z * CHUNK_SIZE * CHUNK_SIZE)
+			pal_index:=get_palette_index_by_pos(vox_data,local_pos)
+			if pal_index == 0 {continue}
 
-			pal_index := get_palette_index(chunk_vox_data, vox_index)
+			nab_pal_index:=get_palette_index_by_pos(neighbor_vox_data,neighbor_pos)
 
-			face: tg.Vert_Face
-			face.block_pos = pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z,})
-			face.texture_face_index = texture_cache[pal_index]
-			face.geometry_face_index = geometry_cache[pal_index]
+			current_pal_index:=pal_index
+			chain_finished:=false
 
-			for corner_id in 0..<4 {
+			face:tg.Vert_Face
+			face.block_pos=pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z})
 
-		
-				face.light[corner_id] = sample_corner_light(
-					t.w_map,
-					chunk_light_data,
-					t.neighbor_light_data_hd,
-					t.side,
-					x, cast(int)y, z,
-					corner_id,
-				)
+			voxel_light:=face.light
+			voxel_light_sampled:=false
+
+			vox_ab:=&vox_data.backing_chunk_data_abstract
+			for _ in 0..<vox_ab.pal_count^ {
+
+				assert(current_pal_index < vox_ab.pal_count^,"invalid current multiblock chain")
+
+				block_p_d:=vox_ab.pal[current_pal_index]
+				block_offset:=block_offset_from_u16(block_p_d.state.offset)
+
+				face.block_offset=block_p_d.state.offset
+
+				item,item_ok:=reg.get(&g.item_reg,block_p_d.item)
+				if item_ok {
+					model,model_ok:=reg.get(&g.block_model_reg,item.model)
+					if model_ok {
+						model_data:=&g.all_block_models[model.start+cast(int)block_p_d.state.state]
+
+						face.texture_face_index=cast(u16)item.texture_data.sides[t.side]
+
+						geometry_index:=model_data.cube_indices[t.side]
+
+						// Primary cube face. Index 0 means no face.
+						if geometry_index >= 0 {
+							occluded:=face_is_fully_occluded_by_chain(
+								vox_data,
+								pal_index,
+								current_pal_index,
+								g.all_face_data[geometry_index].pos,
+								.extra,
+								t.side,
+								{},
+								block_offset,
+							)
+
+							if !occluded && nab_pal_index != 0 {
+								occluded=face_is_fully_occluded_by_chain(
+									neighbor_vox_data,
+									nab_pal_index,
+									0,
+									g.all_face_data[geometry_index].pos,
+									t.side,
+									t.side,
+									neighbor_offset,
+									block_offset,
+								)
+							}
+
+							if !occluded {
+								if !voxel_light_sampled {
+									for corner_id in 0..<4 {
+										voxel_light[corner_id]=sample_corner_light(
+											t.w_map,
+											chunk_light_data,
+											t.neighbor_light_data_hd,
+											t.side,
+											x,cast(int)y,z,
+											corner_id,
+										)
+									}
+									voxel_light_sampled=true
+								}
+
+								face.light=voxel_light
+								face.geometry_face_index=cast(u16)geometry_index
+								assert(face_count < len(mesh.data),"mesh face buffer full")
+								mesh.data[face_count]=face
+								face_count+=1
+							}
+						}
+
+						// Imported and other additional geometry.
+						if model_data.extra_count > 0 {
+							extra_start:=model_data.cube_indices[.extra]
+							assert(extra_start > 0,"model has extra faces but invalid extra start")
+
+							for extra_i in 0..<model_data.extra_count {
+								extra_geometry_index:=extra_start+extra_i
+								extra_geometry:=&g.all_face_data[extra_geometry_index]
+
+								if extra_geometry.side != t.side {continue}
+
+								on_block_boundary:=false
+								if boundary_positive {
+									on_block_boundary=extra_geometry.pos[0][boundary_axis] >= 1
+								}else{
+									on_block_boundary=extra_geometry.pos[0][boundary_axis] <= 0
+								}
+
+								extra_occluded:=face_is_fully_occluded_by_chain(
+									vox_data,
+									pal_index,
+									current_pal_index,
+									extra_geometry.pos,
+									.extra,
+									extra_geometry.side,
+									{},
+									block_offset,
+								)
+
+								if !extra_occluded && on_block_boundary && nab_pal_index != 0 {
+									extra_occluded=face_is_fully_occluded_by_chain(
+										neighbor_vox_data,
+										nab_pal_index,
+										0,
+										extra_geometry.pos,
+										.extra,
+										extra_geometry.side,
+										neighbor_offset,
+										block_offset,
+									)
+								}
+
+								if extra_occluded {continue}
+
+								if !voxel_light_sampled {
+									for corner_id in 0..<4 {
+										voxel_light[corner_id]=sample_corner_light(
+											t.w_map,
+											chunk_light_data,
+											t.neighbor_light_data_hd,
+											t.side,
+											x,cast(int)y,z,
+											corner_id,
+										)
+									}
+									voxel_light_sampled=true
+								}
+
+								face.light=voxel_light
+								face.geometry_face_index=cast(u16)extra_geometry_index
+								assert(face_count < len(mesh.data),"mesh face buffer full")
+								mesh.data[face_count]=face
+								face_count+=1
+							}
+						}
+					}
+				}
+
+				next:=block_p_d.multy_block_index
+				if next == 0 {
+					chain_finished=true
+					break
+				}
+
+				current_pal_index=next
 			}
 
-
-			mesh.data[face_count] = face
-			face_count += 1
+			assert(chain_finished,"cycle detected in current multiblock chain")
 		}
 	}
+
 	mesh.face_count = face_count
 	return face_count
 }
 
+// mesh_by_bit_mask :: proc(
+// 	t:Mesh_Chunk_Task,
+// ) -> (face_count: int) {
+
+// 	mesh,mesh_ok := hm.get(&t.w_map.chunks_mesh_data,t.mesh_hd)
+// 	assert(mesh_ok)
+// 	mesh.face_count = 0
+
+// 	if t.side == .extra {return}
+
+// 	chunk_vox_data,vox_ok := get_vox_chunk_data(t.w_map,t.vox_data_hd)
+// 	if !vox_ok {log.log(.Error,"failed, vox_data_hd not valid",t.vox_data_hd);return}
+
+// 	chunk_data,chunk_ok := hm.get(&t.w_map.chunks,t.chunk_hd)
+// 	if !chunk_ok {log.log(.Error,"failed, chunk_hd not valid",t.chunk_hd);return}
+
+// 	chunk_light_data,light_ok := hm.get(&t.w_map.light_chunk_hm,chunk_data.light_data_hd)
+// 	assert(light_ok)
+
+// 	assert(chunk_vox_data.backing_mask_data != nil)
+// 	assert(chunk_vox_data.backing_world_data != nil)
+
+// 	neighbors_vox:[4]^Vox_Chunk_Data
+// 	neighbor_vox:^Vox_Chunk_Data
+
+// 	if t.has_4_neighbors {
+// 		for i in 0..<4 {
+// 			neighbor_vox_ok:bool
+// 			neighbors_vox[i],neighbor_vox_ok = get_vox_chunk_data(t.w_map,t.neighbor_vox_hd[i])
+// 			if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",t.neighbor_vox_hd);return}
+// 		}
+// 		neighbor_vox = neighbors_vox[0]
+// 	}else{
+// 		neighbor_vox_data,neighbor_vox_ok := get_vox_chunk_data(t.w_map,t.neighbor_vox_hd[0])
+// 		if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",t.neighbor_vox_hd);return}
+// 		neighbor_vox = neighbor_vox_data
+// 	}
+
+// 	chunk_mask,chunk_mask_ok := hm.get(&chunk_vox_data.backing_mask_data.hm,chunk_vox_data.vox_mask_hd)
+// 	if !chunk_mask_ok {log.log(.Error,"failed, chunk mask not valid",chunk_vox_data.vox_mask_hd);return}
+
+// 	neighbor_mask,neighbor_mask_ok := hm.get(&neighbor_vox.backing_mask_data.hm,neighbor_vox.vox_mask_hd)
+
+// 	sampled_neighbor_mask:[CHUNK_SIZE * CHUNK_SIZE]u32
+// 	cur_neighbor_mask:^[CHUNK_SIZE * CHUNK_SIZE]u32
+
+// 	if t.has_4_neighbors {
+// 		masks:[4][CHUNK_SIZE * CHUNK_SIZE]u32
+
+// 		for i in 0..<4 {
+// 			n_mask,n_mask_ok := hm.get(&neighbors_vox[i].backing_mask_data.hm,neighbors_vox[i].vox_mask_hd)
+// 			if !n_mask_ok {log.log(.Error,"failed, neighbor mask not valid",t.neighbor_vox_hd[i]);return}
+// 			masks[i] = n_mask.is_opaque_mask
+// 		}
+
+// 		switch t.side {
+// 		case .pos_x,.neg_x:
+// 			sampled_neighbor_mask = sample_4_neighbor_masks_x(masks,t.side)
+// 		case .pos_y,.neg_y:
+// 			sampled_neighbor_mask = sample_4_neighbor_masks_y(masks,t.side)
+// 		case .pos_z,.neg_z:
+// 			sampled_neighbor_mask = sample_4_neighbor_masks_z(masks,t.side)
+// 		case .extra:
+// 		}
+
+// 		cur_neighbor_mask = &sampled_neighbor_mask
+// 	}else if neighbor_mask_ok {
+// 		cur_neighbor_mask = &neighbor_mask.is_opaque_mask
+// 	}
+
+// 	meshing_chunk_info:Meshing_Chunk_Info={
+// 		vox_data = chunk_vox_data,
+// 		neighbor_vox_data = neighbor_vox,
+// 		side = t.side,
+// 		has_4_neighbors = t.has_4_neighbors,
+// 	}
+// 	MASK_LOOKUP_r:=MASK_LOOKUP
+// 	lookup := MASK_LOOKUP_r[t.side]
+
+// 	boundary_axis := int(t.side)/2
+// 	boundary_positive := (int(t.side)&1) == 0
+
+// 	neighbor_offset:[3]f32
+// 	neighbor_offset[boundary_axis]=1
+// 	if !boundary_positive {
+// 		neighbor_offset[boundary_axis]=-1
+// 	}
+// 	for index in 0..<CHUNK_SIZE * CHUNK_SIZE {
+		
+
+// 		current_mask := chunk_mask.is_occupied_mask[index]
+// 		opaque_mask := chunk_mask.is_opaque_mask[index]
+
+// 		neighbor_mask_value:u32
+
+// 		if lookup.y_shift == 1 {
+// 			neighbor_mask_value = opaque_mask >> 1
+// 			if neighbor_mask_ok {
+// 				neighbor_mask_value |= (cur_neighbor_mask[index] & 1) << 31
+// 			}else{
+// 				neighbor_mask_value |= u32(1) << 31
+// 			}
+// 		}else if lookup.y_shift == -1 {
+// 			neighbor_mask_value = opaque_mask << 1
+// 			if neighbor_mask_ok {
+// 				neighbor_mask_value |= cur_neighbor_mask[index] >> 31
+// 			}else{
+// 				neighbor_mask_value |= 1
+// 			}
+// 		}else{
+// 			edge_index := (index / lookup.edge_divisor) % CHUNK_SIZE
+// 			if edge_index == lookup.edge_value {
+// 				if cur_neighbor_mask != nil {
+// 					neighbor_mask_value = cur_neighbor_mask[index+lookup.edge_offset]
+// 				}
+// 			}else{
+// 				neighbor_mask_value = chunk_mask.is_opaque_mask[index+lookup.inside_offset]
+// 			}
+// 		}
+
+// 		visible_mask := current_mask & ~(neighbor_mask_value & opaque_mask)
+
+// 		x := index & (CHUNK_SIZE-1)
+// 		z := index / CHUNK_SIZE
+
+// 		for visible_mask != 0 {
+			
+// 			y := bits.count_trailing_zeros(visible_mask)
+// 			visible_mask &= visible_mask-1
+
+// 			vox_data,neighbor_vox_data,local_pos,neighbor_pos,ok := get_meshing_data_at_pos(&meshing_chunk_info,{x,cast(int)y,z})
+// 			if !ok {continue}
+
+// 			pal_index:=get_palette_index_by_pos(vox_data,local_pos)
+// 			if pal_index == 0 {continue}
+			
+// 			nab_pal_index:=get_palette_index_by_pos(neighbor_vox_data,neighbor_pos)
+			
+// 			current_pal_index:=pal_index
+// 			chain_finished:=false
+			
+// 			face:tg.Vert_Face
+// 			face.block_pos=pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z})
+			
+// 			voxel_light:=face.light
+// 			voxel_light_sampled:=false
+
+// 			vox_ab:=&vox_data.backing_chunk_data_abstract
+// 			for _ in 0..<vox_ab.pal_count^ {
+				
+// 				assert(current_pal_index < vox_ab.pal_count^,"invalid current multiblock chain")
+			
+// 				block_p_d:=vox_ab.pal[current_pal_index]
+// 				block_offset:=block_offset_from_u16(block_p_d.state.offset)
+
+// 				face.block_offset=block_p_d.state.offset
+
+// 				item,item_ok:=reg.get(&g.item_reg,block_p_d.item)
+// 				if item_ok {
+// 					model,model_ok:=reg.get(&g.block_model_reg,item.model)
+// 					if model_ok {
+// 						model_data:=&g.all_block_models[model.start+cast(int)block_p_d.state.state]
+			
+// 						face.texture_face_index=cast(u16)item.texture_data.sides[t.side]
+			
+// 						geometry_index:=model_data.cube_indices[t.side]
+				
+			
+// 						occluded:=face_is_fully_occluded_by_chain(
+// 							vox_data,
+// 							pal_index,
+// 							current_pal_index,
+// 							g.all_face_data[geometry_index].pos,
+// 							.extra,
+// 							t.side,
+// 							{},
+// 							block_offset,
+// 						)
+						
+// 						if !occluded && nab_pal_index != 0 {
+// 							occluded=face_is_fully_occluded_by_chain(
+// 								neighbor_vox_data,
+// 								nab_pal_index,
+// 								0,
+// 								g.all_face_data[geometry_index].pos,
+// 								t.side,
+// 								t.side,
+// 								neighbor_offset,
+// 								block_offset,
+// 							)
+// 						}
+			
+// 						if !occluded {
+// 							if !voxel_light_sampled {
+// 								for corner_id in 0..<4 {
+// 									voxel_light[corner_id]=sample_corner_light(
+// 										t.w_map,
+// 										chunk_light_data,
+// 										t.neighbor_light_data_hd,
+// 										t.side,
+// 										x,cast(int)y,z,
+// 										corner_id,
+// 									)
+// 								}
+// 								voxel_light_sampled=true
+// 							}
+			
+// 							face.light=voxel_light
+// 							face.geometry_face_index=cast(u16)geometry_index
+// 							assert(face_count < len(mesh.data),"mesh face buffer full")
+// 							mesh.data[face_count]=face
+// 							face_count+=1
+// 						}
+			
+// 						if model_data.extra_count > 0 {
+// 							extra_start:=model_data.cube_indices[.extra]
+			
+// 							for extra_i in 0..<model_data.extra_count {
+// 								extra_geometry_index:=extra_start+extra_i
+// 								extra_geometry:=&g.all_face_data[extra_geometry_index]
+			
+// 								if extra_geometry.side != t.side {continue}
+			
+// 								on_block_boundary:=false
+// 								if boundary_positive {
+// 									on_block_boundary=extra_geometry.pos[0][boundary_axis] >= 1
+// 								}else{
+// 									on_block_boundary=extra_geometry.pos[0][boundary_axis] <= 0
+// 								}
+			
+// 								extra_occluded:=face_is_fully_occluded_by_chain(
+// 									vox_data,
+// 									pal_index,
+// 									current_pal_index,
+// 									extra_geometry.pos,
+// 									.extra,
+// 									extra_geometry.side,
+// 									{},
+// 									block_offset,
+// 								)
+								
+// 								if !extra_occluded && on_block_boundary && nab_pal_index != 0 {
+// 									extra_occluded=face_is_fully_occluded_by_chain(
+// 										neighbor_vox_data,
+// 										nab_pal_index,
+// 										0,
+// 										extra_geometry.pos,
+// 										.extra,
+// 										extra_geometry.side,
+// 										neighbor_offset,
+// 										block_offset
+// 									)
+// 								}
+			
+// 								if extra_occluded {continue}
+			
+// 								if !voxel_light_sampled {
+// 									for corner_id in 0..<4 {
+// 										voxel_light[corner_id]=sample_corner_light(
+// 											t.w_map,
+// 											chunk_light_data,
+// 											t.neighbor_light_data_hd,
+// 											t.side,
+// 											x,cast(int)y,z,
+// 											corner_id,
+// 										)
+// 									}
+// 									voxel_light_sampled=true
+// 								}
+			
+// 								face.light=voxel_light
+// 								face.geometry_face_index=cast(u16)extra_geometry_index
+// 								assert(face_count < len(mesh.data),"mesh face buffer full")
+// 								mesh.data[face_count]=face
+// 								face_count+=1
+// 							}
+// 						}
+// 					}
+// 				}
+			
+// 				next:=block_p_d.multy_block_index
+// 				if next == 0 {
+// 					chain_finished=true
+// 					break
+// 				}
+			
+// 				current_pal_index=next
+// 			}
+			
+// 			assert(chain_finished,"cycle detected in current multiblock chain")
+// 		}
+// 	}
+
+// 	mesh.face_count = face_count
+// 	return face_count
+// }
 
 
+occlusion_box_reaches_face::proc(
+	min_axis,max_axis,boundary:f32,
+	side:Model_Sides,
+	allow_coplanar:bool,
+)->bool {
+	switch side {
+	case .pos_x,.pos_y,.pos_z:
+		return (min_axis <= boundary && max_axis > boundary) ||
+			(allow_coplanar && min_axis < boundary && max_axis == boundary)
 
-transpose_32x32 :: proc(m: ^[32]u32) {
- for k := 0; k < 16; k += 1 {
-		a := k
-		b := k + 16
-		t := (m^[a] ~ (m^[b] >> 16)) & 0x0000FFFF
-		m^[a] = m^[a] ~ t
-		m^[b] = m^[b] ~ (t << 16)
+	case .neg_x,.neg_y,.neg_z:
+		return (min_axis < boundary && max_axis >= boundary) ||
+			(allow_coplanar && min_axis == boundary && max_axis > boundary)
+
+	case .extra:
+		return false
 	}
-
-	for k := 0; k < 16; k += 1 {
-		a := (k & 7) + ((k & 8) << 1)
-		b := a + 8
-		t := (m^[a] ~ (m^[b] >> 8)) & 0x00FF00FF
-		m^[a] = m^[a] ~ t
-		m^[b] = m^[b] ~ (t << 8)
-	}
-
-	for k := 0; k < 16; k += 1 {
-		a := (k & 3) + ((k & 12) << 1)
-		b := a + 4
-		t := (m^[a] ~ (m^[b] >> 4)) & 0x0F0F0F0F
-		m^[a] = m^[a] ~ t
-		m^[b] = m^[b] ~ (t << 4)
-	}
-
-	for k := 0; k < 16; k += 1 {
-		a := (k & 1) + ((k & 14) << 1)
-		b := a + 2
-		t := (m^[a] ~ (m^[b] >> 2)) & 0x33333333
-		m^[a] = m^[a] ~ t
-		m^[b] = m^[b] ~ (t << 2)
-	}
-
-	for k := 0; k < 16; k += 1 {
-		a := k << 1
-		b := a + 1
-		t := (m^[a] ~ (m^[b] >> 1)) & 0x55555555
-		m^[a] = m^[a] ~ t
-		m^[b] = m^[b] ~ (t << 1)
-	}
-}
-swizzle_mask_x :: proc(src: []u32, dst: []u32) {
-	for z := 0; z < CHUNK_SIZE; z += 1 {
-		rows: [CHUNK_SIZE]u32
-		base := z * CHUNK_SIZE
-
-		for x := 0; x < CHUNK_SIZE; x += 1 {
-			rows[x] = src[base + x]
-		}
-
-		transpose_32x32(&rows)
-
-		for y := 0; y < CHUNK_SIZE; y += 1 {
-			dst[base + (CHUNK_SIZE - 1 - y)] = rows[y]
-		}
-	}
-}
-
-swizzle_mask_z :: proc(src: []u32, dst: []u32) {
-	for x := 0; x < CHUNK_SIZE; x += 1 {
-		rows: [CHUNK_SIZE]u32
-
-		for z := 0; z < CHUNK_SIZE; z += 1 {
-			rows[z] = src[x + z*CHUNK_SIZE]
-		}
-
-		transpose_32x32(&rows)
-
-		for y := 0; y < CHUNK_SIZE; y += 1 {
-			dst[x + (CHUNK_SIZE - 1 - y)*CHUNK_SIZE] = rows[y]
-		}
-	}
+	return false
 }
 
 sample_4_neighbor_masks_y :: proc(
@@ -2833,138 +3273,6 @@ light_sample_is_opaque :: proc(
 	return false
 }
 
-// sample_corner_light :: proc(
-// 	w_map: ^Map,
-// 	light_data: ^Light_Chunk_Data,
-// 	neighbor_light_data_hd: [Full_Directions]Light_Chunk_Data_HD,
-// 	side: Model_Sides,
-// 	x, y, z: int,
-// 	corner_id: int,
-// ) -> u32 {
-// 	if side == .extra {
-// 		return LIGHT_MAX_PACKED
-// 	}
-
-// 	side_index := cast(Directions)side
-// 	corner_position := LIGHT_CORNER_POSITIONS_r[side_index][corner_id]
-// 	face_normal := LIGHT_FACE_NORMALS_r[side_index]
-
-// 	vertex_position := [3]int{
-// 		x + corner_position[0],
-// 		y + corner_position[1],
-// 		z + corner_position[2],
-// 	}
-
-// 	sample_start_position := vertex_position
-// 	sample_interpolation: [3]f32
-
-// 	for axis_index in 0..<3 {
-// 		if face_normal[axis_index] <= 0 {
-// 			sample_start_position[axis_index] -= 1
-// 		}
-// 		if face_normal[axis_index] == 0 {
-// 			sample_interpolation[axis_index] = 0.5
-// 		}
-// 	}
-
-// 	neighbor_light_data: [Full_Directions]^Light_Chunk_Data
-// 	neighbor_checked: [Full_Directions]bool
-
-// 	sun_light_weighted_sum: [3]int
-// 	block_light_weighted_sum: [3]int
-
-// 	for sample_x_offset in 0..<2 {
-// 		for sample_y_offset in 0..<2 {
-// 			for sample_z_offset in 0..<2 {
-// 				sample_weight: f32 = 1.0
-
-// 				if sample_x_offset == 0 {
-// 					sample_weight *= 1.0 - sample_interpolation[0]
-// 				} else {
-// 					sample_weight *= sample_interpolation[0]
-// 				}
-
-// 				if sample_y_offset == 0 {
-// 					sample_weight *= 1.0 - sample_interpolation[1]
-// 				} else {
-// 					sample_weight *= sample_interpolation[1]
-// 				}
-
-// 				if sample_z_offset == 0 {
-// 					sample_weight *= 1.0 - sample_interpolation[2]
-// 				} else {
-// 					sample_weight *= sample_interpolation[2]
-// 				}
-
-// 				integer_sample_weight := int(sample_weight * 256.0)
-// 				if integer_sample_weight == 0 {continue}
-
-// 				sample_position := [3]int{
-// 					sample_start_position[0] + sample_x_offset,
-// 					sample_start_position[1] + sample_y_offset,
-// 					sample_start_position[2] + sample_z_offset,
-// 				}
-
-// 				neighbor_chunk_offset: [3]int
-
-// 				for axis_index in 0..<3 {
-// 					if sample_position[axis_index] < 0 {
-// 						neighbor_chunk_offset[axis_index] = -1
-// 						sample_position[axis_index] += CHUNK_SIZE
-// 					} else if sample_position[axis_index] >= CHUNK_SIZE {
-// 						neighbor_chunk_offset[axis_index] = 1
-// 						sample_position[axis_index] -= CHUNK_SIZE
-// 					}
-// 				}
-
-// 				sample_light_data := light_data
-
-// 				has_neighbor_offset := neighbor_chunk_offset[0] != 0 || neighbor_chunk_offset[1] != 0 || neighbor_chunk_offset[2] != 0
-
-// 				if has_neighbor_offset {
-// 					// neighbor_direction := OPPOITE_FULL_DIR_OFFSETS_r[dir]
-// 					neighbor_direction := FULL_DIRECTION_LOOKUP_r[neighbor_chunk_offset[0] + 1][neighbor_chunk_offset[1] + 1][neighbor_chunk_offset[2] + 1]
-
-// 					if !neighbor_checked[neighbor_direction] {
-// 						neighbor_data, neighbor_ok := hm.get(
-// 							&w_map.light_chunk_hm,
-// 							neighbor_light_data_hd[neighbor_direction],
-// 						)
-
-// 						if neighbor_ok {
-// 							neighbor_light_data[neighbor_direction] = neighbor_data
-// 						}
-// 						neighbor_checked[neighbor_direction] = true
-// 					}
-
-// 					sample_light_data = neighbor_light_data[neighbor_direction]
-// 				}
-
-// 				// Cubyz treats a missing neighbor's light as zero.
-// 				if sample_light_data == nil {continue}
-
-// 				voxel_index := sample_position[1] + sample_position[0] * CHUNK_SIZE + sample_position[2] * CHUNK_SIZE * CHUNK_SIZE
-
-// 				sampled_light := get_light_in_chunk_index(sample_light_data,cast(u16)voxel_index,)
-
-// 				for channel_index in 0..<3 {
-// 					sun_light_weighted_sum[channel_index] += int(sampled_light.sun[channel_index]) * integer_sample_weight
-// 					block_light_weighted_sum[channel_index] += int(sampled_light.block[channel_index]) * integer_sample_weight
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	sun_r := u32(sun_light_weighted_sum[0] / 256)
-// 	sun_g := u32(sun_light_weighted_sum[1] / 256)
-// 	sun_b := u32(sun_light_weighted_sum[2] / 256)
-
-// 	block_r := u32(block_light_weighted_sum[0] / 256)
-// 	block_g := u32(block_light_weighted_sum[1] / 256)
-// 	block_b := u32(block_light_weighted_sum[2] / 256)
-
-// 	return ((sun_r & 31) << 25) | ((sun_g & 31) << 20) | ((sun_b & 31) << 15) | ((block_r & 31) << 10) | ((block_g & 31) << 5) | (block_b & 31)
-// }
 LIGHT_CORNER_SAMPLE_OFFSETS_r:=LIGHT_CORNER_SAMPLE_OFFSETS
 LIGHT_CORNER_SAMPLE_OFFSETS :: [Directions][4][4][3]int{
 	.pos_x = {
@@ -3150,7 +3458,7 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 	gpu_data,gpu_data_ok:=hm.get(&w_map.gpu_mesh_data_hm,chunk.gpu_mesh_data_hd)
 	if !gpu_data_ok{
 		// err:runtime.Allocator_Error
-		gpu_data_hd,err:=hm.dynamic_add(&w_map.gpu_mesh_data_hm,GPU_Mesh_Data{chunk_shader_data=chunk.chunk_shader_data})
+		gpu_data_hd,err:=hm.dynamic_add(&w_map.gpu_mesh_data_hm,GPU_Mesh_Data{})
 		if err != .None{log.log(.Warning,"bad aloc");return}
 		gpu_data,gpu_data_ok=hm.get(&w_map.gpu_mesh_data_hm,gpu_data_hd)
 		assert(gpu_data_ok," i do not know how this hapend problobly hm full or somthing stupid like that this hould never triger")
@@ -3176,6 +3484,9 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 	first_face:=cast(u32) range.start * CHUNK_MAX_FACE_NUM
 
 	upload_data_to_mesh_by_offset(w_map.map_mesh_hd,w_map.chunck_transfer_buffer,mesh.data[:mesh.face_count],first_face, copy_pass)
+	gpu_data.chunk_shader_data[side].pos = cast([4]i32)chunk.pos
+	gpu_data.chunk_shader_data[side].side = side
+
 	gpu_data.draw_cmd[side].num_vertices = cast(u32)mesh.face_count * 6
 	gpu_data.draw_cmd[side].first_vertex = first_face * 6
 	gpu_data.draw_cmd[side].num_instances = 1 
@@ -3270,10 +3581,17 @@ unload_mesh_data_by_side::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD,side:Mode
 	}
 }
 
+Set_Block_CMD_Action::enum u8{
+	replace_cell,
+	append_child,
+	destroy_from,
+}
 Set_Block_CMD::struct{
 	chunk_pos:[4]int,
 	pos_in_chunk:[3]u8,
 	new_block:Block_Palette_Data,
+	action:Set_Block_CMD_Action,
+	target_pal_index:u16,
 }
 
 manage_set_block_cmd_q::proc(w_map:^Map)->(did_work:bool){
@@ -3298,6 +3616,7 @@ do_a_set_block_cmd_q::proc(w_map:^Map,q:Set_Block_CMD){
 	chunk_vox,chunk_vox_ok:=hm.get(&w_map.vox_chunk_hm,chunk.vox_data_hd)
 	if !chunk_vox_ok {return}
 	if !chunk_vox.vox_gened{return}
+
 	m_qs:=&chunk.mesh_q_state
 	if m_qs[.pos_x]!=.usable{return}
 	if m_qs[.neg_x]!=.usable{return}
@@ -3305,51 +3624,92 @@ do_a_set_block_cmd_q::proc(w_map:^Map,q:Set_Block_CMD){
 	if m_qs[.neg_y]!=.usable{return}
 	if m_qs[.pos_z]!=.usable{return}
 	if m_qs[.neg_z]!=.usable{return}
-	// if m_qs[.extra]!=.usable{return}
 
-	
-	p_index:=get_or_add_palette_index(chunk_vox,q.new_block)
-	pos_index:=pos_to_vox_index(q.pos_in_chunk)
-	old_item_hd:= get_vox_in_chunk(chunk_vox,q.pos_in_chunk)
-	set_palette_index(chunk_vox,pos_index,p_index)
+	old_pal_index:=get_palette_index_by_pos(chunk_vox,q.pos_in_chunk)
 
-	
+	switch q.action {
+	case .replace_cell:
+		p_index:=get_or_add_palette_index(chunk_vox,q.new_block)
+		set_palette_index(chunk_vox,pos_to_vox_index(q.pos_in_chunk),p_index)
+
+	case .append_child:
+		set_child_block_in_chunk(chunk_vox,q.pos_in_chunk,q.new_block.item,q.new_block.state)
+
+	case .destroy_from:
+		destroyed:=destroy_block_in_chunk(chunk_vox,q.pos_in_chunk,q.target_pal_index)
+		if !destroyed {return}
+	}
+
+	new_pal_index:=get_palette_index_by_pos(chunk_vox,q.pos_in_chunk)
+	if old_pal_index == new_pal_index {return}
+
 	light_q_hd,err:=hm.add(&w_map.light_qs_hm,Light_Q{})
 	assert(err ==.None)
-	update_block_lighting_after_set(w_map,chunk_hd,q.pos_in_chunk,q.chunk_pos,old_item_hd,q.new_block.item,light_q_hd)
 
+	update_block_lighting_after_set(w_map,chunk_vox,q.pos_in_chunk,light_q_hd)
 
-	start_light_chunk_task(w_map,Light_Chunk_Task{w_map = w_map,chunk_hd=chunk_hd,vox_data_hd=chunk.vox_data_hd,light_q_hd=light_q_hd,})
+	start_light_chunk_task(w_map,Light_Chunk_Task{
+		w_map=w_map,
+		chunk_hd=chunk_hd,
+		vox_data_hd=chunk.vox_data_hd,
+		light_q_hd=light_q_hd,
+	})
 }
 
 update_block_lighting_after_set :: proc(
-	w_map: ^Map,
-	chunk_hd: Chunk_HD,
-	pos: [3]u8,
-	chunk_pos: [4]int,
-	old_item_hd: Item_HD,
-	new_item_hd: Item_HD,
-	light_q_hd: Light_Q_HD,
+	w_map:^Map,
+	vox_chunk:^Vox_Chunk_Data,
+	pos:[3]u8,
+	light_q_hd:Light_Q_HD,
 ) {
-	q, q_ok := hm.get(&w_map.light_qs_hm,light_q_hd)
+	q,q_ok:=hm.get(&w_map.light_qs_hm,light_q_hd)
 	assert(q_ok)
-
-	new_item: Item_Info
-	new_ptr, new_ok := reg.get(&g.item_reg,new_item_hd)
-	if new_ok { new_item = new_ptr^ }
 
 	append(&q.remove_q,Light_Remove_CMD{pos=pos,type=.sun,channels=true})
 	append(&q.remove_q,Light_Remove_CMD{pos=pos,type=.block,channels=true})
 
-	if !new_item.is_opaque {
+	ab:=&vox_chunk.backing_chunk_data_abstract
+	pal_index:=get_palette_index_by_pos(vox_chunk,pos)
+
+	is_opaque:=false
+	emission:[3]u8
+
+	if pal_index != 0 {
+		chain_finished:=false
+
+		for _ in 0..<ab.pal_count^ {
+			assert(pal_index < ab.pal_count^,"invalid multiblock lighting chain")
+
+			block:=ab.pal[pal_index]
+			item,item_ok:=reg.get(&g.item_reg,block.item)
+
+			if item_ok {
+				is_opaque=is_opaque || item.is_opaque
+
+				emission.r=max(emission.r,item.light_emission.r)
+				emission.g=max(emission.g,item.light_emission.g)
+				emission.b=max(emission.b,item.light_emission.b)
+			}
+
+			pal_index=block.multy_block_index
+			if pal_index == 0 {
+				chain_finished=true
+				break
+			}
+		}
+
+		assert(chain_finished,"cycle detected in multiblock lighting chain")
+	}
+
+	if !is_opaque {
 		append(&q.seed_q,Light_Seed_Q_CMD{pos=pos,type=.sun})
 		append(&q.seed_q,Light_Seed_Q_CMD{pos=pos,type=.block})
 	}
 
-	if new_item.light_emission != {} {
+	if emission != {} {
 		append(&q.add_q,Light_Q_CMD{
 			pos=pos,
-			light={new_item.light_emission.r,new_item.light_emission.g,new_item.light_emission.b},
+			light=emission,
 			type=.block,
 		})
 	}
@@ -3376,7 +3736,8 @@ do_chunkering::proc(){
 		did_work:=manage_all_w_map_q(&g.w_map)
 		if did_work{
 			atom.atomic_store_explicit(&g.w_map.did_work, did_work, .Release)
+		}else{
+			time.sleep(1 * time.Millisecond/10)
 		}
-		time.sleep(1 * time.Millisecond/10)
 	}
 }

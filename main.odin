@@ -395,6 +395,14 @@ Render_Pass_Info::struct{
 	vertex_input_state : sdl.GPUVertexInputState,
 }
 
+C_Pass :: struct {
+	frame_data:^Frame_Data,
+	compute_pas:^sdl.GPUComputePass,
+	pipeline:^sdl.GPUComputePipeline,
+
+	name:string,
+}
+
 GPU_Pipeline_Vs::enum{
 	triangle_list,
 	line_list,
@@ -491,6 +499,38 @@ create_render_pass :: proc (
 	return pass
 }
 
+create_compute_pass :: proc(
+	frame_data:^Frame_Data,
+	comp_shader_hd: Shader_Handle, 
+	name:string="Not Named",
+) -> (pass:C_Pass) {
+
+	pass.frame_data = frame_data
+	pass.name = name
+	comp_shader:=get_shader(comp_shader_hd)
+
+	pass.pipeline = sdl.CreateGPUComputePipeline(s.gpu_device, sdl.GPUComputePipelineCreateInfo{
+		code_size = len(comp_shader.data),
+		code = raw_data(comp_shader.data),
+		entrypoint = "main",
+		format = {comp_shader.format},
+
+		num_samplers = 0,
+		num_readonly_storage_textures = 0,
+		num_readonly_storage_buffers = 2,
+		num_readwrite_storage_textures = 0,
+		num_readwrite_storage_buffers = 1,
+		num_uniform_buffers = 1,
+
+		threadcount_x = 64,
+		threadcount_y = 1,
+		threadcount_z = 1,
+	})
+
+	assert(pass.pipeline != nil, "failed to create compute pipeline")
+	return pass
+}
+
 Render_Type::enum{
 	vertex,
 	face,
@@ -505,7 +545,6 @@ do_render_pass::proc(
 	type:Render_Type = .vertex,
 	pipeline_vs:GPU_Pipeline_Vs = .triangle_list,
 ){
-
 	if pass == nil {
 		log.log(.Warning,"\n",pass.name,"pass == nil\n")
 		return
@@ -519,10 +558,10 @@ do_render_pass::proc(
 	// view_mat :Mat4= 1//lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
 	// proj_mat :Mat4= 1//lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
 	
-	view_mat,proj_mat:=make_view_mat_proj_mat(cam)
 
+	mvp:=cam.mvp
 	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
-	pass.ubo = {mvp = proj_mat * view_mat * modl_mat, viewport_size = cast([2]f32)cam.texture_size}
+	pass.ubo = {mvp = mvp * modl_mat, viewport_size = cast([2]f32)cam.texture_size}
 
 	sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline[s.g_render_settings.msaa_samp_count][pipeline_vs])
 
@@ -568,7 +607,6 @@ do_render_pass::proc(
 				// frag_buffer_count+=1
 				for data in indexed_gpu_data{
 					index_mesh :=get_mesh(data.mesh_hd)
-
 					if data.bind_to_vert{
 						sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &index_mesh.gpu.vertex_buf,1)
 						vert_buffer_count+=1
@@ -579,9 +617,7 @@ do_render_pass::proc(
 					}
 				}
 				cmd:=get_mesh(indirect_cmds[i])
-
-				cmd_count:=cast(u32)(len(cmd.cpu.vertex_buf.buffer.buf)/cmd.cpu.attribute_size)
-	
+				cmd_count:=cast(u32)(cmd.gpu.index_count)
 				sdl.DrawGPUPrimitivesIndirect(
 					pass.render_pas,
 					cmd.gpu.vertex_buf,
@@ -592,7 +628,7 @@ do_render_pass::proc(
 		}else{
 			for mesh_hd in meshes_hd{
 				mesh:=get_mesh(mesh_hd)
-				sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
+				// sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
 				// sdl.BindGPUVertexStorageBuffers
 
 				vert_buffer_count:u32
@@ -611,11 +647,60 @@ do_render_pass::proc(
 					}
 				}
 				face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
-				fmt.print(face_count,len(mesh.cpu.vertex_buf.buffer.buf),mesh.cpu.attribute_size,"\n")
-				sdl.DrawGPUPrimitives(pass.render_pas,face_count*6, 1, 0, 0) 
+				sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.vertex_count*6, 1, 0, 0) 
 			}
 		}
 	}
+}
+
+Frustum_Cull_Params :: struct {
+	mvp: Mat4,
+	chunk_count: u32,
+	do_chunk_back_face_culling: u32,
+	_padding: [2]u32,
+	cam_chunk_pos:[4]i32,
+}
+
+frustum_cull_indirect :: proc(
+	pass:^C_Pass,
+	chunk_data_buf:[]^sdl.GPUBuffer,
+	source_cmd_buf:[]^sdl.GPUBuffer,
+	culled_cmd_buf:^sdl.GPUBuffer,
+	cam:^Camera,
+	chunk_count:u32,
+) {
+	if pass == nil || chunk_count == 0 {return}
+
+	rw_binding := sdl.GPUStorageBufferReadWriteBinding{buffer = culled_cmd_buf, cycle = true}
+	start_compute(pass, {rw_binding})
+	if pass.compute_pas == nil {return}
+
+	sdl.BindGPUComputeStorageBuffers(pass.compute_pas, 0, raw_data(source_cmd_buf), 1)
+	sdl.BindGPUComputeStorageBuffers(pass.compute_pas, 1, raw_data(chunk_data_buf), 1)
+
+	cam_chunk_pos := [4]i32{
+	    i32(math.floor(cast(f32)cam.pos.x / 32)),
+	    i32(math.floor(cast(f32)cam.pos.y / 32)),
+	    i32(math.floor(cast(f32)cam.pos.z / 32)),
+	    0,
+	}
+	
+	do_chunk_back_face_culling := u32(1)
+	// if g.settings.do_chunk_back_face_culling {
+	//     do_chunk_back_face_culling = 1
+	// }
+	
+	params := Frustum_Cull_Params{
+	    mvp = cam.mvp,
+	    chunk_count = chunk_count,
+	    do_chunk_back_face_culling = do_chunk_back_face_culling,
+	    cam_chunk_pos = cam_chunk_pos,
+	}
+	sdl.PushGPUComputeUniformData(pass.frame_data.render_cmd_buf, 0, &params, size_of(params))
+
+	sdl.DispatchGPUCompute(pass.compute_pas, (chunk_count + 63) / 64, 1, 1)
+
+	submit_compute(pass)
 }
 
 make_view_mat_proj_mat::proc(cam:^Camera)->(view_mat:Mat4,proj_mat:Mat4){
@@ -807,6 +892,40 @@ submit_render::proc(pass:^R_Pass,){
 	// ok := sdl.SubmitGPUCommandBuffer(pass.render_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed\n")
 }
 
+start_compute :: proc(
+	pass:^C_Pass,
+	rw_bindings:[]sdl.GPUStorageBufferReadWriteBinding,
+) {
+	if pass == nil {return}
+	if pass.frame_data == nil || pass.frame_data.render_cmd_buf == nil {return}
+	if pass.pipeline == nil {return}
+	if pass.compute_pas != nil {
+		log.log(.Warning, pass.name, " compute pass already active")
+		return
+	}
+
+	pass.compute_pas = sdl.BeginGPUComputePass(
+		pass.frame_data.render_cmd_buf,
+		nil,
+		0,
+		raw_data(rw_bindings),
+		cast(u32)len(rw_bindings),
+	)
+
+	if pass.compute_pas == nil {
+		log.log(.Error, pass.name, " failed to begin compute pass")
+		return
+	}
+
+	sdl.BindGPUComputePipeline(pass.compute_pas, pass.pipeline)
+}
+submit_compute :: proc(pass:^C_Pass) {
+	if pass == nil || pass.compute_pas == nil {return}
+
+	sdl.EndGPUComputePass(pass.compute_pas)
+	pass.compute_pas = nil
+}
+
 Frame_Data::struct{
 	render_cmd_buf :^sdl.GPUCommandBuffer,
 	frame_count:u64,
@@ -896,6 +1015,7 @@ Camera ::struct {
 	target:[3]f32,
 	zoom:f32,
 	look:Look_Dir,
+	mvp: Mat4,
 	texture_size:[2]i32,
 	type:Camera_Types,
 	depth_texture_createinfo : sdl.GPUTextureCreateInfo,
@@ -930,6 +1050,11 @@ screane_space_to_world_2d::proc(cam:^Camera,pos:[2]f32)->(world:[2]f32){
 	world = cam.pos.xy + pos_world
 	return 
 }
+update_camera::proc(cam:^Camera,){
+	v,p:=make_view_mat_proj_mat(cam)
+	cam.mvp = p*v
+}
+
 // this is a very rudimenty controler and should only be used for testing
 update_camera_3d::proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=.5,){
 	move_input:Vec2

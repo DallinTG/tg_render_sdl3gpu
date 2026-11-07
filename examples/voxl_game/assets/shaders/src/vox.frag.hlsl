@@ -26,6 +26,7 @@ struct Chunk_Data{
 	int   pos_y;
 	int   pos_z;
 	int   size;
+	uint  side;
 };
 
 struct Face_Geometry {
@@ -173,6 +174,6 @@ float4 main(Input input) : SV_Target0 {
 	
 	// Apply lighting to the final textured and masked color.
 	color.rgb *= light;
-
+	// return color;
 	return color * input.color* float4(input.shading, input.shading, input.shading, 1.0);
 }

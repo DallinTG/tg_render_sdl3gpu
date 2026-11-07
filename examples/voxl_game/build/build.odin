@@ -26,7 +26,7 @@ main :: proc() {
 		os.exit(1)
 	}
 	for file in files {
-		if file.name == "vox.vert.hlsl"||file.name == "vox.frag.hlsl"{
+		if file.name == "vox.vert.hlsl"||file.name == "vox.frag.hlsl" || file.name == "dynamic_vox.vert.hlsl"{
 			fmt.print(file.name," do just spv on this\n")
 			shadercross(file, "spv")
 			shadercross(file, "json")

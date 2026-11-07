@@ -40,7 +40,6 @@ clay_render :: proc(clay_instance:Clay_I_Handle, render_commands: ^cl.ClayArray(
     for i in 0 ..< render_commands.length {
         render_command := cl.RenderCommandArray_Get(render_commands, i)
         bounds := render_command.boundingBox
-
         switch render_command.commandType {
         case .None: // None
         case .Text:

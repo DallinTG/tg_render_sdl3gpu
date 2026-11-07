@@ -49,6 +49,8 @@ Game::struct{
 	cube_face_geometry:Block_Model_HD,
 	top_slab_face_geometry:Block_Model_HD,
 	bot_slab_face_geometry:Block_Model_HD,
+	stair_face_geometry:Block_Model_HD,
+	test_gemotry:Block_Model_HD,
 
 	temp_using_item_hd:Item_HD,
 	// t_chuck:Chunck,
@@ -59,7 +61,7 @@ Game::struct{
 	ui_clay_inst:tg.Clay_I_Handle,
 	// w_map:^Map,
 	// entitys:Entity_Handle_Map,
-	entitys_mesh:tg.Mesh_Handle,
+	// entitys_mesh:tg.Mesh_Handle,
 	// all_player_data:All_Player_data,
 	// world_mesh:tg.Mesh_Handle,
 	frame_data:tg.Frame_Data,
@@ -69,6 +71,8 @@ Game::struct{
 	pass:tg.R_Pass,
 	ui_pass:tg.R_Pass,
 	vox_pass:tg.R_Pass,
+	dynamic_vox_pass:tg.R_Pass,
+	vox_comp_pass:tg.C_Pass,
 	// sand_sim_pass:tg.R_Pass,
 
 	vert_shader:tg.Shader_Handle,
@@ -77,8 +81,10 @@ Game::struct{
 	ui_frag_shader:tg.Shader_Handle,
 	// sand_sim_vert_shader:tg.Shader_Handle,
 	// sand_sim_frag_shader:tg.Shader_Handle,
+	dynamic_vox_vert_shader:tg.Shader_Handle,
 	vox_vert_shader:tg.Shader_Handle,
 	vox_frag_shader:tg.Shader_Handle,
+	vox_comp_shader:tg.Shader_Handle,
 
 
 	render_thread:^thread.Thread,
@@ -148,6 +154,8 @@ main :: proc(){
 	defer tg.end_tracking_allocator(&tracking_allocator)
 	tg.name_thread("Main")
 
+
+
 	// spall_ctx = spall.context_create("trace_test.spall")
 	// defer spall.context_destroy(&spall_ctx)
 
@@ -178,17 +186,22 @@ main :: proc(){
 	// g.sand_sim_vert_shader = tg.load_shader_file(file_path = "sand_sim_shader.vert")
 	// g.sand_sim_frag_shader = tg.load_shader_file(file_path = "sand_sim_shader.frag")
 
+	g.dynamic_vox_vert_shader = tg.load_shader_file(file_path = "dynamic_vox.vert")
 	g.vox_vert_shader = tg.load_shader_file(file_path = "vox.vert")
 	g.vox_frag_shader = tg.load_shader_file(file_path = "vox.frag")
+
+	g.vox_comp_shader = tg.load_shader_file(file_path = "vox.comp")
 
 
 
 	g.pass = tg.create_render_pass(&g.frame_data, g.vert_shader, g.frag_shader, name = "Defalt_Pass")
 	g.ui_pass = tg.create_render_pass(&g.frame_data, g.ui_vert_shader, g.ui_frag_shader, name = "UI_Pass")
 	g.vox_pass = tg.create_render_pass(&g.frame_data, g.vox_vert_shader,  g.vox_frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "VOX_Pass")
-	// g.sand_sim_pass = tg.create_render_pass(&g.frame_data, g.vert_shader,  g.frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "Sand_Sim_Pass")
+	g.dynamic_vox_pass = tg.create_render_pass(&g.frame_data, g.dynamic_vox_vert_shader,  g.vox_frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "Dynamic_VOX_Pass")
+	g.vox_comp_pass = tg.create_compute_pass(&g.frame_data, g.vox_comp_shader, name = "VOX_COMP_Pass")
+
 	init()
-	
+
 	// mesh_chunck(&g.t_chuck)
 	tg.get_number_of_current_players()
 	main_loop:for !tg.start_tick(){
@@ -198,16 +211,8 @@ main :: proc(){
 		tg.update_notification_buffer(& s.ui.notifications,s.time.tick_time)
 
 		if s.time.is_60_hz{
-			tg.toggle_mouse_mode_on_input_event(g.window,.ESC)
-			// log.log(.Info,get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look,))
 
-			if tg.is_input_event(.ui_l_c,never_consume_p = true){
-				log.log(.Debug,"brake",get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look),g.cam.look)
-				brake_block_by_ray(&g.w_map,g.cam.pos,g.cam.look)
-			}
-			if tg.is_input_event(.ui_r_c){
-				set_block_by_ray(&g.w_map,g.cam.pos,g.cam.look)
-			}
+			do_player_client_stuff()
 			// manage_all_w_map_q(&g.w_map)
 			sink_game_info(&g.server,&g.info)
 			g.clay_render_comands=create_layout()
@@ -254,7 +259,7 @@ cleane_up_game::proc(){
 	tg.delete_r_pass(&g.pass)
 	tg.delete_r_pass(&g.ui_pass)
 	tg.delete_r_pass(&g.vox_pass)
-	tg.delete_mesh(g.entitys_mesh)
+	// tg.delete_mesh(g.entitys_mesh)
 	tg.delete_camera(&g.cam)
 	delete(g.server.clients)
 	tg.delete_clay_instance(g.ui_clay_inst)
@@ -307,43 +312,39 @@ do_rendering::proc(){
 	context.logger = tg.create_tg_console_logger(opt = {.Thread_Id,.Level,.Short_File_Path,.Line,.Procedure,.Terminal_Color})
 	context.allocator = tg.init_tracking_allocator(&tracking_allocator)
 	defer tg.end_tracking_allocator(&tracking_allocator)
-	// mesh_map(&g.w_map)
-	// upload_chunks_to_gpu(&g.w_map)
-// 
 
-
-
-
-
-
-
-
-
-	// mesh_map(&g.w_map)
 	rendering_loop:for !s.app_should_close {
 
-
+		tg.update_camera(&g.cam)
+		tg.update_camera(&g.cam_ui)
 		tg.start_frame(&g.frame_data)
-		// tg.upload_face_indirect_commands(&g.vox_pass)
-		// manage_all_w_map_q(&g.w_map)
-		if atom.atomic_load_explicit(&g.w_map.did_work, .Acquire) {
-            
-            // Reset the flag so we don't re-process next frame.
-            // (Using relaxed or release depending on who writes next)
-            atom.atomic_store_explicit(&g.w_map.did_work, false, .Relaxed)
+		
+		// tg.start_compute(&g.vox_comp_pass,{})
+		raw_cmd_buff:=tg.get_mesh(g.w_map.draw_cmd_buf_hd)
+		cmd_buff:=tg.get_mesh(g.w_map.draw_cmd_buf_comped_hd)
+		chunk_buff:=tg.get_mesh(g.w_map.chunk_shader_data.mesh_hd)
+	
 
-            // 2. Safe to read the freshly cached data and update buffers!
-        }
-
-        update_w_map_draw_cmds_buff(&g.w_map, &g.cam)
-
-		// update_w_map_draw_cmds_buff(&g.w_map, &g.cam)
+	
+	
+	
+		tg.frustum_cull_indirect(&g.vox_comp_pass,{chunk_buff.gpu.vertex_buf},{raw_cmd_buff.gpu.vertex_buf},cmd_buff.gpu.vertex_buf,&g.cam,cast(u32)(cmd_buff.gpu.index_count))
+		// tg.submit_compute(&g.vox_comp_pass)
 		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
-		// render_chunck(&g.t_chuck,)
 		render_map(&g.w_map)
 		tg.submit_render(&g.vox_pass)
+
+		tg.start_render(&g.dynamic_vox_pass ,&g.cam, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
+		tg.do_render_pass(&g.dynamic_vox_pass, &g.cam, {g.w_map.dynamic_map_mesh_hd},{&g.texture_facees,&g.geometry_facees}, {},type = .face)
+		tg.submit_render(&g.dynamic_vox_pass)
+
+		tg.start_render(&g.pass ,&g.cam, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
+		tg.do_render_pass(&g.pass, &g.cam, {g.w_map.drawing_map_mesh_hd},{}, {},type = .vertex)
+		tg.submit_render(&g.pass)
+
 		tg.start_render(&g.pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE_AND_STORE)
 		tg.submit_render(&g.pass)
+
 		tg.start_render(&g.ui_pass ,&g.cam_ui, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)
 		tg.render_clay_instance(g.ui_clay_inst,&g.ui_pass,&g.cam_ui)
 		tg.submit_render(&g.ui_pass)

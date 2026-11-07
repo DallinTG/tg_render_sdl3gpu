@@ -196,6 +196,8 @@ init_all_item_data::proc(){
 	init_geometry_facees()
 	g.cube_face_geometry =  create_cube_face_geometry()
 	g.bot_slab_face_geometry = create_slab_face_geometry()
+	g.stair_face_geometry = create_stair_face_geometry()
+	g.test_gemotry = import_test_gltf_model()
 	reg_materials()
 	reg_items()
 	
@@ -206,7 +208,7 @@ init_texture_facees::proc(){
 	g.texture_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Texure,"texture_facees_gpu_data",bind_to_vert = false,bind_to_frag = true)
 }
 init_geometry_facees::proc(){
-	g.geometry_facees = tg.init_indexed_gpu_data(tg.Vert_Face_Geometry,"geometry_facees_gpu_data",bind_to_vert = true,bind_to_frag = false)
+	g.geometry_facees = tg.init_indexed_gpu_data(Vert_Face_Geometry,"geometry_facees_gpu_data",bind_to_vert = true,bind_to_frag = false)
 }
 
 update_texture_facees::proc(){
@@ -273,6 +275,7 @@ DF_Items::enum{
 	glow_block_red,
 	glow_block_green,
 	glow_block_blue,
+	test,
 	
 }
 creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
@@ -359,6 +362,16 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 		light_emission = {0,0,31},
 		name = "Glow Block Blue",
 	}
+
+	i[.glow_block_blue] = Item_Info{
+		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
+		model = g.test_gemotry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
+		light_emission = {0,0,0},
+		name = "Test",
+	}
 	return
 }
 
@@ -372,7 +385,6 @@ reg_items::proc(){
 	}
 	iterator:=hm.iterator_make(&g.material_reg.data)
 	for mat,mat_hd in hm.iterate(&iterator){
-			log.log(.Debug,"\n\n\n\n\n\n\n\n\n\n\n\n\n waffles",mat.material_tags)
 		if .has_stone_v in mat.material_tags{
 			{
 				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1})
@@ -467,7 +479,21 @@ reg_items::proc(){
 					model = g.bot_slab_face_geometry,
 					texture_data = {sides = fill_sides_all_1_t(texture)},
 					is_occupied = true,
-					is_opaque = true,
+					is_opaque = false,
+					is_solid = true,
+				}
+				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
+			}
+			{
+				texture:=add_texture_face(reg.id(mat.tex_id),{1,1,1,1},mask_tex_id = Textures_Dat[.Large_Square_Tiles_Mask].id,mask_tint_l={.9,.9,1,1},mask_tint_d={1,1,.9,1})
+				name:=st.concatenate({mat.name," Large Square Tiles Stair"})
+				item:Item_Info={
+					name = name,
+					tags = {.Is_Solid,.Is_Opaque,.Is_Block,},
+					model = g.stair_face_geometry,
+					texture_data = {sides = fill_sides_all_1_t(texture)},
+					is_occupied = true,
+					is_opaque = false,
 					is_solid = true,
 				}
 				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))

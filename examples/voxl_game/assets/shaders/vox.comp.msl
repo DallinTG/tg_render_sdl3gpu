@@ -1,0 +1,165 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Indirect_Draw_Command
+{
+    uint num_vertices;
+    uint num_instances;
+    uint first_vertex;
+    uint first_instance;
+};
+
+struct type_StructuredBuffer_Indirect_Draw_Command
+{
+    Indirect_Draw_Command _m0[1];
+};
+
+struct Chunk_Data
+{
+    int pos_x;
+    int pos_y;
+    int pos_z;
+    int size;
+    uint side;
+};
+
+struct type_StructuredBuffer_Chunk_Data
+{
+    Chunk_Data _m0[1];
+};
+
+struct type_RWStructuredBuffer_Indirect_Draw_Command
+{
+    Indirect_Draw_Command _m0[1];
+};
+
+struct type_Cull_Params
+{
+    float4x4 mvp;
+    uint chunk_count;
+    uint do_chunk_back_face_culling;
+    uint2 _padding;
+    int4 cam_chunk_pos;
+};
+
+kernel void main0(constant type_Cull_Params& Cull_Params [[buffer(0)]], const device type_StructuredBuffer_Indirect_Draw_Command& source_commands [[buffer(1)]], const device type_StructuredBuffer_Chunk_Data& chunk_data [[buffer(2)]], device type_RWStructuredBuffer_Indirect_Draw_Command& culled_commands [[buffer(3)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
+{
+    do
+    {
+        if (gl_GlobalInvocationID.x >= Cull_Params.chunk_count)
+        {
+            break;
+        }
+        float3 _84 = float3(float(chunk_data._m0[gl_GlobalInvocationID.x].size)) * 16.0;
+        float3 _85 = (float3(float(chunk_data._m0[gl_GlobalInvocationID.x].pos_x), float(chunk_data._m0[gl_GlobalInvocationID.x].pos_y), float(chunk_data._m0[gl_GlobalInvocationID.x].pos_z)) * 32.0) + _84;
+        float4 _90 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) + float4(Cull_Params.mvp[0][0u], Cull_Params.mvp[1][0u], Cull_Params.mvp[2][0u], Cull_Params.mvp[3][0u]);
+        float4 _91 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][0u], Cull_Params.mvp[1][0u], Cull_Params.mvp[2][0u], Cull_Params.mvp[3][0u]);
+        float4 _94 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) + float4(Cull_Params.mvp[0][1u], Cull_Params.mvp[1][1u], Cull_Params.mvp[2][1u], Cull_Params.mvp[3][1u]);
+        float4 _95 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][1u], Cull_Params.mvp[1][1u], Cull_Params.mvp[2][1u], Cull_Params.mvp[3][1u]);
+        float4 _98 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]);
+        float3 _99 = _90.xyz;
+        bool _118;
+        if (!(((dot(_99, _85) + _90.w) + dot(abs(_99), _84)) < 0.0))
+        {
+            float3 _110 = _91.xyz;
+            _118 = ((dot(_110, _85) + _91.w) + dot(abs(_110), _84)) < 0.0;
+        }
+        else
+        {
+            _118 = true;
+        }
+        bool _130;
+        if (!_118)
+        {
+            float3 _122 = _94.xyz;
+            _130 = ((dot(_122, _85) + _94.w) + dot(abs(_122), _84)) < 0.0;
+        }
+        else
+        {
+            _130 = true;
+        }
+        bool _142;
+        if (!_130)
+        {
+            float3 _134 = _95.xyz;
+            _142 = ((dot(_134, _85) + _95.w) + dot(abs(_134), _84)) < 0.0;
+        }
+        else
+        {
+            _142 = true;
+        }
+        bool _154;
+        if (!_142)
+        {
+            _154 = ((dot(float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]).xyz, _85) + Cull_Params.mvp[3][2u]) + dot(abs(float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]).xyz), _84)) < 0.0;
+        }
+        else
+        {
+            _154 = true;
+        }
+        bool _166;
+        if (!_154)
+        {
+            float3 _158 = _98.xyz;
+            _166 = ((dot(_158, _85) + _98.w) + dot(abs(_158), _84)) < 0.0;
+        }
+        else
+        {
+            _166 = true;
+        }
+        bool _202;
+        if (Cull_Params.do_chunk_back_face_culling != 0u)
+        {
+            int3 _177 = (int3(chunk_data._m0[gl_GlobalInvocationID.x].pos_x, chunk_data._m0[gl_GlobalInvocationID.x].pos_y, chunk_data._m0[gl_GlobalInvocationID.x].pos_z) + int3(chunk_data._m0[gl_GlobalInvocationID.x].size)) - int3(1);
+            bool _201;
+            switch (chunk_data._m0[gl_GlobalInvocationID.x].side)
+            {
+                case 0u:
+                {
+                    _201 = Cull_Params.cam_chunk_pos.x < chunk_data._m0[gl_GlobalInvocationID.x].pos_x;
+                    break;
+                }
+                case 1u:
+                {
+                    _201 = Cull_Params.cam_chunk_pos.x > _177.x;
+                    break;
+                }
+                case 2u:
+                {
+                    _201 = Cull_Params.cam_chunk_pos.y < chunk_data._m0[gl_GlobalInvocationID.x].pos_y;
+                    break;
+                }
+                case 3u:
+                {
+                    _201 = Cull_Params.cam_chunk_pos.y > _177.y;
+                    break;
+                }
+                case 4u:
+                {
+                    _201 = Cull_Params.cam_chunk_pos.z < chunk_data._m0[gl_GlobalInvocationID.x].pos_z;
+                    break;
+                }
+                case 5u:
+                {
+                    _201 = Cull_Params.cam_chunk_pos.z > _177.z;
+                    break;
+                }
+                default:
+                {
+                    _201 = false;
+                    break;
+                }
+            }
+            _202 = _201;
+        }
+        else
+        {
+            _202 = false;
+        }
+        culled_commands._m0[gl_GlobalInvocationID.x] = Indirect_Draw_Command{ ((!_166) ? _202 : true) ? 0u : source_commands._m0[gl_GlobalInvocationID.x].num_vertices, source_commands._m0[gl_GlobalInvocationID.x].num_instances, source_commands._m0[gl_GlobalInvocationID.x].first_vertex, source_commands._m0[gl_GlobalInvocationID.x].first_instance };
+        break;
+    } while(false);
+}
+

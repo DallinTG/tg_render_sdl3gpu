@@ -347,6 +347,169 @@ draw_cube::proc(mesh: ^Mesh_CPU, tex:^Texture, $vert_t:typeid, col:[4]f32={1,1,1
 	draw_verts_by_quad_mat(mesh, 6, verts[:], mat)
 }
 
+draw_cube_outline::proc(
+	mesh: ^Mesh_CPU,
+	tex: ^Texture,
+	$vert_t:typeid,
+	col:[4]f32={1,1,1,1},
+	cube:Cube,
+	origin:Vec3={},
+	rot:[3]f32={},
+	mat:matrix[4,4]f32=Mat4(1),
+	thickness:f32=0.02,
+){
+	thickness:=math.abs(thickness)
+	if thickness <= 0 {return}
+	if thickness >= 0.5 {thickness = 0.49}
+
+	Bar :: struct {
+		min:[3]f32,
+		max:[3]f32,
+		axis:int,
+	}
+
+	bars:[12]Bar
+	bar_count:=0
+
+	// X axis bars
+	for y_side in 0..<2 {
+		y_min:f32 = -1
+		y_max:f32 = -1 + thickness
+		if y_side == 1 {
+			y_min = -thickness
+			y_max = 0
+		}
+
+		for z_side in 0..<2 {
+			z_min:f32 = -1
+			z_max:f32 = -1 + thickness
+			if z_side == 1 {
+				z_min = -thickness
+				z_max = 0
+			}
+
+			bars[bar_count] = {min={0,y_min,z_min},max={1,y_max,z_max},axis=0}
+			bar_count+=1
+		}
+	}
+
+	// Y axis bars
+	for x_side in 0..<2 {
+		x_min:f32 = 0
+		x_max := thickness
+		if x_side == 1 {
+			x_min = 1-thickness
+			x_max = 1
+		}
+
+		for z_side in 0..<2 {
+			z_min:f32 = -1
+			z_max:f32 = -1 + thickness
+			if z_side == 1 {
+				z_min = -thickness
+				z_max = 0
+			}
+
+			bars[bar_count] = {min={x_min,-1+thickness,z_min},max={x_max,-thickness,z_max},axis=1}
+			bar_count+=1
+		}
+	}
+
+	// Z axis bars
+	for x_side in 0..<2 {
+		x_min:f32 = 0
+		x_max := thickness
+		if x_side == 1 {
+			x_min = 1-thickness
+			x_max = 1
+		}
+
+		for y_side in 0..<2 {
+			y_min:f32 = -1
+			y_max:f32 = -1 + thickness
+			if y_side == 1 {
+				y_min = -thickness
+				y_max = 0
+			}
+
+			bars[bar_count] = {min={x_min,y_min,-1+thickness},max={x_max,y_max,-thickness},axis=2}
+			bar_count+=1
+		}
+	}
+
+	// Original cube geometry
+	cube_pos:[24][4]f32 = {
+		{0,0,0,1},{0,-1,0,1},{1,-1,0,1},{1,0,0,1},
+		{0,0,-1,1},{0,0,0,1},{1,0,0,1},{1,0,-1,1},
+		{1,0,-1,1},{1,-1,-1,1},{0,-1,-1,1},{0,0,-1,1},
+		{1,-1,-1,1},{1,-1,0,1},{0,-1,0,1},{0,-1,-1,1},
+		{1,0,0,1},{1,-1,0,1},{1,-1,-1,1},{1,0,-1,1},
+		{0,0,-1,1},{0,-1,-1,1},{0,-1,0,1},{0,0,0,1},
+	}
+
+	cube_uv:[4][2]f32 = {{0,0},{0,1},{1,1},{1,0}}
+
+	// X bars have 6 faces, Y and Z bars have 4.
+	// The Y/Z end caps are omitted because they join the X bars.
+	face_indices:[3][6]int = {
+		{0,1,2,3,4,5},
+		{0,2,4,5,0,0},
+		{1,3,4,5,0,0},
+	}
+	face_counts:[3]int = {6,4,4}
+
+	verts:[224]vert_t
+	out:=0
+
+	for bar in bars {
+		for fi in 0..<face_counts[bar.axis] {
+			face_index:=face_indices[bar.axis][fi]
+
+			// corner_order := [4]int{0,3,2,1}
+			corner_order := [4]int{1,2,3,0}
+
+			for corner in 0..<4 {
+				c := corner_order[corner]
+				src := face_index*4+c
+
+				verts[out].pos = {
+					bar.min[0]+cube_pos[src][0]*(bar.max[0]-bar.min[0]),
+					bar.max[1]+cube_pos[src][1]*(bar.max[1]-bar.min[1]),
+					bar.max[2]+cube_pos[src][2]*(bar.max[2]-bar.min[2]),
+					1,
+				}
+
+				when intrinsics.type_has_field(vert_t, "col"){
+					verts[out].col = col
+				}
+
+				when intrinsics.type_has_field(vert_t, "uv"){
+					verts[out].uv = cube_uv[corner]
+				}
+
+				when intrinsics.type_has_field(vert_t, "img_index"){
+					verts[out].img_index = cast(u32)tex.groop_index
+				}
+
+				when intrinsics.type_has_field(vert_t, "layer"){
+					verts[out].layer = tex.layer
+				}
+
+				out+=1
+			}
+		}
+	}
+
+	translate_m4:Mat4 = lin.matrix4_translate_f32(cube.pos)
+	origin_m4:Mat4 = lin.matrix4_translate_f32(origin)
+	scale_m4:Mat4 = lin.matrix4_scale_f32(cube.w_h_l)
+	rotate_q := lin.quaternion_from_pitch_yaw_roll_f32(rot.x,rot.y,rot.z)
+	rotate_m4:Mat4 = lin.matrix4_from_quaternion_f32(rotate_q)
+	final_mat := translate_m4 * rotate_m4 * origin_m4 * scale_m4 * mat
+
+	draw_verts_by_quad_mat(mesh,56,verts[:],final_mat)
+}
+
 
 Rect::struct{
 	pos:[3]f32,

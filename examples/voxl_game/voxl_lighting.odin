@@ -26,140 +26,26 @@ import atom "core:sync"
 import nos "core:math/noise"
 
 
-// Palette_Sizes::enum u8{
-// 	u0,
-// 	u1,
-// 	u2,
-// 	u4,
-// 	u8,
-// 	u16,
-// }
-// Palette_Info::struct{
-// 	bits_per_vox:int,
-// 	bits_per_chunk:int,
-// 	bytes_per_chunk:int,
-// 	max_pal_size:int,
-// 	u32_per_chunk:int,
-// 	index_shift:u8,
-// 	shift:u8,
-// 	mask:u32,
-// 	field_mask:u16,
-// 	fill_mask:u32,
-
-// }
-// @(rodata)PAL_INFO:=PALETTES_INFO
-
-// PALETTES_INFO:[Palette_Sizes]Palette_Info:{
-// 	.u0 = {
-// 		bits_per_vox = 0,
-// 		bits_per_chunk = 0,
-// 		bytes_per_chunk = 0,
-// 		u32_per_chunk = 0,
-// 		max_pal_size = 1,
-// 		index_shift=0,
-// 		shift=0,
-// 		field_mask=0,
-// 		mask=0,
-// 		fill_mask = 0
-// 	},
-// 	.u1 = {
-// 		bits_per_vox = 1,
-// 		bits_per_chunk = 1 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE,
-// 		bytes_per_chunk = 1 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/8,
-// 		u32_per_chunk = 1 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/32,
-// 		max_pal_size = 2,
-// 		index_shift=5,
-// 		shift=0,
-// 		field_mask=31,
-// 		mask=1,
-// 		fill_mask=0xFFFFFFFF,
-// 	},
-// 	.u2 = {
-// 		bits_per_vox = 2,
-// 		bits_per_chunk = 2 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE,
-// 		bytes_per_chunk = 2 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/8,
-// 		u32_per_chunk = 2 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/32,
-// 		max_pal_size = 4,
-// 		index_shift=4,
-// 		shift=1,
-// 		field_mask=15,
-// 		mask=3,
-// 		fill_mask=0x55555555,
-// 	},
-// 	.u4 = {
-// 		bits_per_vox = 4,
-// 		bits_per_chunk = 4 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE,
-// 		bytes_per_chunk = 4 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/8,
-// 		u32_per_chunk = 4 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/32,
-// 		max_pal_size = 16,
-// 		index_shift=3,
-// 		shift=2,
-// 		field_mask=7,
-// 		mask=15,
-// 		fill_mask=0x11111111,
-// 	},
-// 	.u8 = {
-// 		bits_per_vox = 8,
-// 		bits_per_chunk = 8 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE,
-// 		bytes_per_chunk = 8 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/8,
-// 		u32_per_chunk = 8 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/32,
-// 		max_pal_size = 256,
-// 		index_shift=2,
-// 		shift=3,
-// 		field_mask=3,
-// 		mask=255,
-// 		fill_mask=0x01010101,
-// 	},
-// 	.u16 = {
-// 		bits_per_vox = 16,
-// 		bits_per_chunk = 16 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE,
-// 		bytes_per_chunk = 16 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/8,
-// 		u32_per_chunk = 16 * CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE/32,
-// 		max_pal_size = CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE,
-// 		index_shift=1,
-// 		shift=4,
-// 		field_mask=1,
-// 		mask=65535,
-// 		fill_mask=0x00010001,
-// 	},
-// }
-
 //this is a groop of maps that can store vox data in difrent sizing formats
 Backing_Light_World_Data::struct{
-	Mutex_u0:atom.Mutex,
+	Mutex_u0:atom.Atomic_RW_Mutex,
 	u0_chunk_data:	U0_Backing_Light_Data_HM,
 
-	Mutex_u1:atom.Mutex,
+	Mutex_u1:atom.Atomic_RW_Mutex,
 	u1_chunk_data:	U1_Backing_Light_Data_HM,
 
-	Mutex_u2:atom.Mutex,
+	Mutex_u2:atom.Atomic_RW_Mutex,
 	u2_chunk_data:	U2_Backing_Light_Data_HM,
 
-	Mutex_u4:atom.Mutex,
+	Mutex_u4:atom.Atomic_RW_Mutex,
 	u4_chunk_data:	U4_Backing_Light_Data_HM,
 
-	Mutex_u8:atom.Mutex,
+	Mutex_u8:atom.Atomic_RW_Mutex,
 	u8_chunk_data:	U8_Backing_Light_Data_HM,
 
-	Mutex_u16:atom.Mutex,
+	Mutex_u16:atom.Atomic_RW_Mutex,
 	u16_chunk_data:	U16_Backing_Light_Data_HM,
 }
-
-// Palette_Data::struct{
-// 	item:Item_HD,
-// 	count:u16,
-// 	is_solid:bool,
-// 	is_opaque:bool,
-// 	is_occupied:bool,
-// }
-
-// Block_Palette_Data::struct{
-// 	item:Item_HD,
-// 	count:u16,
-// 	is_solid:bool,
-// 	is_opaque:bool,
-// 	is_occupied:bool,
-// }
 
 Light_Lev::struct{
 	block:[3]u8,
@@ -265,6 +151,7 @@ get_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_Chu
 	palettes_info:=PALETTES_INFO
 	switch size{
 	case.u0:
+		atom.atomic_rw_mutex_shared_guard(&data.Mutex_u0)
 		chunk,ok:=hm.dynamic_get(&data.u0_chunk_data,hd)
 		if !ok{
 			log.log(.Error,"bad chunk data",hd,)
@@ -277,8 +164,8 @@ get_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_Chu
 		assert(ab_chunk.pal_count!=nil)
 		ab_chunk.palette_size = size
 		
-
 	case.u1:
+		atom.atomic_rw_mutex_shared_guard(&data.Mutex_u1)
 		chunk,ok:=hm.dynamic_get(&data.u1_chunk_data,hd)
 		if !ok{
 			log.log(.Error,"bad chunk data",hd,)
@@ -291,6 +178,7 @@ get_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_Chu
 		ab_chunk.palette_size = size
 
 	case.u2:
+		atom.atomic_rw_mutex_shared_guard(&data.Mutex_u2)
 		chunk,ok:=hm.dynamic_get(&data.u2_chunk_data,hd)
 		if !ok{
 			log.log(.Error,"bad chunk data",hd,)
@@ -303,6 +191,7 @@ get_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_Chu
 		ab_chunk.palette_size = size
 
 	case.u4:
+		atom.atomic_rw_mutex_shared_guard(&data.Mutex_u4)
 		chunk,ok:=hm.dynamic_get(&data.u4_chunk_data,hd)
 		if !ok{
 			log.log(.Error,"bad chunk data",hd,)
@@ -315,6 +204,7 @@ get_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_Chu
 		ab_chunk.palette_size = size
 
 	case.u8:
+		atom.atomic_rw_mutex_shared_guard(&data.Mutex_u8)
 		chunk,ok:=hm.dynamic_get(&data.u8_chunk_data,hd)
 		if !ok{
 			log.log(.Error,"bad chunk data",hd,)
@@ -327,6 +217,7 @@ get_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_Chu
 		ab_chunk.palette_size = size
 
 	case.u16:
+		atom.atomic_rw_mutex_shared_guard(&data.Mutex_u16)
 		chunk,ok:=hm.dynamic_get(&data.u16_chunk_data,hd)
 		if !ok{
 			log.log(.Error,"bad chunk data",hd,)
@@ -348,50 +239,50 @@ new_backing_light_data::proc(data:^Backing_Light_World_Data, size:Palette_Sizes)
 	err:runtime.Allocator_Error
 	switch size {
 	case .u0:
-		atom.mutex_lock(&data.Mutex_u0)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u0)
 		hd, err = hm.dynamic_add(&data.u0_chunk_data,U0_Light_Data{pal=Light_Palette_Data{light_lev={},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
-		atom.mutex_unlock(&data.Mutex_u0)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u0)
 		if err != nil {
 			log.log(.Error, "failed adding u0 Light during err = ", err)
 			return
 		}
 		
 	case .u1:
-		atom.mutex_lock(&data.Mutex_u1)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u1)
 		hd, err = hm.dynamic_add(&data.u1_chunk_data,U1_Light_Data{pal=Light_Palette_Data{light_lev={},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
-		atom.mutex_unlock(&data.Mutex_u1)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u1)
 		if err != nil {
 			log.log(.Error, "failed adding u1 Light during err = ", err)
 			return
 		}
 	case .u2:
-		atom.mutex_lock(&data.Mutex_u2)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u2)
 		hd, err = hm.dynamic_add(&data.u2_chunk_data,U2_Light_Data{pal=Light_Palette_Data{light_lev={},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
-		atom.mutex_unlock(&data.Mutex_u2)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u2)
 		if err != nil {
 			log.log(.Error, "failed adding u2 Light during err = ", err)
 			return
 		}
 	case .u4:
-		atom.mutex_lock(&data.Mutex_u4)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u4)
 		hd, err = hm.dynamic_add(&data.u4_chunk_data,U4_Light_Data{pal=Light_Palette_Data{light_lev={},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
-		atom.mutex_unlock(&data.Mutex_u4)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u4)
 		if err != nil {
 			log.log(.Error, "failed adding u4 chunk during err = ", err)
 			return
 		}
 	case .u8:
-		atom.mutex_lock(&data.Mutex_u8)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u8)
 		hd, err = hm.dynamic_add(&data.u8_chunk_data,U8_Light_Data{pal=Light_Palette_Data{light_lev={},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
-		atom.mutex_unlock(&data.Mutex_u8)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u8)
 		if err != nil {
 			log.log(.Error, "failed adding u8 chunk during err = ", err)
 			return
 		}
 	case .u16:
-		atom.mutex_lock(&data.Mutex_u16)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u16)
 		hd, err = hm.dynamic_add(&data.u16_chunk_data,U16_Light_Data{pal=Light_Palette_Data{light_lev={},count=CHUNK_SIZE*CHUNK_SIZE*CHUNK_SIZE},pal_count = 1})
-		atom.mutex_unlock(&data.Mutex_u16)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u16)
 		if err != nil {
 			log.log(.Error, "failed adding u16 chunk during err = ", err)
 			return
@@ -405,9 +296,9 @@ remove_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_
 	// log.log(.Debug,"remove_backing_vox_chunk_data")
 	switch size {
 	case .u0:
-		atom.mutex_lock(&data.Mutex_u0)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u0)
 		ok, err := hm.dynamic_remove(&data.u0_chunk_data, hd)
-		atom.mutex_unlock(&data.Mutex_u0)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u0)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -417,9 +308,9 @@ remove_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_
 			return false
 		}
 	case .u1:
-		atom.mutex_lock(&data.Mutex_u1)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u1)
 		ok, err := hm.dynamic_remove(&data.u1_chunk_data, hd)
-		atom.mutex_unlock(&data.Mutex_u1)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u1)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -430,9 +321,9 @@ remove_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_
 		}
 
 	case .u2:
-		atom.mutex_lock(&data.Mutex_u2)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u2)
 		ok, err := hm.dynamic_remove(&data.u2_chunk_data, hd)
-		atom.mutex_unlock(&data.Mutex_u2)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u2)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -443,9 +334,9 @@ remove_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_
 		}
 
 	case .u4:
-		atom.mutex_lock(&data.Mutex_u4)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u4)
 		ok, err := hm.dynamic_remove(&data.u4_chunk_data, hd)
-		atom.mutex_unlock(&data.Mutex_u4)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u4)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -455,9 +346,9 @@ remove_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_
 			return false
 		}
 	case .u8:
-		atom.mutex_lock(&data.Mutex_u8)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u8)
 		ok, err := hm.dynamic_remove(&data.u8_chunk_data, hd)
-		atom.mutex_unlock(&data.Mutex_u8)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u8)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -467,9 +358,9 @@ remove_backing_light_data::proc(data:^Backing_Light_World_Data,hd:Backing_Light_
 			return false
 		}
 	case .u16:
-		atom.mutex_lock(&data.Mutex_u16)
+		atom.atomic_rw_mutex_lock(&data.Mutex_u16)
 		ok, err := hm.dynamic_remove(&data.u16_chunk_data, hd)
-		atom.mutex_unlock(&data.Mutex_u16)
+		atom.atomic_rw_mutex_unlock(&data.Mutex_u16)
 		if !ok{
 			log.log(.Error, "failed removing old u1 chunk during promotion, err = ", err,hd)
 			return false
@@ -719,10 +610,42 @@ setlight_in_chunk_by_col_pal_index_range :: proc(
 	}
 }
 
+init_worldgen_sun_light :: proc(light:^Light_Chunk_Data,sun_masks:[]u32,sun_count:int) {
+	vox_count := CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE
+	assert(light.backing_light_data_abstract.palette_size == .u0)
+
+	if sun_count == 0 || sun_count == vox_count {
+		atom.atomic_rw_mutex_shared_guard(&light.mutex)
+		ab := &light.backing_light_data_abstract
+		pal_lev := Light_Lev{}
+		if sun_count == vox_count {
+			pal_lev.sun = {31,31,31}
+		}
+		ab.pal[0] = Light_Palette_Data{light_lev=pal_lev,count=cast(u16)vox_count}
+		return
+	}
+
+	sun_pal_index := get_or_add_light_palette_index(light,Light_Palette_Data{light_lev=Light_Lev{sun={31,31,31}},count=cast(u16)sun_count})
+
+	ab := &light.backing_light_data_abstract
+	assert(ab.palette_size == .u1)
+	assert(sun_pal_index == 1)
+
+	atom.atomic_rw_mutex_shared_guard(&light.mutex)
+	ab.pal[0].count = cast(u16)(vox_count-sun_count)
+	ab.pal[sun_pal_index].count = cast(u16)sun_count
+
+	for i in 0..<CHUNK_SIZE*CHUNK_SIZE {
+		ab.data[i] = sun_masks[i]
+	}
+}
+
+
 //preserve_data tells it wherer or not to preserve_data when promoting the chunk to a new size this is expensiv so
 //if the chunk is geting fully changed enyway set to falls but if the data matters leave it true
 get_or_add_light_palette_index::proc(chunk:^Light_Chunk_Data,pal_d:Light_Palette_Data,preserve_data:bool=true)->(pal_index:u16){
 	atom.atomic_rw_mutex_shared_lock(&chunk.mutex)
+
 	ad_chunk:=&chunk.backing_light_data_abstract
 	pal_count:=ad_chunk.pal_count^
 	atom.atomic_rw_mutex_shared_unlock(&chunk.mutex)
@@ -731,13 +654,14 @@ get_or_add_light_palette_index::proc(chunk:^Light_Chunk_Data,pal_d:Light_Palette
 			return cast(u16)i,
 		}
 	}
-
 	if cast(int)pal_count >= len(ad_chunk.pal){
 		promote_light_palette_chunk(chunk,preserve_data)
+	}
+	atom.atomic_rw_mutex_shared_lock(&chunk.mutex)
+	if cast(int)pal_count >= len(ad_chunk.pal){
 		ad_chunk=&chunk.backing_light_data_abstract
 		pal_count = ad_chunk.pal_count^
 	}
-	atom.atomic_rw_mutex_shared_lock(&chunk.mutex)
 	ad_chunk.pal[pal_count]=pal_d
 	ad_chunk.pal_count^+=1
 	atom.atomic_rw_mutex_shared_unlock(&chunk.mutex)

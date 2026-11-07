@@ -72,3 +72,31 @@ Player::struct{
 
 	stats:Stats,
 }
+
+
+do_player_client_stuff::proc(){
+	tg.toggle_mouse_mode_on_input_event(g.window,.ESC)
+
+	dynamic_vox_mesh:=tg.get_mesh(g.w_map.dynamic_map_mesh_hd)
+	drawing_mesh:=tg.get_mesh(g.w_map.drawing_map_mesh_hd)
+
+
+	ray_info,ok:=get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look)
+	if !ok {return}
+	hylight_block_by_ray_cast(&g.w_map,ray_info)
+	draw_ghost_block_by_ray_cast(&g.w_map,ray_info)
+	
+	if tg.is_input_event(.ui_l_c,never_consume_p = true){
+		brake_block_by_ray(&g.w_map,ray_info)
+	}
+	if tg.is_input_event(.ui_r_c){
+		set_block_by_ray(&g.w_map,ray_info)
+	}
+
+
+	tg.update_mesh(g.w_map.dynamic_map_mesh_hd)
+	tg.clear_mesh_cpu(&dynamic_vox_mesh.cpu)
+
+	tg.update_mesh(g.w_map.drawing_map_mesh_hd)
+	tg.clear_mesh_cpu(&drawing_mesh.cpu)
+}
