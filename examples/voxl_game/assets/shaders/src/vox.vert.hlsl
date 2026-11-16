@@ -69,8 +69,7 @@ struct Output{
 	float   shading: TEXCOORD5;
 	float2 face_uv : TEXCOORD6;
 	uint texture_face_index : TEXCOORD7;
-	float3 sun_light   : TEXCOORD8;
-	float3 block_light : TEXCOORD9;
+	nointerpolation uint4 packed_light : TEXCOORD8;
 };
 
 
@@ -90,39 +89,41 @@ float3 decode_block_offset(uint packed) {
 	);
 }
 
+float3 decode_sun_light(uint packed) {
+	return float3(
+		float((packed >> 25) & 31u),
+		float((packed >> 20) & 31u),
+		float((packed >> 15) & 31u)
+	) / 31.0;
+}
+
+float3 decode_block_light(uint packed) {
+	return float3(
+		float((packed >> 10) & 31u),
+		float((packed >> 5) & 31u),
+		float(packed & 31u)
+	) / 31.0;
+}
+
 Output main(
-
 	uint vid : SV_VertexID,
-
 	[[vk::builtin("DrawIndex")]] uint draw_index : TEXCOORD6
-
 ) {
 	Output output;
 
-	// ------------------------------------------------------------
-	// Face
-	// ------------------------------------------------------------
-
 	uint face_index = vid / 6;
-
 	uint corner_id = CORNER_MAP[vid % 6];
-
 	Face face = Faces[face_index];
-
 
 	uint packed_pos = face.packed_block_pos__geometry_face_index & 0xFFFF;
 	uint geometry_face_index = face.packed_block_pos__geometry_face_index >> 16;
 
-
 	uint packed_texture_offset = face.packed_texture_face_index__block_offset;
-	
+
 	uint texture_face_index = packed_texture_offset & 0xFFFF;
 	uint block_offset_packed = packed_texture_offset >> 16;
-
 	float3 block_offset = decode_block_offset(block_offset_packed);
-
 	Face_Geometry geometry = face_geometry[geometry_face_index];
-	// Face_Texure tex = face_texure[texture_face_index];
 	// ------------------------------------------------------------
 	// Chunk
 	// ------------------------------------------------------------
@@ -130,17 +131,13 @@ Output main(
 
 	float lod_size = float(chunk.size);
 	
-	// ------------------------------------------------------------
-	// Block position
-	// ------------------------------------------------------------
+
 	uint block_x =  packed_pos        & 0x1F;
 	uint block_y = (packed_pos >> 5)  & 0x1F;
 	uint block_z = (packed_pos >> 10) & 0x1F;
 
 	float3 block_pos = float3(block_x,block_y,block_z);
-	// ------------------------------------------------------------
-	// Face geometry
-	// ------------------------------------------------------------
+
 
 	float3 edge1 = geometry.pos1.xyz - geometry.pos0.xyz;
 	float3 edge3 = geometry.pos3.xyz - geometry.pos0.xyz;
@@ -149,21 +146,6 @@ Output main(
 
 	float2 final_uv = float2(0, 0);
 	float2 face_uv = float2(0, 0);
-	// if (corner_id == 0) {
-	// 	final_pos.xyz = geometry.pos0.xyz;
-	// 	final_uv = geometry.uv0;
-	// 	face_uv = float2(0, 0);
-	// }
-	// else if (corner_id == 1) {
-	// 	final_pos.xyz = geometry.pos0.xyz + edge1 * 2.0;
-	// 	final_uv = geometry.uv0 +(geometry.uv1 - geometry.uv0) * 2.0;
-	// 	face_uv = float2(2, 0);
-	// }
-	// else {
-	// 	final_pos.xyz = geometry.pos0.xyz + edge3 * 2.0;
-	// 	final_uv = geometry.uv0 +(geometry.uv3 - geometry.uv0) * 2.0;
-	// 	face_uv = float2(0, 2);
-	// }
 
 	if (corner_id == 0) {
 		final_pos = geometry.pos0;
@@ -186,12 +168,35 @@ Output main(
 	// Local position
 	// ------------------------------------------------------------
 	final_pos.xyz += block_pos + block_offset;
-	// -----------------------------------------------------------
-	// LOD scaling
-	//
-	// Everything inside the chunk gets larger:
-	// blocks AND face geometry.
-	// ------------------------------------------------------------
+
+	float3 light_pos = final_pos.xyz - block_pos;
+	float2 light_uv;
+	
+	switch (chunk.side) {
+		case 0:
+			light_uv = float2(1.0-light_pos.y,1.0-light_pos.z);
+			break;
+		case 1:
+			light_uv = float2(1.0-light_pos.y,light_pos.z);
+			break;
+		case 2:
+			light_uv = float2(light_pos.z,light_pos.x);
+			break;
+		case 3:
+			light_uv = float2(light_pos.z,1.0-light_pos.x);
+			break;
+		case 4:
+			light_uv = float2(1.0-light_pos.y,light_pos.x);
+			break;
+		case 5:
+			light_uv = float2(1.0-light_pos.y,1.0-light_pos.x);
+			break;
+		default:
+			light_uv = float2(0,0);
+			break;
+	}
+	
+	light_uv = saturate(light_uv);
 	final_pos.xyz *= lod_size;
 	// ------------------------------------------------------------
 	// Chunk world position
@@ -202,55 +207,17 @@ Output main(
 		float(chunk.pos_z) * 32.0
 	);
 
-
-
-	uint packed_light = face.light_0;
-	
-	if (corner_id == 1) {
-	    packed_light = face.light_1;
-	} else if (corner_id == 2) {
-	    packed_light = face.light_2;
-	} else if (corner_id == 3) {
-	    packed_light = face.light_3;
-	}
-	
-	float3 sun_light = float3(
-	    float((packed_light >> 25) & 31u),
-	    float((packed_light >> 20) & 31u),
-	    float((packed_light >> 15) & 31u)
-	) / 31.0;
-	
-	float3 block_light = float3(
-	    float((packed_light >> 10) & 31u),
-	    float((packed_light >>  5) & 31u),
-	    float( packed_light        & 31u)
-	) / 31.0;
-
 	// ------------------------------------------------------------
 	// Vertex output
 	// ------------------------------------------------------------
+	output.packed_light = uint4(face.light_0,face.light_1,face.light_2,face.light_3);
 	output.position = mul(mvp, final_pos);
 	output.uv = final_uv;
 	output.size = lod_size;
-
 	output.texture_face_index = texture_face_index;
-	// output.img_index = tex.img_index;
-	// output.layer = tex.layer;
-	// output.img_1_tint = tex.tint;
-
-	// output.img_index_2 = tex.img_index_2;
-	// output.layer_2 = tex.layer_2;
-	// output.img_2_tint = tex.tint_2;
-
-	output.sun_light = sun_light;
-	output.block_light = block_light;
-
-
 	output.color = float4(1, 1, 1, 1);
-
 	output.normal = geometry.normal.xyz;
-	output.face_uv = face_uv;
-
+	output.face_uv = light_uv;
 	output.draw_index = draw_index;
 	output.shading = geometry.sarting_shade;
 

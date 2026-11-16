@@ -12,8 +12,7 @@ struct Input{
 	float2 face_uv : TEXCOORD6;
 	uint texture_face_index : TEXCOORD7;
 	// float4 clip_box : TEXCOORD11;
-	float3 sun_light   : TEXCOORD8;
-	float3 block_light : TEXCOORD9;
+	nointerpolation uint4 packed_light : TEXCOORD8;
 
 };
 
@@ -78,6 +77,24 @@ Texture2DArray<float4> g_Textures[10] : register(t0, space2);
 StructuredBuffer<Face_Texure> face_texure : register(t10, space2);
 // StructuredBuffer<Face_Geometry> face_geometry : register(t11, space2);
 // StructuredBuffer<Chunk_Data> chunk_data : register(t12, space2);
+
+
+float3 decode_sun_light(uint packed) {
+	return float3(
+		float((packed >> 25) & 31u),
+		float((packed >> 20) & 31u),
+		float((packed >> 15) & 31u)
+	) / 31.0;
+}
+
+float3 decode_block_light(uint packed) {
+	return float3(
+		float((packed >> 10) & 31u),
+		float((packed >> 5) & 31u),
+		float(packed & 31u)
+	) / 31.0;
+}
+
 
 float4 main(Input input) : SV_Target0 {
 
@@ -157,10 +174,23 @@ float4 main(Input input) : SV_Target0 {
 // Both light inputs are normalized to 0.0–1.0.
 // ------------------------------------------------------------
 
+	float3 sun0 = decode_sun_light(input.packed_light.x);
+	float3 sun1 = decode_sun_light(input.packed_light.y);
+	float3 sun2 = decode_sun_light(input.packed_light.z);
+	float3 sun3 = decode_sun_light(input.packed_light.w);
+	
+	float3 block0 = decode_block_light(input.packed_light.x);
+	float3 block1 = decode_block_light(input.packed_light.y);
+	float3 block2 = decode_block_light(input.packed_light.z);
+	float3 block3 = decode_block_light(input.packed_light.w);
+	
+	float3 sun_light = lerp(lerp(sun0,sun1,input.face_uv.x),lerp(sun3,sun2,input.face_uv.x),input.face_uv.y);
+	float3 block_light = lerp(lerp(block0,block1,input.face_uv.x),lerp(block3,block2,input.face_uv.x),input.face_uv.y);
+	
 	float SUN_STRENGTH = 0.5;
 	
-	float3 sun = saturate(input.sun_light) * SUN_STRENGTH;
-	float3 block = saturate(input.block_light);
+	float3 sun = saturate(sun_light) * SUN_STRENGTH;
+	float3 block = saturate(block_light);
 	
 	// Combine sunlight and colored block light.
 	// Stronger contributions dominate, with both contributing

@@ -145,9 +145,17 @@ Backing_Vox_World_Data::struct{
 	u16_chunk_data:	U16_Backing_Chunk_Data_HM,
 }
 
+// Block_State::struct{
+// 	state:u32,
+// 	pad:u16,
+// 	offset:u16,
+// }
 Block_State::struct{
-	state:u32,
-	pad:u16,
+	Orientation:u8,
+	Sub_model_state:u8,
+	Mount_type:Mount_Type,
+	pad:u8,
+	pad2:u16,
 	offset:u16,
 }
 

@@ -2636,14 +2636,20 @@ mesh_by_bit_mask :: proc(
 				if item_ok {
 					model,model_ok:=reg.get(&g.block_model_reg,item.model)
 					if model_ok {
-						model_data:=&g.all_block_models[model.start+cast(int)block_p_d.state.state]
-
-						face.texture_face_index=cast(u16)item.texture_data.sides[t.side]
-
+						// model_data:=&g.all_block_models[model.start+cast(int)block_p_d.state.state]
+						// model_data:=model_data_cache[current_pal_index]
+						model_data,model_data_ok:=get_block_model_data_from_model(model,block_p_d.state)
+						if !model_data_ok {continue}
+						
 						geometry_index:=model_data.cube_indices[t.side]
 
 						// Primary cube face. Index 0 means no face.
 						if geometry_index >= 0 {
+
+							geometry:=&g.all_face_data[geometry_index]
+							face.texture_face_index=cast(u16)item.texture_data.sides[geometry.texture_slot]
+						
+
 							occluded:=face_is_fully_occluded_by_chain(
 								vox_data,
 								pal_index,
@@ -2699,8 +2705,9 @@ mesh_by_bit_mask :: proc(
 							for extra_i in 0..<model_data.extra_count {
 								extra_geometry_index:=extra_start+extra_i
 								extra_geometry:=&g.all_face_data[extra_geometry_index]
-
 								if extra_geometry.side != t.side {continue}
+
+								face.texture_face_index=cast(u16)item.texture_data.sides[extra_geometry.texture_slot]
 
 								on_block_boundary:=false
 								if boundary_positive {
@@ -2775,303 +2782,6 @@ mesh_by_bit_mask :: proc(
 	mesh.face_count = face_count
 	return face_count
 }
-
-// mesh_by_bit_mask :: proc(
-// 	t:Mesh_Chunk_Task,
-// ) -> (face_count: int) {
-
-// 	mesh,mesh_ok := hm.get(&t.w_map.chunks_mesh_data,t.mesh_hd)
-// 	assert(mesh_ok)
-// 	mesh.face_count = 0
-
-// 	if t.side == .extra {return}
-
-// 	chunk_vox_data,vox_ok := get_vox_chunk_data(t.w_map,t.vox_data_hd)
-// 	if !vox_ok {log.log(.Error,"failed, vox_data_hd not valid",t.vox_data_hd);return}
-
-// 	chunk_data,chunk_ok := hm.get(&t.w_map.chunks,t.chunk_hd)
-// 	if !chunk_ok {log.log(.Error,"failed, chunk_hd not valid",t.chunk_hd);return}
-
-// 	chunk_light_data,light_ok := hm.get(&t.w_map.light_chunk_hm,chunk_data.light_data_hd)
-// 	assert(light_ok)
-
-// 	assert(chunk_vox_data.backing_mask_data != nil)
-// 	assert(chunk_vox_data.backing_world_data != nil)
-
-// 	neighbors_vox:[4]^Vox_Chunk_Data
-// 	neighbor_vox:^Vox_Chunk_Data
-
-// 	if t.has_4_neighbors {
-// 		for i in 0..<4 {
-// 			neighbor_vox_ok:bool
-// 			neighbors_vox[i],neighbor_vox_ok = get_vox_chunk_data(t.w_map,t.neighbor_vox_hd[i])
-// 			if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",t.neighbor_vox_hd);return}
-// 		}
-// 		neighbor_vox = neighbors_vox[0]
-// 	}else{
-// 		neighbor_vox_data,neighbor_vox_ok := get_vox_chunk_data(t.w_map,t.neighbor_vox_hd[0])
-// 		if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",t.neighbor_vox_hd);return}
-// 		neighbor_vox = neighbor_vox_data
-// 	}
-
-// 	chunk_mask,chunk_mask_ok := hm.get(&chunk_vox_data.backing_mask_data.hm,chunk_vox_data.vox_mask_hd)
-// 	if !chunk_mask_ok {log.log(.Error,"failed, chunk mask not valid",chunk_vox_data.vox_mask_hd);return}
-
-// 	neighbor_mask,neighbor_mask_ok := hm.get(&neighbor_vox.backing_mask_data.hm,neighbor_vox.vox_mask_hd)
-
-// 	sampled_neighbor_mask:[CHUNK_SIZE * CHUNK_SIZE]u32
-// 	cur_neighbor_mask:^[CHUNK_SIZE * CHUNK_SIZE]u32
-
-// 	if t.has_4_neighbors {
-// 		masks:[4][CHUNK_SIZE * CHUNK_SIZE]u32
-
-// 		for i in 0..<4 {
-// 			n_mask,n_mask_ok := hm.get(&neighbors_vox[i].backing_mask_data.hm,neighbors_vox[i].vox_mask_hd)
-// 			if !n_mask_ok {log.log(.Error,"failed, neighbor mask not valid",t.neighbor_vox_hd[i]);return}
-// 			masks[i] = n_mask.is_opaque_mask
-// 		}
-
-// 		switch t.side {
-// 		case .pos_x,.neg_x:
-// 			sampled_neighbor_mask = sample_4_neighbor_masks_x(masks,t.side)
-// 		case .pos_y,.neg_y:
-// 			sampled_neighbor_mask = sample_4_neighbor_masks_y(masks,t.side)
-// 		case .pos_z,.neg_z:
-// 			sampled_neighbor_mask = sample_4_neighbor_masks_z(masks,t.side)
-// 		case .extra:
-// 		}
-
-// 		cur_neighbor_mask = &sampled_neighbor_mask
-// 	}else if neighbor_mask_ok {
-// 		cur_neighbor_mask = &neighbor_mask.is_opaque_mask
-// 	}
-
-// 	meshing_chunk_info:Meshing_Chunk_Info={
-// 		vox_data = chunk_vox_data,
-// 		neighbor_vox_data = neighbor_vox,
-// 		side = t.side,
-// 		has_4_neighbors = t.has_4_neighbors,
-// 	}
-// 	MASK_LOOKUP_r:=MASK_LOOKUP
-// 	lookup := MASK_LOOKUP_r[t.side]
-
-// 	boundary_axis := int(t.side)/2
-// 	boundary_positive := (int(t.side)&1) == 0
-
-// 	neighbor_offset:[3]f32
-// 	neighbor_offset[boundary_axis]=1
-// 	if !boundary_positive {
-// 		neighbor_offset[boundary_axis]=-1
-// 	}
-// 	for index in 0..<CHUNK_SIZE * CHUNK_SIZE {
-		
-
-// 		current_mask := chunk_mask.is_occupied_mask[index]
-// 		opaque_mask := chunk_mask.is_opaque_mask[index]
-
-// 		neighbor_mask_value:u32
-
-// 		if lookup.y_shift == 1 {
-// 			neighbor_mask_value = opaque_mask >> 1
-// 			if neighbor_mask_ok {
-// 				neighbor_mask_value |= (cur_neighbor_mask[index] & 1) << 31
-// 			}else{
-// 				neighbor_mask_value |= u32(1) << 31
-// 			}
-// 		}else if lookup.y_shift == -1 {
-// 			neighbor_mask_value = opaque_mask << 1
-// 			if neighbor_mask_ok {
-// 				neighbor_mask_value |= cur_neighbor_mask[index] >> 31
-// 			}else{
-// 				neighbor_mask_value |= 1
-// 			}
-// 		}else{
-// 			edge_index := (index / lookup.edge_divisor) % CHUNK_SIZE
-// 			if edge_index == lookup.edge_value {
-// 				if cur_neighbor_mask != nil {
-// 					neighbor_mask_value = cur_neighbor_mask[index+lookup.edge_offset]
-// 				}
-// 			}else{
-// 				neighbor_mask_value = chunk_mask.is_opaque_mask[index+lookup.inside_offset]
-// 			}
-// 		}
-
-// 		visible_mask := current_mask & ~(neighbor_mask_value & opaque_mask)
-
-// 		x := index & (CHUNK_SIZE-1)
-// 		z := index / CHUNK_SIZE
-
-// 		for visible_mask != 0 {
-			
-// 			y := bits.count_trailing_zeros(visible_mask)
-// 			visible_mask &= visible_mask-1
-
-// 			vox_data,neighbor_vox_data,local_pos,neighbor_pos,ok := get_meshing_data_at_pos(&meshing_chunk_info,{x,cast(int)y,z})
-// 			if !ok {continue}
-
-// 			pal_index:=get_palette_index_by_pos(vox_data,local_pos)
-// 			if pal_index == 0 {continue}
-			
-// 			nab_pal_index:=get_palette_index_by_pos(neighbor_vox_data,neighbor_pos)
-			
-// 			current_pal_index:=pal_index
-// 			chain_finished:=false
-			
-// 			face:tg.Vert_Face
-// 			face.block_pos=pack_block_pos({cast(u16)x,cast(u16)y,cast(u16)z})
-			
-// 			voxel_light:=face.light
-// 			voxel_light_sampled:=false
-
-// 			vox_ab:=&vox_data.backing_chunk_data_abstract
-// 			for _ in 0..<vox_ab.pal_count^ {
-				
-// 				assert(current_pal_index < vox_ab.pal_count^,"invalid current multiblock chain")
-			
-// 				block_p_d:=vox_ab.pal[current_pal_index]
-// 				block_offset:=block_offset_from_u16(block_p_d.state.offset)
-
-// 				face.block_offset=block_p_d.state.offset
-
-// 				item,item_ok:=reg.get(&g.item_reg,block_p_d.item)
-// 				if item_ok {
-// 					model,model_ok:=reg.get(&g.block_model_reg,item.model)
-// 					if model_ok {
-// 						model_data:=&g.all_block_models[model.start+cast(int)block_p_d.state.state]
-			
-// 						face.texture_face_index=cast(u16)item.texture_data.sides[t.side]
-			
-// 						geometry_index:=model_data.cube_indices[t.side]
-				
-			
-// 						occluded:=face_is_fully_occluded_by_chain(
-// 							vox_data,
-// 							pal_index,
-// 							current_pal_index,
-// 							g.all_face_data[geometry_index].pos,
-// 							.extra,
-// 							t.side,
-// 							{},
-// 							block_offset,
-// 						)
-						
-// 						if !occluded && nab_pal_index != 0 {
-// 							occluded=face_is_fully_occluded_by_chain(
-// 								neighbor_vox_data,
-// 								nab_pal_index,
-// 								0,
-// 								g.all_face_data[geometry_index].pos,
-// 								t.side,
-// 								t.side,
-// 								neighbor_offset,
-// 								block_offset,
-// 							)
-// 						}
-			
-// 						if !occluded {
-// 							if !voxel_light_sampled {
-// 								for corner_id in 0..<4 {
-// 									voxel_light[corner_id]=sample_corner_light(
-// 										t.w_map,
-// 										chunk_light_data,
-// 										t.neighbor_light_data_hd,
-// 										t.side,
-// 										x,cast(int)y,z,
-// 										corner_id,
-// 									)
-// 								}
-// 								voxel_light_sampled=true
-// 							}
-			
-// 							face.light=voxel_light
-// 							face.geometry_face_index=cast(u16)geometry_index
-// 							assert(face_count < len(mesh.data),"mesh face buffer full")
-// 							mesh.data[face_count]=face
-// 							face_count+=1
-// 						}
-			
-// 						if model_data.extra_count > 0 {
-// 							extra_start:=model_data.cube_indices[.extra]
-			
-// 							for extra_i in 0..<model_data.extra_count {
-// 								extra_geometry_index:=extra_start+extra_i
-// 								extra_geometry:=&g.all_face_data[extra_geometry_index]
-			
-// 								if extra_geometry.side != t.side {continue}
-			
-// 								on_block_boundary:=false
-// 								if boundary_positive {
-// 									on_block_boundary=extra_geometry.pos[0][boundary_axis] >= 1
-// 								}else{
-// 									on_block_boundary=extra_geometry.pos[0][boundary_axis] <= 0
-// 								}
-			
-// 								extra_occluded:=face_is_fully_occluded_by_chain(
-// 									vox_data,
-// 									pal_index,
-// 									current_pal_index,
-// 									extra_geometry.pos,
-// 									.extra,
-// 									extra_geometry.side,
-// 									{},
-// 									block_offset,
-// 								)
-								
-// 								if !extra_occluded && on_block_boundary && nab_pal_index != 0 {
-// 									extra_occluded=face_is_fully_occluded_by_chain(
-// 										neighbor_vox_data,
-// 										nab_pal_index,
-// 										0,
-// 										extra_geometry.pos,
-// 										.extra,
-// 										extra_geometry.side,
-// 										neighbor_offset,
-// 										block_offset
-// 									)
-// 								}
-			
-// 								if extra_occluded {continue}
-			
-// 								if !voxel_light_sampled {
-// 									for corner_id in 0..<4 {
-// 										voxel_light[corner_id]=sample_corner_light(
-// 											t.w_map,
-// 											chunk_light_data,
-// 											t.neighbor_light_data_hd,
-// 											t.side,
-// 											x,cast(int)y,z,
-// 											corner_id,
-// 										)
-// 									}
-// 									voxel_light_sampled=true
-// 								}
-			
-// 								face.light=voxel_light
-// 								face.geometry_face_index=cast(u16)extra_geometry_index
-// 								assert(face_count < len(mesh.data),"mesh face buffer full")
-// 								mesh.data[face_count]=face
-// 								face_count+=1
-// 							}
-// 						}
-// 					}
-// 				}
-			
-// 				next:=block_p_d.multy_block_index
-// 				if next == 0 {
-// 					chain_finished=true
-// 					break
-// 				}
-			
-// 				current_pal_index=next
-// 			}
-			
-// 			assert(chain_finished,"cycle detected in current multiblock chain")
-// 		}
-// 	}
-
-// 	mesh.face_count = face_count
-// 	return face_count
-// }
 
 
 occlusion_box_reaches_face::proc(

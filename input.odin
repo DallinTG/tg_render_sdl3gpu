@@ -89,6 +89,8 @@ input_e_id::enum{
     fire_p,
     test,
     ESC,
+    R,
+    V,
 }
 input_event_data::struct{
     input:[max_key_combo]struct{
@@ -141,6 +143,8 @@ reg_input_events::proc(){
     reg_event(input_e_id.ui_move_lin_up,{{{data=     {id= sdl.Scancode.LCTRL,           pressed= false,down= true , released= false}, consum_press= true , consum_down= true ,},{data=       {id= sdl.Scancode.UP,   pressed= true ,down= true , released= false}, consum_press= true , consum_down= true ,},{},{}}})
 	reg_event(input_e_id.ESC,{{{data=                {id= sdl.Scancode.ESCAPE,          pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
     reg_event(input_e_id.enter,{{{data=              {id= sdl.Scancode.RETURN,          pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+	reg_event(input_e_id.R,{{{data=                  {id= sdl.Scancode.R,               pressed= true ,down= false, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
+	reg_event(input_e_id.V,{{{data=                  {id= sdl.Scancode.V,               pressed= false ,down= true, released= false}, consum_press= true , consum_down= true ,},{},{},{}}})
 }
 reg_event::proc(i_event:$T,i_e_data:input_event_data){
     // g.input_events.list[i_event] = i_e_data

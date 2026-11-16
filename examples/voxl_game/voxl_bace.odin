@@ -1,3 +1,4 @@
+
 package voxl_game
 
 
@@ -57,10 +58,12 @@ draw_block_by_faces_item::proc(
 	item,i_ok:=reg.get(&g.item_reg,item_hd)
 	if !i_ok{return}
 
-	model,ok:=reg.get(&g.block_model_reg,item.model)
-	if !ok{return}
+	model,model_ok:=reg.get(&g.block_model_reg,item.model)
+	if !model_ok{return}
 
-	model_data:=&g.all_block_models[model.start+cast(int)block_state.state]
+	model_data,model_data_ok:=get_block_model_data_from_model(model,block_state)
+	if !model_data_ok{return}
+
 	block_pos:=pos+block_offset_from_u16(block_state.offset)
 
 	full_light := (u32(31) << 25) | (u32(31) << 20) | (u32(31) << 15) | (u32(31) << 10) | (u32(31) << 5) | u32(31)
@@ -71,10 +74,13 @@ draw_block_by_faces_item::proc(
 		geometry_index:=model_data.cube_indices[side]
 		if geometry_index < 0 {continue}
 
+		geometry:=&g.all_face_data[geometry_index]
+		assert(geometry.texture_slot < MAX_MODEL_TEXTURES,"invalid primary face texture slot")
+
 		face:=&faces[face_count]
 		face.light={full_light,full_light,full_light,full_light}
 		face.pos.xyz=block_pos
-		face.texture_face_index=cast(u32)item.texture_data.sides[side]
+		face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot]
 		face.col=col
 		face.geometry_face_index=cast(u16)geometry_index
 		face_count+=1
@@ -90,15 +96,16 @@ draw_block_by_faces_item::proc(
 
 		for extra_i in 0..<model_data.extra_count {
 			geometry_index:=extra_start+extra_i
-			geometry:=g.all_face_data[geometry_index]
-			side:=geometry.side
+			geometry:=&g.all_face_data[geometry_index]
 
-			if side == .extra {continue}
+			assert(geometry.texture_slot < MAX_MODEL_TEXTURES,"invalid extra face texture slot")
+
+			if geometry.side == .extra {continue}
 
 			face:=&extra_face[0]
 			face.light={full_light,full_light,full_light,full_light}
 			face.pos.xyz=block_pos
-			face.texture_face_index=cast(u32)item.texture_data.sides[side]
+			face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot]
 			face.col=col
 			face.geometry_face_index=cast(u16)geometry_index
 
@@ -117,10 +124,12 @@ draw_block_outline::proc(
 	item,i_ok:=reg.get(&g.item_reg,item_hd)
 	if !i_ok{log.log(.Error,"bad item");return}
 
-	model,ok:=reg.get(&g.block_model_reg,item.model)
-	if !ok{return}
+	model,model_ok:=reg.get(&g.block_model_reg,item.model)
+	if !model_ok{return}
 
-	model_data:=&g.all_block_models[model.start+cast(int)block_state.state]
+	model_data,model_data_ok:=get_block_model_data_from_model(model,block_state)
+	if !model_data_ok{return}
+
 	block_pos:=pos+block_offset_from_u16(block_state.offset)
 
 	tex:=tg.get_texture_by_id(tg.WHITE_TEX_ID)
@@ -335,36 +344,32 @@ get_block_pos_by_ray :: proc(
 
 						palette_block:=candidate_ab.pal[current_pal_index]
 
-						item,item_ok:=reg.get(&g.item_reg,palette_block.item)
-						if item_ok {
-							model,model_ok:=reg.get(&g.block_model_reg,item.model)
-							if model_ok {
-								model_data:=&g.all_block_models[model.start+cast(int)palette_block.state.state]
-								block_offset:=block_offset_from_u16(palette_block.state.offset)
+						model_data,model_ok:=get_block_model_data(palette_block.item,palette_block.state)
+						if model_ok {
+							block_offset:=block_offset_from_u16(palette_block.state.offset)
 
-								for box,box_index in model_data.hit_boxes {
-									if !box.can_colide {continue}
+							for box,box_index in model_data.hit_boxes {
+								if !box.can_colide {continue}
 
-									hit,hit_t,hit_side:=ray_intersect_hit_box(
-										start_pos,
-										forward,
-										candidate_voxel,
-										box,
-										block_offset,
-										t_enter,
-										t_exit,
-										enter_side,
-									)
+								hit,hit_t,hit_side:=ray_intersect_hit_box(
+									start_pos,
+									forward,
+									candidate_voxel,
+									box,
+									block_offset,
+									t_enter,
+									t_exit,
+									enter_side,
+								)
 
-									if hit && hit_t < best_t {
-										best_t=hit_t
-										best_index=box_index
-										best_side=hit_side
-										best_box=box
-										best_pal_index=current_pal_index
-										best_chunk=candidate_chunk
-										best_chunk_pos=candidate_pos
-									}
+								if hit && hit_t < best_t {
+									best_t=hit_t
+									best_index=box_index
+									best_side=hit_side
+									best_box=box
+									best_pal_index=current_pal_index
+									best_chunk=candidate_chunk
+									best_chunk_pos=candidate_pos
 								}
 							}
 						}
@@ -500,6 +505,26 @@ stair_rotation_to_model_side :: proc(rotation:int)->Model_Sides {
 	return .pos_z
 }
 
+stair_state_is_upside_down :: proc(state:Block_State)->bool {
+	if state.Sub_model_state == cast(u8)Stair_Sub_Model_State.straight {
+		return (cast(int)state.Orientation & 1) != 0
+	}
+
+	return (cast(int)state.Orientation & 2) != 0
+}
+
+stair_state_facing :: proc(state:Block_State)->Model_Sides {
+	facing_index:=cast(int)state.Orientation
+
+	if state.Sub_model_state == cast(u8)Stair_Sub_Model_State.straight {
+		facing_index/=2
+	} else {
+		facing_index/=4
+	}
+
+	return stair_rotation_to_model_side(facing_index)
+}
+
 model_side_to_offset :: proc(side:Model_Sides)->[3]int {
 	switch side {
 	case .pos_x: return {1,0,0}
@@ -570,10 +595,9 @@ get_vox_chunk_at_placement_offset::proc(
 
 stair_neighbor_matches :: proc(neighbor:Stair_Neighbor_Info,facing:Model_Sides,upside_down:bool)->bool {
 	if !neighbor.is_stair {return false}
-	if (neighbor.state.state >= 20) != upside_down {return false}
+	if stair_state_is_upside_down(neighbor.state) != upside_down {return false}
 
-	neighbor_facing:=stair_rotation_to_model_side(int(neighbor.state.state%20)/5)
-	return neighbor_facing == facing
+	return stair_state_facing(neighbor.state) == facing
 }
 
 
@@ -584,7 +608,7 @@ get_stair_shape_from_neighbors :: proc(
 	facing:Model_Sides,
 	upside_down:bool,
 )->Stair_Shape {
-	left_facing:=stair_rotation_to_model_side((cast(int)model_side_to_xz_rotation(facing).state+1)%4)
+	left_facing:=stair_rotation_to_model_side((cast(int)model_side_to_xz_rotation(facing).Orientation+1)%4)
 	right_facing:=OPPOSITE_MODEL_SIDE_r[left_facing]
 
 	outer_left:=false
@@ -595,8 +619,8 @@ get_stair_shape_from_neighbors :: proc(
 	// Inner corners.
 	front:=get_stair_neighbor_info(w_map,chunk_pos,pos_in_chunk,model_side_to_offset(facing))
 
-	if front.is_stair && (front.state.state >= 20) == upside_down {
-		front_facing:=stair_rotation_to_model_side(int(front.state.state%20)/5)
+	if front.is_stair && stair_state_is_upside_down(front.state) == upside_down {
+		front_facing:=stair_state_facing(front.state)
 
 		if front_facing == left_facing {
 			blocker:=get_stair_neighbor_info(w_map,chunk_pos,pos_in_chunk,model_side_to_offset(OPPOSITE_MODEL_SIDE_r[front_facing]))
@@ -610,8 +634,8 @@ get_stair_shape_from_neighbors :: proc(
 	// Outer corners.
 	back:=get_stair_neighbor_info(w_map,chunk_pos,pos_in_chunk,model_side_to_offset(OPPOSITE_MODEL_SIDE_r[facing]))
 
-	if back.is_stair && (back.state.state >= 20) == upside_down {
-		back_facing:=stair_rotation_to_model_side(int(back.state.state%20)/5)
+	if back.is_stair && stair_state_is_upside_down(back.state) == upside_down {
+		back_facing:=stair_state_facing(back.state)
 
 		if back_facing == left_facing {
 			blocker:=get_stair_neighbor_info(w_map,chunk_pos,pos_in_chunk,model_side_to_offset(back_facing))
@@ -645,7 +669,10 @@ get_stair_neighbor_info :: proc(
 
 
 	mod,mod_ok:=reg.get(&g.block_model_reg,item.model)
-	if !mod_ok || mod.type != .Stair_State {return {}}
+	if !mod_ok {return {}}
+
+	sub_model,_,sub_model_ok:=get_block_sub_model(mod,block.state.Mount_type,block.state.Sub_model_state)
+	if !sub_model_ok || sub_model.type != .Stair_State {return {}}
 
 	return {is_stair=true,state=block.state}
 }
@@ -664,15 +691,54 @@ get_block_at_placement_offset :: proc(
 	return get_vox_in_chunk(vox_data,neighbor_pos)
 }
 
+Hitbox_Alinment::enum{
+	snap_to_cell,			// place like a bacic block 
+	snap_to_face,			// place block agenst face no other movment in other axises
+	snap_to_center_of_face,	// place block while trying to aline 
+}
+Sub_Grid::enum{ 	// deturnmas where in the world a block can be alined to
+	grid_1x1 = 1,
+	grid_2x2 = 2,
+	grid_4x4 = 4,
+	grid_8x8 = 8,
+	grid_16x16 = 16,
+}
+
+Infill_Type :: enum u8 {
+	not_infill,
+	solid_infill,
+	liquid_infill,
+}
+Placement_Overlap_Info :: struct {
+	found:bool,
+	item:Item_HD,
+	state:Block_State,
+	world_pos:[3]f32,
+	hit_box_index:int,
+}
+
 Block_Placement_Info :: struct {
 	chunk_pos:[3]int,
 	pos_in_chunk:[3]u8,
 	world_pos:[3]f32,
 	state:Block_State,
-	is_occupied:bool,
-	is_opaque:bool,
-	is_solid:bool,
 	item:Item_HD,
+	can_place:bool,
+	overlap:Placement_Overlap_Info,
+}
+
+mount_type_from_side :: proc(side:Model_Sides)->(mount:Mount_Type,ok:bool) {
+	switch side {
+	case .pos_y:
+		return .floor,true
+	case .neg_y:
+		return .hang,true
+	case .pos_x,.neg_x,.pos_z,.neg_z:
+		return .wall,true
+	case .extra:
+		return
+	}
+	return
 }
 
 get_block_placement_info :: proc(
@@ -680,18 +746,25 @@ get_block_placement_info :: proc(
 	ray_i:Block_Ray_Cast_Info,
 	item_hd:Item_HD,
 	model_variant:int=0,
-	align_to_hitbox:bool=false,
+	hitbox_alignment:Hitbox_Alinment=.snap_to_cell,
+	sub_grid:Sub_Grid=.grid_1x1,
+	sub_model_state:u8=0,
 )->(info:Block_Placement_Info,ok:bool) {
+
 	ray:=ray_i
 	b,b_ok:=reg.get(&g.item_reg,item_hd)
 	if !b_ok {return}
 
 	if ray.enter_side == .extra {return}
+
 	offset:=model_side_to_offset(ray.enter_side)
 	temp_chunk_pos,temp_pos_in_chunk:=offset_chunk_and_local_pos(ray.chunk_pos,ray.pos_in_chunk,offset)
 
 	mod,mod_ok:=reg.get(&g.block_model_reg,b.model)
 	if !mod_ok {return}
+
+	requested_mount,mount_ok:=mount_type_from_side(ray.enter_side)
+	if !mount_ok {return}
 
 	facing:=OPPOSITE_MODEL_SIDE_r[get_horizontal_model_side_from_look(ray.look)]
 	facing_3d:=OPPOSITE_MODEL_SIDE_r[get_model_side_from_look(ray.look)]
@@ -706,167 +779,126 @@ get_block_placement_info :: proc(
 		upside_down=true
 	}
 
-	state:Block_State={}
+	selected_sub_state:=sub_model_state
 
-	switch mod.type {
+	sub_model,_,sub_model_ok:=get_block_sub_model(mod,requested_mount,selected_sub_state)
+	if !sub_model_ok {return}
+
+	orientation_index:=0
+
+	switch sub_model.type {
 	case .Bace_Block_State:
-		state={}
+		orientation_index=0
 
 	case .Rot_XZ_Block_State:
-		state=model_side_to_xz_rotation(facing)
+		rotation:=model_side_to_xz_rotation(facing)
+		orientation_index=cast(int)rotation.Orientation
 
 	case .Rot_XYZ_Block_State:
-		state.state=model_side_to_xyz_variant(facing_3d)
+		orientation_index=cast(int)model_side_to_xyz_variant(facing_3d)
 
 	case .Rot_XYZR_Block_State:
-		state.state=model_side_to_xyz_variant(facing_3d)*4+cast(u32)positive_mod_int(model_variant,4)
+		orientation_index=cast(int)model_side_to_xyz_variant(facing_3d)*4+positive_mod_int(model_variant,4)
 
 	case .Rot_XYZRM_Block_State:
-		state.state=model_side_to_xyz_variant(facing_3d)*8+cast(u32)positive_mod_int(model_variant,8)
+		orientation_index=cast(int)model_side_to_xyz_variant(facing_3d)*8+positive_mod_int(model_variant,8)
 
 	case .Slab_States:
-		if upside_down {
-			state.state=1
-		}
+		orientation_index=positive_mod_int(model_variant,6)
 
 	case .Stair_State:
+// 		rotation:=model_side_to_xz_rotation(facing)
+// 		shape:=get_stair_shape_from_neighbors(w_map,temp_chunk_pos,temp_pos_in_chunk,facing,upside_down)
+// 		orientation_index=cast(int)rotation.Orientation
+// 		selected_sub_state=cast(u8)shape
+// 
+// 		if upside_down {
+// 			selected_sub_state+=5
+// 		}
+// 
+// 		sub_model,_,sub_model_ok=get_block_sub_model(mod,requested_mount,selected_sub_state)
+// 		if !sub_model_ok || sub_model.type != .Stair_State {return}
+
 		rotation:=model_side_to_xz_rotation(facing)
 		shape:=get_stair_shape_from_neighbors(w_map,temp_chunk_pos,temp_pos_in_chunk,facing,upside_down)
-		state.state=rotation.state*5+cast(u32)(shape)
-		if upside_down {
-			state.state+=20
+	
+		stair_state:=Stair_State{
+			facing=cast(Stair_Facing)rotation.Orientation,
+			shape=shape,
+			upside_down=upside_down,
 		}
+	
+		orientation_index=cast(int)stair_orientation(stair_state)
+		selected_sub_state=stair_sub_model_state(stair_state)
+	
+		sub_model,_,sub_model_ok=get_block_sub_model(mod,requested_mount,selected_sub_state)
+		if !sub_model_ok || sub_model.type != .Stair_State {return}
 	}
 
-	model_index:=mod.start+cast(int)state.state
-	if model_index < mod.start || model_index >= mod.end || model_index >= len(g.all_block_models) {return}
+	state_index:=cast(int)selected_sub_state
+	if state_index >= len(sub_model.sub_model) {return}
+	if orientation_index >= len(sub_model.sub_model[state_index]) {return}
 
+	state:Block_State={}
+	state.Mount_type=requested_mount
+	state.Sub_model_state=selected_sub_state
+	state.Orientation=cast(u8)orientation_index
+
+	model_data:=&sub_model.sub_model[state_index][orientation_index]
+
+	base_voxel_pos:=temp_chunk_pos*CHUNK_SIZE+cast([3]int)temp_pos_in_chunk
+	target_origin:=cast([3]f32)ray.chunk_pos*CHUNK_SIZE+cast([3]f32)ray.pos_in_chunk
+	target_offset:=block_offset_from_u16(ray.block.state.offset)
+
+	voxel_pos,hitbox_offset,offset_ok:=get_hitbox_placement(
+		model_data,
+		ray.enter_side,
+		hitbox_alignment,
+		sub_grid,
+		base_voxel_pos,
+		target_origin,
+		target_offset,
+		ray.hit_box,
+		ray.w_pos,
+	)
+	if !offset_ok {return}
+
+	temp_chunk_pos=pos_to_chunck_pos(cast([3]f32)voxel_pos)
+	temp_pos_in_chunk=cast([3]u8)(voxel_pos-temp_chunk_pos*CHUNK_SIZE)
 	world_pos:=cast([3]f32)temp_chunk_pos*CHUNK_SIZE+cast([3]f32)temp_pos_in_chunk
 
-	if align_to_hitbox {
-		voxel_pos,hitbox_offset,offset_ok:=get_hitbox_placement(&g.all_block_models[model_index],ray.enter_side,ray.w_pos)
-		if offset_ok {
-			temp_chunk_pos=pos_to_chunck_pos(cast([3]f32)voxel_pos)
-			temp_pos_in_chunk=cast([3]u8)(voxel_pos-temp_chunk_pos*CHUNK_SIZE)
-			world_pos=cast([3]f32)voxel_pos
-			state.offset=hitbox_offset
-		}
-	}
-
+	state.offset=hitbox_offset
+	
+	can_place,overlap:=can_place_block_at(w_map,item_hd,state,model_data,voxel_pos)
+	
 	info.chunk_pos=temp_chunk_pos
 	info.pos_in_chunk=temp_pos_in_chunk
 	info.world_pos=world_pos
 	info.state=state
-	info.is_occupied=b.is_occupied
-	info.is_opaque=b.is_opaque
-	info.is_solid=b.is_solid
 	info.item=b.handle
-
+	info.can_place=can_place
+	info.overlap=overlap
+	
 	return info,true
 }
 
-// get_hitbox_placement_offset :: proc(
-// 	model_data:^Model_Data,
-// 	placement_side:Model_Sides,
-// 	block_origin:[3]f32,
-// 	hit_pos:[3]f32,
-// ) -> (offset:u16,ok:bool) {
+snap_to_sub_grid :: proc(value:f32,sub_grid:Sub_Grid)->f32 {
+	grid_size:=cast(f32)max(1,cast(int)sub_grid)
+	scaled:=value*grid_size
 
-// 	axis:int
-// 	positive:=false
-
-// 	switch placement_side {
-// 	case .pos_x:
-// 		axis=0
-// 		positive=true
-// 	case .neg_x:
-// 		axis=0
-// 	case .pos_y:
-// 		axis=1
-// 		positive=true
-// 	case .neg_y:
-// 		axis=1
-// 	case .pos_z:
-// 		axis=2
-// 		positive=true
-// 	case .neg_z:
-// 		axis=2
-// 	case .extra:
-// 		return
-// 	}
-
-// 	bounds_min:[3]f32 = {max(f32),max(f32),max(f32)}
-// 	bounds_max:[3]f32 = {min(f32),min(f32),min(f32)}
-// 	found:=false
-
-// 	for hit_box in model_data.hit_boxes {
-// 		if !hit_box.can_colide {continue}
-
-// 		for i in 0..<3 {
-// 			bounds_min[i]=min(bounds_min[i],hit_box.box[i])
-// 			bounds_max[i]=max(bounds_max[i],hit_box.box[i+3])
-// 		}
-
-// 		found=true
-// 	}
-
-// 	if !found {return}
-
-// 	offset_data:[3]f32
-
-// 	for i in 0..<3 {
-// 		if i == axis {
-// 			contact_face:=bounds_max[i]
-// 			if positive {
-// 				contact_face=bounds_min[i]
-// 			}
-
-// 			offset_data[i]=hit_pos[i]-block_origin[i]-contact_face
-// 		} else {
-// 			hitbox_center:=(bounds_min[i]+bounds_max[i])*0.5
-// 			offset_data[i]=hit_pos[i]-block_origin[i]-hitbox_center
-// 		}
-
-// 		if math.abs(offset_data[i]) > 15.0/16.0 {return}
-// 	}
-
-// 	offset=block_offset_to_u16(offset_data)
-// 	ok=true
-// 	return
-// }
-
-get_hitbox_placement :: proc(
-	model_data:^Model_Data,
-	placement_side:Model_Sides,
-	hit_pos:[3]f32,
-) -> (voxel_pos:[3]int,offset:u16,ok:bool) {
-
-	axis:int
-	positive:=false
-
-	switch placement_side {
-	case .pos_x:
-		axis=0
-		positive=true
-	case .neg_x:
-		axis=0
-	case .pos_y:
-		axis=1
-		positive=true
-	case .neg_y:
-		axis=1
-	case .pos_z:
-		axis=2
-		positive=true
-	case .neg_z:
-		axis=2
-	case .extra:
-		return
+	if scaled >= 0 {
+		return math.floor(scaled+.5)/grid_size
 	}
 
-	bounds_min:[3]f32 = {max(f32),max(f32),max(f32)}
-	bounds_max:[3]f32 = {min(f32),min(f32),min(f32)}
-	found:=false
+	return -math.floor(-scaled+.5)/grid_size
+}
+
+
+get_model_hitbox_bounds :: proc(
+	model_data:^Model_Data,
+)->(bounds_min:[3]f32,bounds_max:[3]f32,ok:bool) {
+	bounds_min={max(f32),max(f32),max(f32)}
+	bounds_max={min(f32),min(f32),min(f32)}
 
 	for hit_box in model_data.hit_boxes {
 		if !hit_box.can_colide {continue}
@@ -876,38 +908,255 @@ get_hitbox_placement :: proc(
 			bounds_max[i]=max(bounds_max[i],hit_box.box[i+3])
 		}
 
-		found=true
+		ok=true
 	}
 
-	if !found {return}
+	return
+}
 
-	desired_origin:[3]f32
+placement_hit_boxes_overlap :: proc(
+	a:Hit_Box,
+	a_origin:[3]f32,
+	b:Hit_Box,
+	b_origin:[3]f32,
+)->bool {
 
-	for i in 0..<3 {
-		if i == axis {
-			contact_face:=bounds_max[i]
-			if positive {
-				contact_face=bounds_min[i]
-			}
-			desired_origin[i]=hit_pos[i]-contact_face
-		} else {
-			center:=(bounds_min[i]+bounds_max[i])*0.5
-			desired_origin[i]=hit_pos[i]-center
+	for axis in 0..<3 {
+		a_min:=a_origin[axis]+a.box[axis]
+		a_max:=a_origin[axis]+a.box[axis+3]
+
+		b_min:=b_origin[axis]+b.box[axis]
+		b_max:=b_origin[axis]+b.box[axis+3]
+
+		if a_min >= b_max || a_max <= b_min {
+			return false
+		}
+	}
+
+	return true
+}
+
+PLACEMENT_HITBOX_SEARCH_RADIUS :: 2
+
+can_place_block_at :: proc(
+	w_map:^Map,
+	candidate_item_hd:Item_HD,
+	candidate_state:Block_State,
+	candidate_model_data:^Model_Data,
+	candidate_voxel_pos:[3]int,
+)->(can_place:bool,overlap:Placement_Overlap_Info) {
+
+	candidate_item,candidate_item_ok:=reg.get(&g.item_reg,candidate_item_hd)
+	if !candidate_item_ok {return}
+
+	candidate_origin:=cast([3]f32)candidate_voxel_pos+block_offset_from_u16(candidate_state.offset)
+
+	candidate_min:[3]f32={max(f32),max(f32),max(f32)}
+	candidate_max:[3]f32={min(f32),min(f32),min(f32)}
+	has_candidate_hitbox:=false
+
+	for box in candidate_model_data.hit_boxes {
+		if !box.can_colide {continue}
+
+		for axis in 0..<3 {
+			candidate_min[axis]=min(candidate_min[axis],candidate_origin[axis]+box.box[axis])
+			candidate_max[axis]=max(candidate_max[axis],candidate_origin[axis]+box.box[axis+3])
 		}
 
-		voxel_pos[i]=cast(int)math.floor(desired_origin[i]+0.5)
+		has_candidate_hitbox=true
 	}
 
-	offset_data:=desired_origin-cast([3]f32)voxel_pos
+	if !has_candidate_hitbox {return true,{}}
 
-	if math.abs(offset_data.x) > 15.0/16.0 || math.abs(offset_data.y) > 15.0/16.0 || math.abs(offset_data.z) > 15.0/16.0 {
+	search_min:[3]int
+	search_max:[3]int
+
+	for axis in 0..<3 {
+		search_min[axis]=cast(int)math.floor(candidate_min[axis])-PLACEMENT_HITBOX_SEARCH_RADIUS
+		search_max[axis]=cast(int)math.floor(candidate_max[axis]-.000001)+PLACEMENT_HITBOX_SEARCH_RADIUS
+	}
+
+	for z:=search_min.z;z<=search_max.z;z+=1 {
+		for y:=search_min.y;y<=search_max.y;y+=1 {
+			for x:=search_min.x;x<=search_max.x;x+=1 {
+
+				world_voxel:=[3]int{x,y,z}
+
+				vox_data,local_pos,vox_ok:=get_vox_chunk_at_world_voxel(w_map,world_voxel)
+				if !vox_ok {continue}
+
+				root_pal_index:=get_palette_index_by_pos(vox_data,local_pos)
+				if root_pal_index == 0 {continue}
+
+				ab:=&vox_data.backing_chunk_data_abstract
+				current_pal_index:=root_pal_index
+				chain_finished:=false
+
+				for _ in 0..<ab.pal_count^ {
+
+					assert(current_pal_index < ab.pal_count^,"invalid placement collision multiblock chain")
+
+					existing_block:=ab.pal[current_pal_index]
+
+					existing_item,existing_item_ok:=reg.get(&g.item_reg,existing_block.item)
+
+					if existing_item_ok && existing_item.infill_type == candidate_item.infill_type {
+
+						existing_model,existing_model_ok:=reg.get(&g.block_model_reg,existing_item.model)
+
+						if existing_model_ok {
+							existing_model_data,existing_model_data_ok:=get_block_model_data_from_model(existing_model,existing_block.state)
+
+							if existing_model_data_ok {
+								existing_origin:=cast([3]f32)world_voxel+block_offset_from_u16(existing_block.state.offset)
+
+								for candidate_box in candidate_model_data.hit_boxes {
+									if !candidate_box.can_colide {continue}
+
+									for existing_box,existing_box_index in existing_model_data.hit_boxes {
+										if !existing_box.can_colide {continue}
+
+										if placement_hit_boxes_overlap(
+											candidate_box,
+											candidate_origin,
+											existing_box,
+											existing_origin,
+										) {
+											overlap=Placement_Overlap_Info{
+												found=true,
+												item=existing_block.item,
+												state=existing_block.state,
+												world_pos=cast([3]f32)world_voxel,
+												hit_box_index=existing_box_index,
+											}
+											return false,overlap
+										}
+									}
+								}
+							}
+						}
+					}
+
+					next:=existing_block.multy_block_index
+					if next == 0 {
+						chain_finished=true
+						break
+					}
+
+					current_pal_index=next
+				}
+
+				assert(chain_finished,"cycle detected in placement collision multiblock chain")
+			}
+		}
+	}
+
+	return true,{}
+}
+
+get_hitbox_placement :: proc(
+	model_data:^Model_Data,
+	placement_side:Model_Sides,
+	hitbox_alignment:Hitbox_Alinment,
+	sub_grid:Sub_Grid,
+	base_voxel_pos:[3]int,
+	target_origin:[3]f32,
+	target_offset:[3]f32,
+	target_box:Hit_Box,
+	crosshair_pos:[3]f32,
+)->(voxel_pos:[3]int,offset:u16,ok:bool) {
+
+	axis:int
+	target_face_index:int
+	positive_side:=false
+
+	switch placement_side {
+	case .pos_x:
+		axis=0
+		target_face_index=3
+		positive_side=true
+	case .neg_x:
+		axis=0
+		target_face_index=0
+	case .pos_y:
+		axis=1
+		target_face_index=4
+		positive_side=true
+	case .neg_y:
+		axis=1
+		target_face_index=1
+	case .pos_z:
+		axis=2
+		target_face_index=5
+		positive_side=true
+	case .neg_z:
+		axis=2
+		target_face_index=2
+	case .extra:
 		return
+	}
+
+	bounds_min,bounds_max,bounds_ok:=get_model_hitbox_bounds(model_data)
+	if !bounds_ok {return}
+
+	base_origin:=cast([3]f32)base_voxel_pos
+	desired_origin:=base_origin
+
+	// Snap the new model directly against the target face.
+	target_face:=target_origin[axis]+target_offset[axis]+target_box.box[target_face_index]
+	contact_face:=bounds_max[axis]
+
+	if positive_side {
+		contact_face=bounds_min[axis]
+	}
+
+	desired_origin[axis]=target_face-contact_face
+
+	// Position the remaining two axes using the crosshair.
+	for i in 0..<3 {
+		if i == axis {continue}
+
+		block_center:=(bounds_min[i]+bounds_max[i])*.5
+
+		switch hitbox_alignment {
+		case .snap_to_cell:
+			// Snap the model origin to the nearest grid increment.
+			desired_origin[i]=snap_to_sub_grid(
+				crosshair_pos[i]-block_center,
+				sub_grid,
+			)
+
+		case .snap_to_face:
+			// Keep the adjacent voxel position.
+
+		case .snap_to_center_of_face:
+			target_min:=target_origin[i]+target_offset[i]+target_box.box[i]
+			target_max:=target_origin[i]+target_offset[i]+target_box.box[i+3]
+			target_center:=(target_min+target_max)*.5
+
+			desired_origin[i]=snap_to_sub_grid(
+				target_center-block_center,
+				sub_grid,
+			)
+		}
+	}
+
+	// Convert the desired world origin into voxel position + block offset.
+	offset_data:[3]f32
+
+	for i in 0..<3 {
+		block_center:=(bounds_min[i]+bounds_max[i])*.5
+		voxel_pos[i]=cast(int)math.floor(desired_origin[i]+block_center)
+		offset_data[i]=desired_origin[i]-cast(f32)voxel_pos[i]
+
+		if math.abs(offset_data[i]) > 15.0/16.0 {return}
 	}
 
 	offset=block_offset_to_u16(offset_data)
 	ok=true
 	return
 }
+
 
 brake_block_by_ray::proc(w_map:^Map,ray_i:Block_Ray_Cast_Info){
 	add_to_set_block_cmd_q(w_map,Set_Block_CMD{
@@ -955,9 +1204,17 @@ get_model_side_from_look :: proc(look:tg.Look_Dir) -> Model_Sides {
 	return get_model_side_from_direction({forward.x,forward.y,forward.z})
 }
 
-set_block_by_ray :: proc(w_map:^Map,ray_i:Block_Ray_Cast_Info,model_variant:int=0,align_to_hitbox:bool=true) {
-	info,ok:=get_block_placement_info(w_map,ray_i,g.temp_using_item_hd,model_variant,align_to_hitbox)
-	if !ok {return}
+set_block_by_ray :: proc(
+	w_map:^Map,
+	item_hd:Item_HD,
+	ray_i:Block_Ray_Cast_Info,
+	model_variant:int=0,
+	hitbox_alignment:Hitbox_Alinment=.snap_to_cell,
+	sub_grid:Sub_Grid=.grid_1x1,
+	sub_model_state:u8=0,
+) {
+	info,ok:=get_block_placement_info(w_map,ray_i,item_hd,model_variant,hitbox_alignment,sub_grid,sub_model_state)
+	if !ok || !info.can_place {return}
 
 	add_to_set_block_cmd_q(w_map,Set_Block_CMD{
 		chunk_pos={info.chunk_pos.x,info.chunk_pos.y,info.chunk_pos.z,1},
@@ -985,19 +1242,19 @@ OPPOSITE_MODEL_SIDE:[Model_Sides]Model_Sides:{
 model_side_to_xz_rotation :: proc(side:Model_Sides) -> (state:Block_State) {
 	#partial switch side {
 	case .pos_z:
-		state.state = 0
-		return 
+		state.Orientation = 0
+		return
 	case .pos_x:
-		state.state = 1
-		return 
+		state.Orientation = 1
+		return
 	case .neg_z:
-		state.state = 2
-		return 
+		state.Orientation = 2
+		return
 	case .neg_x:
-		state.state = 3
-		return 
+		state.Orientation = 3
+		return
 	}
-	state.state = 0
+	state.Orientation = 0
 	return 
 }
 
@@ -1038,16 +1295,53 @@ draw_ghost_block_at :: proc(
 	}
 }
 
-// draw_ghost_block :: proc(w_map:^Map,w_pos:[3]f32,item_hd:Item_HD,stat:u64=0) {
-// 	draw_ghost_block_at(w_map,w_pos,item_hd,stat)
-// }
 
-draw_ghost_block_by_ray_cast :: proc(w_map:^Map,ray_i:Block_Ray_Cast_Info,model_variant:int=0,align_to_hitbox:bool=true) {
-	info,ok:=get_block_placement_info(w_map,ray_i,g.temp_using_item_hd,model_variant,align_to_hitbox)
+
+
+
+draw_ghost_block_by_ray_cast :: proc(
+	w_map:^Map,
+	item_hd:Item_HD,
+	ray_i:Block_Ray_Cast_Info,
+	model_variant:int=0,
+	hitbox_alignment:Hitbox_Alinment=.snap_to_cell,
+	sub_grid:Sub_Grid=.grid_1x1,
+	sub_model_state:u8=0,
+) {
+	info,ok:=get_block_placement_info(w_map,ray_i,item_hd,model_variant,hitbox_alignment,sub_grid,sub_model_state)
 	if !ok {return}
 
-	draw_ghost_block_at(w_map,info.world_pos,g.temp_using_item_hd,info.state,true)
+	ghost_col:[4]f32={1,1,1,.3}
+	outline_col:[4]f32={1,1,1,.1}
+
+	if !info.can_place {
+		ghost_col={1,.1,.1,.45}
+		outline_col={1,0,0,.8}
+	}
+
+	draw_ghost_block_at(
+		w_map,
+		info.world_pos,
+		info.item,
+		info.state,
+		true,
+		ghost_col,
+		outline_col,
+	)
+
+	if !info.can_place && info.overlap.found {
+		draw_mesh:=tg.get_mesh(w_map.drawing_map_mesh_hd)
+
+		draw_block_outline(
+			&draw_mesh.cpu,
+			info.overlap.world_pos,
+			info.overlap.item,
+			block_state=info.overlap.state,
+			col={1,0,0,.9},
+		)
+	}
 }
+
 
 
 hylight_block_by_ray_cast::proc(w_map:^Map,ray_i:Block_Ray_Cast_Info){
@@ -1115,4 +1409,27 @@ draw_vox_chain_outline::proc(
 	}
 
 	assert(chain_finished,"cycle detected in drawing multiblock chain")
+}
+
+
+get_vox_chunk_at_world_voxel :: proc(
+	w_map:^Map,
+	world_voxel:[3]int,
+)->(vox_data:^Vox_Chunk_Data,local_pos:[3]u8,ok:bool) {
+
+	chunk_pos:=pos_to_chunck_pos(cast([3]f32)world_voxel)
+	local_pos_int:=world_voxel-chunk_pos*CHUNK_SIZE
+	local_pos=cast([3]u8)local_pos_int
+
+	chunk_hd,chunk_ok:=get_chunk_by_pos_safe(
+		w_map,
+		{chunk_pos.x,chunk_pos.y,chunk_pos.z,1},
+	)
+	if !chunk_ok {return}
+
+	chunk_data,chunk_data_ok:=get_chunk(w_map,chunk_hd)
+	if !chunk_data_ok {return}
+
+	vox_data,ok=get_vox_chunk_data(w_map,chunk_data.vox_data_hd)
+	return
 }

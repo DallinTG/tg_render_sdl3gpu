@@ -69,28 +69,48 @@ Player_HD::hm.Handle16
 Player::struct{
 	handle:Player_HD,
 	ent_hd:Entity_HD,
-
+	
+	set_bloc_var:int,
 	stats:Stats,
 }
 
+temp_player:Player
 
 do_player_client_stuff::proc(){
+	player:=&temp_player
+	if tg.is_input_event(.R){
+		player.set_bloc_var += 1
+	}
 	tg.toggle_mouse_mode_on_input_event(g.window,.ESC)
+	log.log(.Debug,player.set_bloc_var)
+	hitbox_alinment:Hitbox_Alinment
+	sub_grid:Sub_Grid
+	item_hd:=g.temp_using_item_hd
+	item,item_ok := reg.get(&g.item_reg,item_hd)
+	if !item_ok{return }
+
+	hitbox_alinment = item.hitbox_alinment
+	sub_grid = item.sub_grid
+
+	if tg.is_input_event(.V){
+		hitbox_alinment = item.var_hitbox_alinment
+		sub_grid = item.var_sub_grid
+	}
 
 	dynamic_vox_mesh:=tg.get_mesh(g.w_map.dynamic_map_mesh_hd)
 	drawing_mesh:=tg.get_mesh(g.w_map.drawing_map_mesh_hd)
 
 
+	
 	ray_info,ok:=get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look)
 	if !ok {return}
 	hylight_block_by_ray_cast(&g.w_map,ray_info)
-	draw_ghost_block_by_ray_cast(&g.w_map,ray_info)
-	
+	draw_ghost_block_by_ray_cast(&g.w_map,item_hd,ray_info,player.set_bloc_var,hitbox_alignment=hitbox_alinment,sub_grid=sub_grid)
 	if tg.is_input_event(.ui_l_c,never_consume_p = true){
 		brake_block_by_ray(&g.w_map,ray_info)
 	}
 	if tg.is_input_event(.ui_r_c){
-		set_block_by_ray(&g.w_map,ray_info)
+		set_block_by_ray(&g.w_map,item_hd,ray_info,player.set_bloc_var,hitbox_alignment=hitbox_alinment,sub_grid=sub_grid)
 	}
 
 

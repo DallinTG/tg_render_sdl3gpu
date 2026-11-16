@@ -125,6 +125,15 @@ Item_Info::struct{
 	is_occupied:bool,//if false will not render
 	is_opaque:bool,////if false will not hide nabers faces basickly it lets it be transperint
 
+	infill_type:Infill_Type,
+
+	hitbox_alinment:Hitbox_Alinment,
+	sub_grid:Sub_Grid,
+	
+	var_hitbox_alinment:Hitbox_Alinment,
+	var_sub_grid:Sub_Grid,
+	
+
 }
 
 Material_Tags :: bit_set[Material_Tag]
@@ -186,10 +195,16 @@ Item_Rarity::enum{
 }
 
 
+// Texture_Data :: struct {
+// 	sides:[Model_Sides]int,
+// 	extra_count:int,
+// }
+
 Texture_Data :: struct {
-	sides:[Model_Sides]int,
-	extra_count:int,
+	sides:[MAX_MODEL_TEXTURES]int,
+	// extra_count:int,
 }
+
 
 init_all_item_data::proc(){
 	init_texture_facees()
@@ -256,13 +271,13 @@ add_texture_face::proc(
 }
 
 // resends the data to the gpu
-fill_sides_all_1_t::proc(index:int) -> (sides:[Model_Sides]int){
-	sides[.pos_x] = index
-	sides[.neg_x] = index
-	sides[.pos_y] = index
-	sides[.neg_y] = index
-	sides[.pos_z] = index
-	sides[.neg_z] = index
+fill_sides_all_1_t::proc(index:int) -> (sides:[MAX_MODEL_TEXTURES]int){
+	sides[cast(int)Model_Sides.pos_x] = index
+	sides[cast(int)Model_Sides.neg_x] = index
+	sides[cast(int)Model_Sides.pos_y] = index
+	sides[cast(int)Model_Sides.neg_y] = index
+	sides[cast(int)Model_Sides.pos_z] = index
+	sides[cast(int)Model_Sides.neg_z] = index
 	return
 }
 
@@ -296,14 +311,15 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 	grass_side_t_id:=add_texture_face(reg.id(Textures.Dirt),{1,1,1,1},reg.id(Textures.Grass_Side_Overlay),{.2,.7,.3,1})
 	i[.grass] = Item_Info{
 		texture_data = {
-			sides = [Model_Sides]int{
-				.pos_x = grass_side_t_id,
-				.neg_x = grass_side_t_id,
-				.pos_y = grass_t_id,
-				.neg_y = dirt_t_id,
-				.pos_z = grass_side_t_id,
-				.neg_z = grass_side_t_id,
-				.extra = {},
+			sides = [MAX_MODEL_TEXTURES]int{
+				grass_side_t_id,
+				grass_side_t_id,
+				grass_t_id,
+				dirt_t_id,
+				grass_side_t_id,
+				grass_side_t_id,
+				{},
+				{},
 			}
 		},
 		model = g.cube_face_geometry,
@@ -363,13 +379,16 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 		name = "Glow Block Blue",
 	}
 
+	textur_sides:=fill_sides_all_1_t(glow_block_t_id)
+	textur_sides[1]= dirt_t_id
 	i[.glow_block_blue] = Item_Info{
-		texture_data = {sides = fill_sides_all_1_t(glow_block_t_id)},
+		
+		texture_data = {sides = textur_sides},
 		model = g.test_gemotry,
 		is_occupied = true,
-		is_opaque = true,
+		is_opaque = false,
 		is_solid = true,
-		light_emission = {0,0,0},
+		light_emission = {31,31,31},
 		name = "Test",
 	}
 	return
@@ -481,6 +500,10 @@ reg_items::proc(){
 					is_occupied = true,
 					is_opaque = false,
 					is_solid = true,
+					hitbox_alinment = .snap_to_face,
+					sub_grid = .grid_2x2,
+					var_hitbox_alinment = .snap_to_cell,
+					var_sub_grid = .grid_2x2,
 				}
 				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
 			}
@@ -495,6 +518,10 @@ reg_items::proc(){
 					is_occupied = true,
 					is_opaque = false,
 					is_solid = true,
+					hitbox_alinment = .snap_to_cell,
+					sub_grid = .grid_1x1,
+					var_hitbox_alinment = .snap_to_cell,
+					var_sub_grid = .grid_2x2,
 				}
 				reg.add(&g.item_reg,item,reg.id([2]string{"DF",name}))
 			}
