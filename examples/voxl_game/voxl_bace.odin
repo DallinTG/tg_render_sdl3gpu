@@ -46,110 +46,142 @@ pack_block_pos :: proc(pos: [3]u16) -> u16 {
 }
 
 
-draw_block_by_faces_item::proc(
-	mesh:^tg.Mesh_CPU,
-	pos:[3]f32,
-	item_hd:Item_HD,
-	block_state:Block_State={},
-	col:[4]f32={1,1,1,.1},
-){
-	faces:[6]tg.Dynamic_Vert_Face
+draw_block_by_faces_item :: proc(
+    mesh:^tg.Mesh_CPU,
+    pos:[3]f32,
+    item_hd:Item_HD,
+    block_state:Block_State={},
+    col:[4]f32={1,1,1,.1},
+) {
+    faces:[6]tg.Dynamic_Vert_Face
 
-	item,i_ok:=reg.get(&g.item_reg,item_hd)
-	if !i_ok{return}
+    item,i_ok:=reg.get(&g.item_reg,item_hd)
+    if !i_ok {return}
 
-	model,model_ok:=reg.get(&g.block_model_reg,item.model)
-	if !model_ok{return}
+    model,model_ok:=reg.get(&g.block_model_reg,item.model)
+    if !model_ok {return}
 
-	model_data,model_data_ok:=get_block_model_data_from_model(model,block_state)
-	if !model_data_ok{return}
+    model_data,model_data_ok:=get_block_model_data_from_model(model,block_state)
+    if !model_data_ok {return}
 
-	block_pos:=pos+block_offset_from_u16(block_state.offset)
+    block_pos:=tg.world_pos_from_f32(pos,g.cam.step_size)
+    block_pos=tg.world_pos_add(
+        block_pos,
+        cast([3]f64)block_offset_from_u16(block_state.offset),
+        g.cam.step_size,
+    )
 
-	full_light := (u32(31) << 25) | (u32(31) << 20) | (u32(31) << 15) | (u32(31) << 10) | (u32(31) << 5) | u32(31)
+    full_light:=(u32(31)<<25)|(u32(31)<<20)|(u32(31)<<15)|(u32(31)<<10)|(u32(31)<<5)|u32(31)
 
-	face_count:=0
-	for i in 0..<6 {
-		side:=cast(Model_Sides)i
-		geometry_index:=model_data.cube_indices[side]
-		if geometry_index < 0 {continue}
+    face_count:=0
+    for i in 0..<6 {
+        side:=cast(Model_Sides)i
+        geometry_index:=model_data.cube_indices[side]
+        if geometry_index < 0 {continue}
 
-		geometry:=&g.all_face_data[geometry_index]
-		assert(geometry.texture_slot < MAX_MODEL_TEXTURES,"invalid primary face texture slot")
+        geometry:=&g.all_face_data[geometry_index]
+        assert(geometry.texture_slot < MAX_MODEL_TEXTURES,"invalid primary face texture slot")
 
-		face:=&faces[face_count]
-		face.light={full_light,full_light,full_light,full_light}
-		face.pos.xyz=block_pos
-		face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot]
-		face.col=col
-		face.geometry_face_index=cast(u16)geometry_index
-		face_count+=1
-	}
+        face:=&faces[face_count]
+        face.pos={block_pos.pos.x,block_pos.pos.y,block_pos.pos.z,0}
+        face.step={block_pos.step.x,block_pos.step.y,block_pos.step.z,0}
+        face.light={full_light,full_light,full_light,full_light}
+        face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot]
+        face.col=col
+        face.geometry_face_index=cast(u16)geometry_index
+        face_count+=1
+    }
 
-	if face_count > 0 {
-		tg.draw_feces(mesh,faces[:face_count])
-	}
+    if face_count > 0 {
+        tg.draw_feces(mesh,faces[:face_count])
+    }
 
-	if model_data.extra_count > 0 {
-		extra_start:=model_data.cube_indices[.extra]
-		extra_face:[1]tg.Dynamic_Vert_Face
+    if model_data.extra_count > 0 {
+        extra_start:=model_data.cube_indices[.extra]
+        extra_face:[1]tg.Dynamic_Vert_Face
 
-		for extra_i in 0..<model_data.extra_count {
-			geometry_index:=extra_start+extra_i
-			geometry:=&g.all_face_data[geometry_index]
+        for extra_i in 0..<model_data.extra_count {
+            geometry_index:=extra_start+extra_i
+            geometry:=&g.all_face_data[geometry_index]
 
-			assert(geometry.texture_slot < MAX_MODEL_TEXTURES,"invalid extra face texture slot")
+            assert(geometry.texture_slot < MAX_MODEL_TEXTURES,"invalid extra face texture slot")
 
-			if geometry.side == .extra {continue}
+            if geometry.side == .extra {continue}
 
-			face:=&extra_face[0]
-			face.light={full_light,full_light,full_light,full_light}
-			face.pos.xyz=block_pos
-			face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot]
-			face.col=col
-			face.geometry_face_index=cast(u16)geometry_index
+            face:=&extra_face[0]
+            face.pos={block_pos.pos.x,block_pos.pos.y,block_pos.pos.z,0}
+            face.step={block_pos.step.x,block_pos.step.y,block_pos.step.z,0}
+            face.light={full_light,full_light,full_light,full_light}
+            face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot]
+            face.col=col
+            face.geometry_face_index=cast(u16)geometry_index
 
-			tg.draw_feces(mesh,extra_face[:])
-		}
-	}
+            tg.draw_feces(mesh,extra_face[:])
+        }
+    }
+}
+set_dynamic_face_pos :: proc(face:^tg.Dynamic_Vert_Face, pos:tg.World_Pos) {
+    face.pos = {pos.pos.x, pos.pos.y, pos.pos.z, 0}
+    face.step = {pos.step.x, pos.step.y, pos.step.z, 0}
 }
 
-draw_block_outline::proc(
-	mesh:^tg.Mesh_CPU,
-	pos:[3]f32,
-	item_hd:Item_HD,
-	block_state:Block_State={},
-	col:[4]f32={1,1,1,1},
-){
-	item,i_ok:=reg.get(&g.item_reg,item_hd)
-	if !i_ok{log.log(.Error,"bad item");return}
+draw_block_outline :: proc(
+    mesh:^tg.Mesh_CPU,
+    pos:[3]f32,
+    item_hd:Item_HD,
+    block_state:Block_State={},
+    col:[4]f32={1,1,1,1},
+) {
+    item,i_ok:=reg.get(&g.item_reg,item_hd)
+    if !i_ok {log.log(.Error,"bad item");return}
 
-	model,model_ok:=reg.get(&g.block_model_reg,item.model)
-	if !model_ok{return}
+    model,model_ok:=reg.get(&g.block_model_reg,item.model)
+    if !model_ok {return}
 
-	model_data,model_data_ok:=get_block_model_data_from_model(model,block_state)
-	if !model_data_ok{return}
+    model_data,model_data_ok:=get_block_model_data_from_model(model,block_state)
+    if !model_data_ok {return}
 
-	block_pos:=pos+block_offset_from_u16(block_state.offset)
+    step_size:=g.cam.step_size
+    block_pos:=tg.world_pos_from_f32(pos,step_size)
+    block_pos=tg.world_pos_add(
+        block_pos,
+        cast([3]f64)block_offset_from_u16(block_state.offset),
+        step_size,
+    )
 
-	tex:=tg.get_texture_by_id(tg.WHITE_TEX_ID)
-	shift:f32=.005
+    tex:=tg.get_texture_by_id(tg.WHITE_TEX_ID)
+    shift:f32=.005
 
-	for box in model_data.hit_boxes {
-		min_x:=box.box[0]-shift
-		min_y:=box.box[1]-shift
-		min_z:=box.box[2]-shift
-		max_x:=box.box[3]+shift
-		max_y:=box.box[4]+shift
-		max_z:=box.box[5]+shift
+    for box in model_data.hit_boxes {
+        min_x:=box.box[0]-shift
+        min_y:=box.box[1]-shift
+        min_z:=box.box[2]-shift
+        max_x:=box.box[3]+shift
+        max_y:=box.box[4]+shift
+        max_z:=box.box[5]+shift
 
-		cube:tg.Cube={
-			pos={block_pos.x+min_x,block_pos.y+max_y,block_pos.z+max_z},
-			w_h_l={max_x-min_x,max_y-min_y,max_z-min_z},
-		}
+        cube:tg.Cube={
+            pos={
+                block_pos.pos.x+min_x,
+                block_pos.pos.y+max_y,
+                block_pos.pos.z+max_z,
+            },
+            w_h_l={
+                max_x-min_x,
+                max_y-min_y,
+                max_z-min_z,
+            },
+        }
 
-		tg.draw_cube_outline(mesh,tex,tg.Vertex_Data,col,cube)
-	}
+        tg.draw_cube_outline(
+            mesh,
+            tex,
+            tg.Vertex_Data_Step,
+            col,
+            cube,
+            step=block_pos.step,
+        )
+    }
 }
 
 get_horizontal_model_side_from_look :: proc(look:tg.Look_Dir) -> Model_Sides {

@@ -24,6 +24,7 @@ Src :: enum {
 	 Sand_Sim_Shader_vert ,
 	 Dynamic_Vox_vert ,
 	 Shader_frag ,
+	 Shader_Step_vert ,
 }
 
 Textures :: enum {

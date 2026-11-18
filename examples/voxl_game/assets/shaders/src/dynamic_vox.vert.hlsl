@@ -1,27 +1,38 @@
 
-cbuffer UBO : register(b0, space1){ 
-	float4x4 mvp;
+cbuffer UBO : register(b0, space1) {
+    float4x4 mvp;
+    int4 camera_step;
+    float4 camera_pos;
+    float step_size;
+    float3 _padding;
+    float2 viewport_size;
+    float2 _padding_2;
 };
 
 static const uint CORNER_MAP[6] = { 0, 1, 2, 2, 3, 0 };
 struct Face {
-	float pos_x;
-	float pos_y;
-	float pos_z;
-	float pos_w;
+    float pos_x;
+    float pos_y;
+    float pos_z;
+    float pos_w;
 
-	uint light_0;
-	uint light_1;
-	uint light_2;
-	uint light_3;
+    int step_x;
+    int step_y;
+    int step_z;
+    uint _padding;
 
-	float r;
-	float g;
-	float b;
-	float a;
+    uint light_0;
+    uint light_1;
+    uint light_2;
+    uint light_3;
 
-	uint packed_block_pos__geometry_face_index;
-	uint texture_face_index;
+    float r;
+    float g;
+    float b;
+    float a;
+
+    uint packed_block_pos__geometry_face_index;
+    uint texture_face_index;
 };
 
 struct Face_Texure {
@@ -136,7 +147,12 @@ Output main(
 		final_uv = geometry.uv3;
 	}
 
-	final_pos.xyz += block_pos + float3(face.pos_x,face.pos_y,face.pos_z);
+	final_pos.xyz += block_pos + float3(face.pos_x, face.pos_y, face.pos_z);
+
+// Camera-relative position.
+	int3 face_step = int3(face.step_x, face.step_y, face.step_z);
+	
+	float3 relative_pos = float3(face_step - camera_step.xyz) * step_size + final_pos.xyz - camera_pos.xyz;
 
 
 	output.packed_light = uint4(face.light_0,face.light_1,face.light_2,face.light_3);
@@ -144,7 +160,7 @@ Output main(
 	// ------------------------------------------------------------
 	// Vertex output
 	// ------------------------------------------------------------
-	output.position = mul(mvp, final_pos);
+	output.position = mul(mvp, float4(relative_pos, final_pos.w));
 	output.uv = final_uv;
 	output.texture_face_index = texture_face_index;
 

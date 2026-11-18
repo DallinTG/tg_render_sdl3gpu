@@ -102,7 +102,7 @@ do_player_client_stuff::proc(){
 
 
 	
-	ray_info,ok:=get_block_by_ray(&g.w_map,g.cam.pos,g.cam.look)
+	ray_info,ok:=get_block_by_ray(&g.w_map,tg.get_cam_pos_f32(&g.cam),g.cam.look)
 	if !ok {return}
 	hylight_block_by_ray_cast(&g.w_map,ray_info)
 	draw_ghost_block_by_ray_cast(&g.w_map,item_hd,ray_info,player.set_bloc_var,hitbox_alignment=hitbox_alinment,sub_grid=sub_grid)

@@ -173,11 +173,12 @@ main :: proc(){
 	g.window = tg.init_window()
 
 	g.cam = tg.create_camera(type = .perspective)
+	g.cam.step_size = CHUNK_SIZE
 	g.cam_ui = tg.create_camera(type = .orthographic)
 
 	
 
-	g.vert_shader = tg.load_shader_file(file_path = "shader.vert")
+	g.vert_shader = tg.load_shader_file(file_path = "shader_step.vert")
 	g.frag_shader = tg.load_shader_file(file_path = "shader.frag")
 
 	g.ui_vert_shader = tg.load_shader_file(file_path = "ui_shader.vert")
@@ -289,9 +290,10 @@ do_mode_game::proc(){
 
 reset_game_state::proc(){
 	g.info.next_game_mode = .start
-	g.cam.pos={}
+	g.cam.w_pos={}
 	g.cam.target={}
 	g.cam.zoom = 1
+	g.cam.step_size = CHUNK_SIZE
 
 	g.server.server = {}
 	g.server.type = .nil
@@ -370,15 +372,16 @@ is_ui_r_click::proc()->(bool){
 	return tg.is_input_event(.ui_r_c,always_consume_p = false, always_consume_d = false)
 }
 
-update_camera_2d_pan::proc(cam:^tg.Camera, dt:f32=1, speed:f32=1,){
-	move_input:tg.Vec3
-	if tg.is_input_event(.ui_r_c,always_consume_p = false, always_consume_d = false){
-		move_input.x = s.input_events.mouse_move.x * -1
-		move_input.y = s.input_events.mouse_move.y
-		look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
-		motion := move_input * (speed*cam.zoom) * dt
-		cam.pos += motion
-	}
+update_camera_2d_pan :: proc(cam:^tg.Camera, dt:f32=1, speed:f32=1) {
+    move_input:tg.Vec3
+
+    if tg.is_input_event(.ui_r_c, always_consume_p = false, always_consume_d = false) {
+        move_input.x = s.input_events.mouse_move.x * -1
+        move_input.y = s.input_events.mouse_move.y
+
+        motion := move_input * (speed * cam.zoom) * dt
+        tg.camera_add_pos_f32(cam, motion)
+    }
 }
 
 update_camera_zoom::proc(cam:^tg.Camera, speed:f32=1, min_zoom:f32= .1,max_zoom:f32=5){

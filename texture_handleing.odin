@@ -508,6 +508,7 @@ create_gpu_texture::proc(
 uplode_data_to_gpu_texture::proc(texture:Texture_GPU_Handle,	bytes: []u8, width: int, height: int, layer:u32 = 0,chanle_count:int = 4){
 
 	tex_ptr := get_gpu_texture(texture)
+	assert(tex_ptr != nil)
 	assert(cast(u32)width<=tex_ptr.w && cast(u32)height<=tex_ptr.h,"texture data must be = or < texture ")
 	assert(s.gpu_device != nil, "s.gpu_device dos not exsist")
 	pixels_byte_size := width * height * chanle_count

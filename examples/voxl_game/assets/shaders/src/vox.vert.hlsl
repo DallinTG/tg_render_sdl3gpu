@@ -1,6 +1,12 @@
 
-cbuffer UBO : register(b0, space1){ 
-	float4x4 mvp;
+cbuffer UBO : register(b0, space1) {
+    float4x4 mvp;
+    int4 camera_step;
+    float4 camera_pos;
+    float step_size;
+    float3 _padding;
+    float2 viewport_size;
+    float2 _padding_2;
 };
 
 static const uint CORNER_MAP[6] = { 0, 1, 2, 2, 3, 0 };
@@ -197,21 +203,27 @@ Output main(
 	}
 	
 	light_uv = saturate(light_uv);
-	final_pos.xyz *= lod_size;
 	// ------------------------------------------------------------
-	// Chunk world position
+	// Camera-relative position
 	// ------------------------------------------------------------
-	final_pos.xyz += float3(
-		float(chunk.pos_x) * 32.0,
-		float(chunk.pos_y) * 32.0,
-		float(chunk.pos_z) * 32.0
+	
+	// Subtract integer coordinates BEFORE converting to float.
+	int3 chunk_step = int3(
+	    chunk.pos_x,
+	    chunk.pos_y,
+	    chunk.pos_z
 	);
+	
+	int3 step_delta = chunk_step - camera_step.xyz;
+	
+	// Scale the step difference and add local vertex position.
+	float3 relative_pos = float3(step_delta) * step_size + final_pos.xyz * lod_size - camera_pos.xyz;
 
 	// ------------------------------------------------------------
 	// Vertex output
 	// ------------------------------------------------------------
 	output.packed_light = uint4(face.light_0,face.light_1,face.light_2,face.light_3);
-	output.position = mul(mvp, final_pos);
+	output.position = mul(mvp, float4(relative_pos, 1.0));
 	output.uv = final_uv;
 	output.size = lod_size;
 	output.texture_face_index = texture_face_index;

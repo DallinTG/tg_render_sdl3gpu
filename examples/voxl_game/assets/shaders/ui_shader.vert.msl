@@ -6,6 +6,12 @@ using namespace metal;
 struct type_UBO
 {
     float4x4 mvp;
+    int4 camera_step;
+    float4 camera_pos;
+    float step_size;
+    packed_float3 _padding;
+    float2 viewport_size;
+    float2 _padding_2;
 };
 
 struct Vertex

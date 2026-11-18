@@ -31,6 +31,7 @@ import reg "registry"
 Steam_Info::struct{
 	steam_id:u64,
 	is_using_steam:bool,
+	is_logged_on:bool,
 	number_of_current_players: int,
 	client:^steam.IClient,
 	hd_pipe:steam.HSteamPipe,
@@ -315,6 +316,14 @@ run_steam_callbacks :: proc() {
             case .GameOverlayActivated:
                 log.log(.Info,"\nGameOverlayActivated")
                 onGameOverlayActivated(transmute(^steam.GameOverlayActivated)callback.pubParam)
+			case .SteamServersConnected:
+			    s.steam.is_logged_on = true
+			    log.log(.Info, "Steam servers connected.")
+			    update_steam_friend_info()
+			
+			case .SteamServersDisconnected:
+			    s.steam.is_logged_on = false
+			    log.log(.Warning, "Steam servers disconnected.")
 
 			case .LobbyCreated:
 

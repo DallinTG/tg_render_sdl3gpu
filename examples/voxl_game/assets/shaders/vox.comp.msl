@@ -42,6 +42,9 @@ struct type_Cull_Params
     uint do_chunk_back_face_culling;
     uint2 _padding;
     int4 cam_chunk_pos;
+    float4 camera_pos;
+    float step_size;
+    packed_float3 _padding2;
 };
 
 kernel void main0(constant type_Cull_Params& Cull_Params [[buffer(0)]], const device type_StructuredBuffer_Indirect_Draw_Command& source_commands [[buffer(1)]], const device type_StructuredBuffer_Chunk_Data& chunk_data [[buffer(2)]], device type_RWStructuredBuffer_Indirect_Draw_Command& culled_commands [[buffer(3)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
@@ -52,113 +55,114 @@ kernel void main0(constant type_Cull_Params& Cull_Params [[buffer(0)]], const de
         {
             break;
         }
-        float3 _84 = float3(float(chunk_data._m0[gl_GlobalInvocationID.x].size)) * 16.0;
-        float3 _85 = (float3(float(chunk_data._m0[gl_GlobalInvocationID.x].pos_x), float(chunk_data._m0[gl_GlobalInvocationID.x].pos_y), float(chunk_data._m0[gl_GlobalInvocationID.x].pos_z)) * 32.0) + _84;
-        float4 _90 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) + float4(Cull_Params.mvp[0][0u], Cull_Params.mvp[1][0u], Cull_Params.mvp[2][0u], Cull_Params.mvp[3][0u]);
-        float4 _91 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][0u], Cull_Params.mvp[1][0u], Cull_Params.mvp[2][0u], Cull_Params.mvp[3][0u]);
-        float4 _94 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) + float4(Cull_Params.mvp[0][1u], Cull_Params.mvp[1][1u], Cull_Params.mvp[2][1u], Cull_Params.mvp[3][1u]);
-        float4 _95 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][1u], Cull_Params.mvp[1][1u], Cull_Params.mvp[2][1u], Cull_Params.mvp[3][1u]);
-        float4 _98 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]);
-        float3 _99 = _90.xyz;
-        bool _118;
-        if (!(((dot(_99, _85) + _90.w) + dot(abs(_99), _84)) < 0.0))
+        int3 _79 = int3(chunk_data._m0[gl_GlobalInvocationID.x].pos_x, chunk_data._m0[gl_GlobalInvocationID.x].pos_y, chunk_data._m0[gl_GlobalInvocationID.x].pos_z);
+        float3 _95 = (float3(float(chunk_data._m0[gl_GlobalInvocationID.x].size)) * Cull_Params.step_size) * 0.5;
+        float3 _96 = ((float3(_79 - Cull_Params.cam_chunk_pos.xyz) * Cull_Params.step_size) - Cull_Params.camera_pos.xyz) + _95;
+        float4 _101 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) + float4(Cull_Params.mvp[0][0u], Cull_Params.mvp[1][0u], Cull_Params.mvp[2][0u], Cull_Params.mvp[3][0u]);
+        float4 _102 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][0u], Cull_Params.mvp[1][0u], Cull_Params.mvp[2][0u], Cull_Params.mvp[3][0u]);
+        float4 _105 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) + float4(Cull_Params.mvp[0][1u], Cull_Params.mvp[1][1u], Cull_Params.mvp[2][1u], Cull_Params.mvp[3][1u]);
+        float4 _106 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][1u], Cull_Params.mvp[1][1u], Cull_Params.mvp[2][1u], Cull_Params.mvp[3][1u]);
+        float4 _109 = float4(Cull_Params.mvp[0][3u], Cull_Params.mvp[1][3u], Cull_Params.mvp[2][3u], Cull_Params.mvp[3][3u]) - float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]);
+        float3 _110 = _101.xyz;
+        bool _129;
+        if (!(((dot(_110, _96) + _101.w) + dot(abs(_110), _95)) < 0.0))
         {
-            float3 _110 = _91.xyz;
-            _118 = ((dot(_110, _85) + _91.w) + dot(abs(_110), _84)) < 0.0;
+            float3 _121 = _102.xyz;
+            _129 = ((dot(_121, _96) + _102.w) + dot(abs(_121), _95)) < 0.0;
         }
         else
         {
-            _118 = true;
+            _129 = true;
         }
-        bool _130;
-        if (!_118)
+        bool _141;
+        if (!_129)
         {
-            float3 _122 = _94.xyz;
-            _130 = ((dot(_122, _85) + _94.w) + dot(abs(_122), _84)) < 0.0;
+            float3 _133 = _105.xyz;
+            _141 = ((dot(_133, _96) + _105.w) + dot(abs(_133), _95)) < 0.0;
         }
         else
         {
-            _130 = true;
+            _141 = true;
         }
-        bool _142;
-        if (!_130)
+        bool _153;
+        if (!_141)
         {
-            float3 _134 = _95.xyz;
-            _142 = ((dot(_134, _85) + _95.w) + dot(abs(_134), _84)) < 0.0;
+            float3 _145 = _106.xyz;
+            _153 = ((dot(_145, _96) + _106.w) + dot(abs(_145), _95)) < 0.0;
         }
         else
         {
-            _142 = true;
+            _153 = true;
         }
-        bool _154;
-        if (!_142)
+        bool _165;
+        if (!_153)
         {
-            _154 = ((dot(float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]).xyz, _85) + Cull_Params.mvp[3][2u]) + dot(abs(float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]).xyz), _84)) < 0.0;
+            _165 = ((dot(float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]).xyz, _96) + Cull_Params.mvp[3][2u]) + dot(abs(float4(Cull_Params.mvp[0][2u], Cull_Params.mvp[1][2u], Cull_Params.mvp[2][2u], Cull_Params.mvp[3][2u]).xyz), _95)) < 0.0;
         }
         else
         {
-            _154 = true;
+            _165 = true;
         }
-        bool _166;
-        if (!_154)
+        bool _177;
+        if (!_165)
         {
-            float3 _158 = _98.xyz;
-            _166 = ((dot(_158, _85) + _98.w) + dot(abs(_158), _84)) < 0.0;
+            float3 _169 = _109.xyz;
+            _177 = ((dot(_169, _96) + _109.w) + dot(abs(_169), _95)) < 0.0;
         }
         else
         {
-            _166 = true;
+            _177 = true;
         }
-        bool _202;
+        bool _210;
         if (Cull_Params.do_chunk_back_face_culling != 0u)
         {
-            int3 _177 = (int3(chunk_data._m0[gl_GlobalInvocationID.x].pos_x, chunk_data._m0[gl_GlobalInvocationID.x].pos_y, chunk_data._m0[gl_GlobalInvocationID.x].pos_z) + int3(chunk_data._m0[gl_GlobalInvocationID.x].size)) - int3(1);
-            bool _201;
+            int3 _185 = (_79 + int3(chunk_data._m0[gl_GlobalInvocationID.x].size)) - int3(1);
+            bool _209;
             switch (chunk_data._m0[gl_GlobalInvocationID.x].side)
             {
                 case 0u:
                 {
-                    _201 = Cull_Params.cam_chunk_pos.x < chunk_data._m0[gl_GlobalInvocationID.x].pos_x;
+                    _209 = Cull_Params.cam_chunk_pos.x < chunk_data._m0[gl_GlobalInvocationID.x].pos_x;
                     break;
                 }
                 case 1u:
                 {
-                    _201 = Cull_Params.cam_chunk_pos.x > _177.x;
+                    _209 = Cull_Params.cam_chunk_pos.x > _185.x;
                     break;
                 }
                 case 2u:
                 {
-                    _201 = Cull_Params.cam_chunk_pos.y < chunk_data._m0[gl_GlobalInvocationID.x].pos_y;
+                    _209 = Cull_Params.cam_chunk_pos.y < chunk_data._m0[gl_GlobalInvocationID.x].pos_y;
                     break;
                 }
                 case 3u:
                 {
-                    _201 = Cull_Params.cam_chunk_pos.y > _177.y;
+                    _209 = Cull_Params.cam_chunk_pos.y > _185.y;
                     break;
                 }
                 case 4u:
                 {
-                    _201 = Cull_Params.cam_chunk_pos.z < chunk_data._m0[gl_GlobalInvocationID.x].pos_z;
+                    _209 = Cull_Params.cam_chunk_pos.z < chunk_data._m0[gl_GlobalInvocationID.x].pos_z;
                     break;
                 }
                 case 5u:
                 {
-                    _201 = Cull_Params.cam_chunk_pos.z > _177.z;
+                    _209 = Cull_Params.cam_chunk_pos.z > _185.z;
                     break;
                 }
                 default:
                 {
-                    _201 = false;
+                    _209 = false;
                     break;
                 }
             }
-            _202 = _201;
+            _210 = _209;
         }
         else
         {
-            _202 = false;
+            _210 = false;
         }
-        culled_commands._m0[gl_GlobalInvocationID.x] = Indirect_Draw_Command{ ((!_166) ? _202 : true) ? 0u : source_commands._m0[gl_GlobalInvocationID.x].num_vertices, source_commands._m0[gl_GlobalInvocationID.x].num_instances, source_commands._m0[gl_GlobalInvocationID.x].first_vertex, source_commands._m0[gl_GlobalInvocationID.x].first_instance };
+        culled_commands._m0[gl_GlobalInvocationID.x] = Indirect_Draw_Command{ ((!_177) ? _210 : true) ? 0u : source_commands._m0[gl_GlobalInvocationID.x].num_vertices, source_commands._m0[gl_GlobalInvocationID.x].num_instances, source_commands._m0[gl_GlobalInvocationID.x].first_vertex, source_commands._m0[gl_GlobalInvocationID.x].first_instance };
         break;
     } while(false);
 }

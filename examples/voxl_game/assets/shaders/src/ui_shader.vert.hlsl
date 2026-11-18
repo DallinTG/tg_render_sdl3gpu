@@ -1,5 +1,11 @@
-cbuffer UBO : register(b0, space1){ 
-	float4x4 mvp;
+cbuffer UBO : register(b0, space1) {
+    float4x4 mvp;
+    int4 camera_step;
+    float4 camera_pos;
+    float step_size;
+    float3 _padding;
+    float2 viewport_size;
+    float2 _padding_2;
 };
 // struct Input{
 // 	float3 pos : TEXCOORD0;

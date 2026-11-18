@@ -22,13 +22,16 @@ import sdl3i"vendor:sdl3/image"
 import "core:sort"
 import "core:slice"
 
-Dynamic_Vert_Face::struct{
-	pos:[4]f32,
-	light: [4]u32,
-	col:[4]f32,
-	block_pos:u16,
-	geometry_face_index:u16,
-	texture_face_index:u32,
+Dynamic_Vert_Face :: struct {
+    pos: [4]f32,
+    step: [4]i32,
+
+    light: [4]u32,
+    col: [4]f32,
+
+    block_pos: u16,
+    geometry_face_index: u16,
+    texture_face_index: u32,
 }
 
 Vert_Face::struct{

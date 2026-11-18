@@ -38,17 +38,15 @@ Vox_Render_Settings::struct{
 	y_render_distance:int,
 	lod_levels:int,
 	lod_depth:int,
-	test:string,
-	waf:[8]int,
-	waf_6:[4]string,
+
 }
 DF_VOX_RENDER_SETTINGS:Vox_Render_Settings:{
 	do_chunk_back_face_culling = true,
 	do_chunk_frustum_culling = true,
-	xz_render_distance = 8,
-	y_render_distance = 8,
-	lod_levels = 8,
-	lod_depth = 2,
+	xz_render_distance = 4,
+	y_render_distance = 4,
+	lod_levels = 20,
+	lod_depth = 8,
 }
 Vox_Render_Debug_Info::struct{
 
@@ -80,36 +78,58 @@ Vox_Render_Debug_Info::struct{
 
 }
 
-// CHUNK_SIZE::32
-// MAX_NUM_CHUNKS::1000 * 7
-// MAX_FACE_COUNT::MAX_NUM_CHUNKS * CHUNK_MAX_FACE_NUM
-// CHUNK_MAX_FACE_NUM:: CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE
 
-// MAX_NUM_OF_MAP_MESH_SECTIONS ::  NUM_OF_FACES_PER_MAP_MESH_SECTIONS * 2 * CHUNK_SIZE * MAX_NUM_CHUNKS
-// NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
-// 
 CHUNK_SIZE::32
 MAX_NUM_CHUNKS::35000 * 7
 MAX_FACE_COUNT::MAX_NUM_CHUNKS * CHUNK_MAX_FACE_NUM
 CHUNK_MAX_FACE_NUM::  CHUNK_SIZE * CHUNK_SIZE / 2
 MAX_NUM_DRAW_CMD_BUF::MAX_NUM_CHUNKS / 8
-// MAX_NUM_OF_MAP_MESH_SECTIONS ::  NUM_OF_FACES_PER_MAP_MESH_SECTIONS * 2 * CHUNK_SIZE * MAX_NUM_CHUNKS
-// NUM_OF_FACES_PER_MAP_MESH_SECTIONS :: CHUNK_SIZE * CHUNK_SIZE / 2
 
+// Nine levels cover chunk sizes 1, 2, 4, ..., 256.
+MAX_CHUNK_STREAM_LOD_LEVELS :: 12
+MAX_CHUNK_STREAM_LOD_SIZE :: 1 << (MAX_CHUNK_STREAM_LOD_LEVELS-1)
+MAX_CHUNKS_TO_ADD_PER_FRAME :: 100
+MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE :: 512
 
-// Task_Data :: struct {
-// 	link: ^Task_Data,
-// 	el_1:rawptr,
-// 	el_2:rawptr,
-// 	el_3:rawptr,
-// }
+Chunk_Stream_Settings :: struct {
+    lod_level_count: int,                  // Includes LOD0 (size 1).
+    lod_band_width: int,                   // Nominal full ring thickness in the next LOD's chunks.
+    lod0_radius_xz: int,                   // LOD0 half-extent in base chunks.
+    lod0_radius_y: int,                    // LOD0 vertical half-extent in base chunks.
+    max_chunk_loads_per_update: int,
+    max_chunk_unloads_per_update: int,
+}
+
+DF_CHUNK_STREAM_SETTINGS: Chunk_Stream_Settings: {
+    lod_level_count = 12,
+    lod_band_width = 8,
+    lod0_radius_xz = 8,
+    lod0_radius_y = 4,
+    max_chunk_loads_per_update = 50,
+    max_chunk_unloads_per_update = 512,
+}
+
+// Bounds are base-chunk coordinates with an exclusive maximum.
+Chunk_Stream_Bounds :: struct {
+    min: [3]int,
+    max: [3]int,
+}
+
+Chunk_Unload_Candidate :: struct {
+    chunk_hd: Chunk_HD,
+    distance: int,
+}
+
+Chunk_Stream_Cursor :: struct {
+    level, shell, cell_index: int,
+}
 
 Map::struct{
 	did_work:bool,
 	renderer_saw_work:bool,
 
-	// stream_chunk_pos: [3]int,
-	// stream_chunk_pos_valid: bool,
+	stream_chunk_pos: [3]int,
+	stream_chunk_pos_valid: bool,
 	chunks_map_rw_mutex: atom.Atomic_RW_Mutex,
 	chunks_map:map[[4]int]Chunk_HD,
 	chunks:Chunks_Handle_Map,
@@ -136,6 +156,8 @@ Map::struct{
 
 	t_pool:thread.Pool,
 	pool_tasks:Pool_Tasks_HM,
+	chunk_stream_settings: Chunk_Stream_Settings,
+	chunk_stream_cursor: Chunk_Stream_Cursor,
 
 
 	set_block_chan:chan.Chan(Set_Block_CMD,.Both),
@@ -157,6 +179,10 @@ Chunk_HD::distinct hm.Handle64
 Chunk::struct{
 	handle:			Chunk_HD,
 	pos:			[4]int,
+	retiring:		bool,
+	// Shared by meshing/readers; exclusive for voxel generation, lighting writes,
+	// block edits, retirement, and destruction.
+	data_rw_mutex: atom.Atomic_RW_Mutex,
 
 	vox_data_hd:	Vox_Chunk_Data_HD,
 
@@ -167,6 +193,7 @@ Chunk::struct{
 	// light_q_hd:		Light_Q_HD,
 	
 	mesh_q_state:[Model_Sides]Q_State,
+	mesh_gpu_ready_mask:bit_set[Model_Sides],
 	gpu_mesh_data_hd:GPU_Mesh_Data_HD,
 
 	// chunk_shader_data:Chunk_Shader_Data,
@@ -192,6 +219,7 @@ GPU_Mesh_Data_HM::hm.Dynamic_Handle_Map(GPU_Mesh_Data,GPU_Mesh_Data_HD)
 GPU_Mesh_Data_HD::distinct hm.Handle64
 GPU_Mesh_Data::struct{
 	handle:GPU_Mesh_Data_HD,
+	visible:bool,
 	chunk_shader_data:	[Model_Sides]Chunk_Shader_Data,
 	draw_cmd:			[Model_Sides]sdl.GPUIndirectDrawCommand,
 	range_in_map_mesh:	[Model_Sides]tg.Free_List_Range,
@@ -203,6 +231,8 @@ Pool_Task_HD::distinct hm.Handle64
 Pool_Task::struct{
 	handle:Pool_Task_HD,
 	task:All_Tasks,
+	// Mesh output is pool bookkeeping, not part of the compact Mesh_Chunk_Task.
+	mesh_hd:Chunk_Mesh_Data_HD,
 }
 All_Tasks::union{
 	Gen_Vox_Data_Task,
@@ -215,15 +245,38 @@ Gen_Vox_Data_Task::struct{
 	vox_data_hd:Vox_Chunk_Data_HD,
 	light_q_hd:		Light_Q_HD,
 }
+Mesh_Light_Neighbor_Entry :: struct {
+	light_hd: Light_Chunk_Data_HD,
+	pos: [3]int,
+	size: int,
+}
+
+Mesh_Light_Neighbor :: struct {
+	same_lod: Light_Chunk_Data_HD,
+	fine_lod: [4]Mesh_Light_Neighbor_Entry,
+	fine_count: int,
+	coarse_lod: Mesh_Light_Neighbor_Entry,
+	has_coarse_lod: bool,
+}
+
 Mesh_Chunk_Task::struct{
 	w_map: ^Map,
-	chunk_hd:Chunk_HD,
-	vox_data_hd: Vox_Chunk_Data_HD,
-	neighbor_vox_hd: [4]Vox_Chunk_Data_HD,
-	neighbor_light_data_hd:[Full_Directions]Light_Chunk_Data_HD,
-	mesh_hd: Chunk_Mesh_Data_HD,
-	has_4_neighbors:bool,
+	chunk_hd: Chunk_HD,
 	side: Model_Sides,
+}
+
+MESH_MAX_LOCKED_CHUNKS :: 64
+// Prepared handles are kept under read locks until mesh_by_bit_mask finishes.
+Mesh_Prepared_Chunk_Data :: struct {
+	chunk_vox_hd: Vox_Chunk_Data_HD,
+	chunk_light_hd: Light_Chunk_Data_HD,
+	chunk_pos: [3]int,
+	chunk_size: int,
+	neighbor_vox_hd: [4]Vox_Chunk_Data_HD,
+	has_4_neighbors: bool,
+	neighbor_light_data: [Full_Directions]Mesh_Light_Neighbor,
+	locked_chunk_hds: [MESH_MAX_LOCKED_CHUNKS]Chunk_HD,
+	locked_chunk_count: int,
 }
 Light_Chunk_Task::struct{
 	w_map: ^Map,
@@ -251,8 +304,8 @@ start_gen_vox_dat_task::proc(w_map:^Map, task:Gen_Vox_Data_Task){
 	thread.pool_add_task(&w_map.t_pool,context.allocator,do_task,task_ptr,cast(int)task_hd.idx)
 }
 
-start_mesh_chunk_task::proc(w_map:^Map, task:Mesh_Chunk_Task){
-	task_hd,err:=hm.add(&w_map.pool_tasks,Pool_Task{task=task})
+start_mesh_chunk_task::proc(w_map:^Map, task:Mesh_Chunk_Task, mesh_hd:Chunk_Mesh_Data_HD){
+	task_hd,err:=hm.add(&w_map.pool_tasks,Pool_Task{task=task,mesh_hd=mesh_hd})
 	assert(err == .None)
 	task_ptr,task_ok:=hm.get(&w_map.pool_tasks,task_hd)
 	assert(task_ok)
@@ -265,6 +318,9 @@ start_light_chunk_task::proc(w_map:^Map, task:Light_Chunk_Task){
 	dir_offsets:=DIR_OFFSETS
 	chunk,chunk_ok:=hm.get(&w_map.chunks,task.chunk_hd)
 	assert(chunk_ok)
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	chunk_pos := chunk.pos
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
 
 	for &light_q, dir in &new_task.nabors_light_q_hd{
 		err:runtime.Allocator_Error
@@ -272,32 +328,25 @@ start_light_chunk_task::proc(w_map:^Map, task:Light_Chunk_Task){
 		assert(err == .None)
 	}
 
-	
 	for &vox_data_hd, dir in &new_task.nabors_vox_data_hd{
-		err:runtime.Allocator_Error
-		offset:=dir_offsets[dir] *chunk.pos.w
-		pos:=chunk.pos
+		offset:=dir_offsets[dir] * chunk_pos.w
+		pos:=chunk_pos
 		pos.xyz+=offset
-
-		atom.atomic_rw_mutex_shared_lock(&w_map.chunks_map_rw_mutex)
-		nab_chunk_hd ,nab_chunk_hd_ok := get_chunk_by_pos_safe(w_map,pos)
-		atom.atomic_rw_mutex_shared_unlock(&w_map.chunks_map_rw_mutex)
+		nab_chunk_hd,nab_chunk_hd_ok:=get_chunk_by_pos_safe(w_map,pos)
 		if !nab_chunk_hd_ok {continue}
 		new_task.nabors_chunk_hd[dir] = nab_chunk_hd
 
 		nab_chunk,nab_chunk_ok:=hm.get(&w_map.chunks,nab_chunk_hd)
 		if !nab_chunk_ok {continue}
-		vox_data_hd = nab_chunk.vox_data_hd
-		
-		assert(err == .None)
+		atom.atomic_rw_mutex_shared_lock(&nab_chunk.data_rw_mutex)
+		if !nab_chunk.retiring { vox_data_hd = nab_chunk.vox_data_hd }
+		atom.atomic_rw_mutex_shared_unlock(&nab_chunk.data_rw_mutex)
 	}
 
 	task_hd,err:=hm.add(&w_map.pool_tasks,Pool_Task{task=new_task})
 	assert(err == .None)
 	task_ptr,task_ok:=hm.get(&w_map.pool_tasks,task_hd)
 	assert(task_ok)
-	
-
 	thread.pool_add_task(&w_map.t_pool,context.allocator,do_task,task_ptr,cast(int)task_hd.idx)
 }
 
@@ -307,40 +356,54 @@ do_task::proc(task: thread.Task){
 		case Gen_Vox_Data_Task:
 		gen_vox_data(t)
 		case Mesh_Chunk_Task:
-		mesh_by_bit_mask(t)
+		mesh_by_bit_mask(t, new_task.mesh_hd)
 		case Light_Chunk_Task:
-		update_chunk_lighting(t)
+		update_chunk_lighting_with_lock(t)
 		
 	}
 }
-fin_pool_tasks::proc(w_map:^Map){
+fin_pool_tasks::proc(w_map:^Map)->(did_work:bool, mesh_changed:bool){
 	for {
 		task_raw, ok := thread.pool_pop_done(&w_map.t_pool)
 		if !ok {break}
 		task:=cast(^Pool_Task)task_raw.data
+		did_work = true
 		switch t in task.task{
 		case Gen_Vox_Data_Task:
-			
 			vox_chunk,vox_chunk_ok:=hm.get(&w_map.vox_chunk_hm,t.vox_data_hd)
 			assert(vox_chunk_ok)
 			atom.atomic_store(&vox_chunk.vox_gened,true)
-			// log.log(.Debug,t.vox_data_hd)
-			start_light_chunk_task(w_map,Light_Chunk_Task{w_map=w_map,chunk_hd=t.chunk_hd,vox_data_hd=t.vox_data_hd,light_q_hd=t.light_q_hd})
+			chunk,chunk_ok:=hm.get(&w_map.chunks,t.chunk_hd)
+			assert(chunk_ok)
+			if chunk_is_retiring(chunk) {
+				// A retired chunk is being discarded, so do not seed a new light task.
+				set_chunk_light_q_state(chunk, .usable)
+				found,err:=hm.remove(&w_map.light_qs_hm,t.light_q_hd)
+				assert(err == .None && found)
+			}else{
+				start_light_chunk_task(w_map,Light_Chunk_Task{w_map=w_map,chunk_hd=t.chunk_hd,vox_data_hd=t.vox_data_hd,light_q_hd=t.light_q_hd})
+			}
 		case Mesh_Chunk_Task:
 			chunk,chunk_ok:=hm.get(&w_map.chunks,t.chunk_hd)
 			assert(chunk_ok)
-
-			mesh,mesh_ok:=hm.get(&w_map.chunks_mesh_data,t.mesh_hd)
+			mesh,mesh_ok:=hm.get(&w_map.chunks_mesh_data,task.mesh_hd)
 			assert(mesh_ok)
-
 			face_count := mesh.face_count
 
+			atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
 			chunk.mesh_q_state[t.side] = .usable
-			if face_count <= 0 {
-				add_to_destroy_mesh_data_q(w_map,t.mesh_hd)
-				unload_mesh_data_by_side(t.w_map,chunk.gpu_mesh_data_hd,t.side)
+			chunk_retiring := chunk.retiring
+			gpu_mesh_data_hd := chunk.gpu_mesh_data_hd
+			if !chunk_retiring && face_count == 0 { chunk.mesh_gpu_ready_mask += {t.side} }
+			atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+			if chunk_retiring || face_count < 0 {
+				add_to_destroy_mesh_data_q(w_map,task.mesh_hd)
+			}else if face_count == 0 {
+				add_to_destroy_mesh_data_q(w_map,task.mesh_hd)
+				unload_mesh_data_by_side(t.w_map,gpu_mesh_data_hd,t.side)
+				mesh_changed = true
 			}else{
-				add_to_upload_mesh_data_q(w_map,t.chunk_hd,t.mesh_hd,t.side)
+				add_to_upload_mesh_data_q(w_map,t.chunk_hd,task.mesh_hd,t.side)
 			}
 			
 		case Light_Chunk_Task:
@@ -360,13 +423,13 @@ fin_pool_tasks::proc(w_map:^Map){
 				assert(calling_chunk_ok)
 
 				if old_owner_count == 1 {
-					stuff_in_q:bool
-					if len(q.add_q)>0{stuff_in_q = true}
-					if len(q.seed_q)>0{stuff_in_q = true}
-					if len(q.remove_q)>0{stuff_in_q = true}
-		
-					if stuff_in_q {
-						calling_chunk.light_data_q_state = .in_q
+					stuff_in_q := len(q.add_q)>0 || len(q.seed_q)>0 || len(q.remove_q)>0
+					if chunk_is_retiring(calling_chunk) {
+						set_chunk_light_q_state(calling_chunk, .usable)
+						found,err:=hm.remove(&w_map.light_qs_hm,t.calling_q)
+						assert(err == .None && found)
+					}else if stuff_in_q {
+						set_chunk_light_q_state(calling_chunk, .in_q)
 						start_light_chunk_task(w_map,Light_Chunk_Task{
 							w_map=w_map,
 							chunk_hd=t.calling_chunk_hd,
@@ -374,20 +437,14 @@ fin_pool_tasks::proc(w_map:^Map){
 							light_q_hd=t.calling_q,
 						})
 					}else{
-						calling_chunk.light_data_q_state = .usable
-
-						calling_vox_chunk,calling_vox_chunk_ok:=hm.get(&w_map.vox_chunk_hm,t.calling_vox_data_hd)
-						assert(calling_vox_chunk_ok)
+						set_chunk_light_q_state(calling_chunk, .usable)
 						found,err:=hm.remove(&w_map.light_qs_hm,t.calling_q)
 						assert(err == .None)
-						if found {
-							// check_if_chunk_needs_meshing(w_map,calling_vox_chunk.pos)
-							// add_to_chunk_needs_meshing_q(w_map,calling_vox_chunk.pos)
-							notify_chunk_lighting_ready(w_map,t.calling_chunk_hd)
-						}
+						if found { notify_chunk_lighting_ready(w_map,t.calling_chunk_hd) }
 					}
 				}
 			}
+			if !chunk_is_retiring(chunk) {
 			for nab_light_q_hd,dir in t.nabors_light_q_hd{
 				nab_chunk,nab_chunk_ok:=hm.get(&w_map.chunks,t.nabors_chunk_hd[dir])
 				
@@ -398,12 +455,21 @@ fin_pool_tasks::proc(w_map:^Map){
 				calling_light_q,calling_light_q_hd_ok:=hm.get(&w_map.light_qs_hm,t.light_q_hd)
 				if !calling_light_q_hd_ok {continue}
 
+				if nab_chunk_ok && chunk_is_retiring(nab_chunk) {
+					if atom.atomic_load(&nab_light_q.owner_count) == 0 {
+						set_chunk_light_q_state(nab_chunk, .usable)
+						found,err:=hm.remove(&w_map.light_qs_hm,nab_light_q_hd)
+						assert(err == .None)
+					}
+					continue
+				}
+
 				stuff_in_q:bool
 				if len(nab_light_q.add_q)>0{stuff_in_q = true}
 				if len(nab_light_q.seed_q)>0{stuff_in_q = true}
 				if len(nab_light_q.remove_q)>0{stuff_in_q = true}
 				if stuff_in_q{
-					if nab_chunk_ok {nab_chunk.light_data_q_state = .in_q}
+					if nab_chunk_ok {set_chunk_light_q_state(nab_chunk, .in_q)}
 					atom.atomic_add(&calling_light_q.owner_count,1)
 					start_light_chunk_task(w_map,
 						Light_Chunk_Task{
@@ -419,10 +485,11 @@ fin_pool_tasks::proc(w_map:^Map){
 					)
 				}
 				if !stuff_in_q && atom.atomic_load(&nab_light_q.owner_count) == 0 {
-					if nab_chunk_ok {nab_chunk.light_data_q_state = .usable}
+					if nab_chunk_ok {set_chunk_light_q_state(nab_chunk, .usable)}
 					found,err:=hm.remove(&w_map.light_qs_hm,nab_light_q_hd)
 					assert(err == .None)
 				}
+			}
 			}
 
 
@@ -432,8 +499,12 @@ fin_pool_tasks::proc(w_map:^Map){
 				own_owner_count:=atom.atomic_load(&own_q.owner_count)
 			
 				if own_owner_count == 0 {
-					if own_stuff_in_q {
-						chunk.light_data_q_state = .in_q
+					if chunk_is_retiring(chunk) {
+						set_chunk_light_q_state(chunk, .usable)
+						found,err:=hm.remove(&w_map.light_qs_hm,t.light_q_hd)
+						assert(err == .None && found)
+					}else if own_stuff_in_q {
+						set_chunk_light_q_state(chunk, .in_q)
 						start_light_chunk_task(w_map,Light_Chunk_Task{
 							w_map=w_map,
 							chunk_hd=t.chunk_hd,
@@ -441,14 +512,10 @@ fin_pool_tasks::proc(w_map:^Map){
 							light_q_hd=t.light_q_hd,
 						})
 					}else{
-						chunk.light_data_q_state = .usable
+						set_chunk_light_q_state(chunk, .usable)
 						found,err:=hm.remove(&w_map.light_qs_hm,t.light_q_hd)
 						assert(err == .None)
-						if found {
-							// check_if_chunk_needs_meshing(w_map,vox_chunk.pos)
-							// add_to_chunk_needs_meshing_q(w_map,vox_chunk.pos)
-							notify_chunk_lighting_ready(w_map,t.chunk_hd)
-						}
+						if found { notify_chunk_lighting_ready(w_map,t.chunk_hd) }
 					}
 				}
 			}
@@ -456,6 +523,7 @@ fin_pool_tasks::proc(w_map:^Map){
 		hm.remove(&w_map.pool_tasks,task.handle)
 
 	}
+	return did_work, mesh_changed
 }
 
 
@@ -482,6 +550,7 @@ get_chunk_mesh_data::proc(w_map:^Map, mesh_data_hd:Chunk_Mesh_Data_HD,)->(mesh_d
 }
 
 init_map::proc(w_map:^Map){
+	w_map.chunk_stream_settings = DF_CHUNK_STREAM_SETTINGS
 	// w_map.t_pool
 	pool_allocator: mem.Allocator
 	pool_allocator = runtime.heap_allocator()
@@ -493,7 +562,7 @@ init_map::proc(w_map:^Map){
 	err:runtime.Allocator_Error
 	w_map.gen_chunk_chan , err = chan.create_buffered(chan.Chan(Gen_Chunk_Q_Data),10000, context.allocator)
 	assert(err == .None)
-	w_map.destroy_chunk_chan , err = chan.create_buffered(chan.Chan(Destroy_Chunk_Q_Data),10000, context.allocator)
+	w_map.destroy_chunk_chan , err = chan.create_buffered(chan.Chan(Destroy_Chunk_Q_Data),MAX_NUM_CHUNKS, context.allocator)
 	assert(err == .None)
 	w_map.gen_vox_data_chan, err = chan.create_buffered(chan.Chan(Gen_Vox_Data_Q_Data),10000, context.allocator)
 	assert(err == .None)
@@ -523,211 +592,661 @@ init_map::proc(w_map:^Map){
 	w_map.chunk_shader_data.bind_to_frag = false
 	w_map.map_mesh_hd = tg.create_mesh(tg.Vert_Face, MAX_FACE_COUNT,{},type = .no_tranfer_buff, usage = {.GRAPHICS_STORAGE_READ}, debug_name = "w_map Chunk buffer mesh")
 	w_map.dynamic_map_mesh_hd = tg.create_mesh(tg.Dynamic_Vert_Face, type = .dynamic_buff, debug_name = "dynamic w_map Chunk buffer mesh")
-	w_map.drawing_map_mesh_hd = tg.create_mesh(tg.Vertex_Data, type = .dynamic_buff, debug_name = "dynamic w_map Chunk buffer mesh")
+	w_map.drawing_map_mesh_hd = tg.create_mesh(tg.Vertex_Data_Step, type = .dynamic_buff, debug_name = "dynamic w_map Chunk buffer mesh")
 	w_map.chunck_transfer_buffer = sdl.CreateGPUTransferBuffer(s.gpu_device,{
 		usage = .UPLOAD,
 		size = cast(u32)(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * size_of(tg.Vert_Face)),
 	})
 }
 
-MAX_CHUNKS_TO_Q_AT_ONE_TIME :: 50
-
-
-removing_chunks_not_around_pos::proc(w_map:^Map,pos:[3]f32,)->(did_work:bool){
-
-	chunk_pos:=pos_to_chunck_pos(pos)
-
-
-	xz_rad:=g.settings.xz_render_distance+3
-	y_rad:=g.settings.y_render_distance+3
-	
-	min_x:=(-1*xz_rad) + chunk_pos.x
-	max_x:=xz_rad + chunk_pos.x
-	min_y:=(-1*y_rad) + chunk_pos.y
-	max_y:=y_rad + chunk_pos.y
-	min_z:=(-1*xz_rad) + chunk_pos.z
-	max_z:=xz_rad + chunk_pos.z
-
-	q_count:int
-
-	itor:=hm.iterator_make(&w_map.chunks)
-	loop:for chunk, chunk_hd in hm.iterate(&itor) {
-		remove_chunk:bool
-		if chunk.pos.x > max_x {remove_chunk = true}
-		if chunk.pos.y > max_y {remove_chunk = true}
-		if chunk.pos.z > max_z {remove_chunk = true}
-
-		if chunk.pos.x < min_x {remove_chunk = true}
-		if chunk.pos.y < min_y {remove_chunk = true}
-		if chunk.pos.z < min_z {remove_chunk = true}
-		if remove_chunk {
-			// log.log(.Debug,chunk.pos,"min_x",min_x,"max_x",max_x,"min_y",min_y,"max_y",max_y,"min_z",min_z,"max_z",max_z,remove_chunk)
-			// add_to_destroy_chunk_q(w_map,chunk_hd)
-			// did_work = true
-			// q_count+=1
-			// if q_count>=MAX_CHUNKS_TO_Q_AT_ONE_TIME {return}
-			// return
-		}
-	}
-	return
+floor_div :: proc(v, divisor: int) -> int {
+    assert(divisor > 0)
+    q := v / divisor
+    r := v % divisor
+    if r < 0 { q -= 1 }
+    return q
 }
 
-next_power_of_two :: proc(v:int) -> int {
-	result := 1
-
-	for result < v {
-		result <<= 1
-	}
-
-	return result
+ceil_div :: proc(v, divisor: int) -> int {
+    assert(divisor > 0)
+    q := v / divisor
+    r := v % divisor
+    if r > 0 { q += 1 }
+    return q
 }
 
-
-nearest_valid_chunk_pos :: proc(v, lod_lev:int) -> int {
-	q := v / lod_lev
-	r := v % lod_lev
-
-	// Odin integer division truncates toward zero.
-	if r < 0 {
-		r += lod_lev
-		q -= 1
-	}
-
-	// Round to the nearest valid LOD position.
-	if r*2 >= lod_lev {
-		q += 1
-	}
-
-	return q * lod_lev
+abs_int :: proc(v: int) -> int {
+    if v < 0 { return -v }
+    return v
 }
 
+max3_int :: proc(a, b, c: int) -> int {
+    return max(a, max(b, c))
+}
 
-adding_chunks_around_pos :: proc(w_map:^Map, pos:[3]f32) -> (did_work:bool) {
-	if g.debug_info.chunks_mesh_data_len > 0 {return}
-	if g.debug_info.light_qs_hm_len > 0{return}
+prepare_chunk_stream_cursor :: proc(w_map: ^Map, player_chunk: [3]int) {
+    if !w_map.stream_chunk_pos_valid ||
+       w_map.stream_chunk_pos.x != player_chunk.x ||
+       w_map.stream_chunk_pos.y != player_chunk.y ||
+       w_map.stream_chunk_pos.z != player_chunk.z {
+        w_map.stream_chunk_pos = player_chunk
+        w_map.stream_chunk_pos_valid = true
+        w_map.chunk_stream_cursor = {}
+    }
+}
 
-	chunk_pos := pos_to_chunck_pos(pos)
-	// log.log(.Info, "new Chunk loop")
-	xz_rad := g.settings.xz_render_distance
-	y_rad := g.settings.y_render_distance
-	lod_depth := g.settings.lod_depth
+// Returns one coordinate on the Chebyshev shell without visiting the shell's interior.
+chunk_stream_shell_cell :: proc(shell, cell_index: int) -> [3]int {
+    if shell == 0 { return {} }
 
-	// Your original desired first LOD radius.
-	lod_1_radius := cast(int)(f32(xz_rad) * 2)
-	lod_1_radius = ((lod_1_radius + lod_depth - 1) / lod_depth) * lod_depth
+    width := shell*2+1
+    face_count := width*width
 
-	// The first box must contain the desired radius.
-	//
-	// We make the FULL box size a power of 2.
-	// Minimum 4 cells is important because the next LOD's
-	// larger cells must be able to line up against this box.
-	xz_radius := max(2, lod_1_radius)
-	y_radius := max(2, min(lod_1_radius, y_rad))
+    if cell_index < face_count*2 {
+        face := cell_index/face_count
+        index := cell_index%face_count
+        z := -shell
+        if face == 1 { z = shell }
+        return {index/width-shell, index%width-shell, z}
+    }
 
-	base_xz_box_cells := next_power_of_two(xz_radius * 2)
-	base_y_box_cells := next_power_of_two(y_radius * 2)
+    index := cell_index-face_count*2
+    inner_width := width-2
+    side_face_count := width*inner_width
+    if index < side_face_count*2 {
+        face := index/side_face_count
+        index %= side_face_count
+        x := -shell
+        if face == 1 { x = shell }
+        return {x, index/inner_width-shell, index%inner_width-(shell-1)}
+    }
 
-	if base_xz_box_cells < 4 {
-		base_xz_box_cells = 4
-	}
+    index -= side_face_count*2
+    end_face_count := inner_width*inner_width
+    face := index/end_face_count
+    index %= end_face_count
+    y := -shell
+    if face == 1 { y = shell }
+    return {index/inner_width-(shell-1), y, index%inner_width-(shell-1)}
+}
+make_chunk_stream_bounds :: proc(
+    player_chunk: [3]int,
+    settings: Chunk_Stream_Settings,
+) -> (bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds, ok: bool) {
+    if settings.lod_level_count < 1 || settings.lod_level_count > MAX_CHUNK_STREAM_LOD_LEVELS { return }
+    if settings.lod_band_width < 1 || settings.lod0_radius_xz < 1 || settings.lod0_radius_y < 1 { return }
+    if settings.max_chunk_loads_per_update < 1 || settings.max_chunk_unloads_per_update < 1 { return }
 
-	if base_y_box_cells < 4 {
-		base_y_box_cells = 4
-	}
+    radius_xz := settings.lod0_radius_xz
+    radius_y := settings.lod0_radius_y
 
-	q_count := 0
+    for level := 0; level < settings.lod_level_count; level += 1 {
+        size := 1 << cast(u32)level
+        alignment := size
+        if level + 1 < settings.lod_level_count {
+            // The finer box must end on the next LOD's cell grid. Without
+            // this, a coarse cell can partially overlap the finer region.
+            alignment = size << 1
+        }
 
-	// Previous LOD box.
-	prev_x_start := 0
-	prev_x_end := 0
-	prev_y_start := 0
-	prev_y_end := 0
-	prev_z_start := 0
-	prev_z_end := 0
+        bounds[level].min = {
+            floor_div(player_chunk.x-radius_xz, alignment)*alignment,
+            floor_div(player_chunk.y-radius_y, alignment)*alignment,
+            floor_div(player_chunk.z-radius_xz, alignment)*alignment,
+        }
+        bounds[level].max = {
+            ceil_div(player_chunk.x+radius_xz, alignment)*alignment,
+            ceil_div(player_chunk.y+radius_y, alignment)*alignment,
+            ceil_div(player_chunk.z+radius_xz, alignment)*alignment,
+        }
 
-	has_previous_box := false
+        if level + 1 < settings.lod_level_count {
+            // This expands both sides by band_width*size. Since the next
+            // LOD is twice this size, both sides together form band_width
+            // chunks of thickness in that next LOD.
+            radius_xz += settings.lod_band_width * size
+            radius_y += settings.lod_band_width * size
+        }
+    }
 
-	for i_lod in 0..<g.settings.lod_levels {
-		lod_lev := 1 << cast(u32)i_lod
+    return bounds, true
+}
 
-		// Find the nearest chunk coordinate that is valid
-		// for this LOD's grid.
-		center_x := nearest_valid_chunk_pos(chunk_pos.x, lod_lev)
-		center_y := nearest_valid_chunk_pos(chunk_pos.y, lod_lev)
-		center_z := nearest_valid_chunk_pos(chunk_pos.z, lod_lev)
+chunk_key_level :: proc(key: [4]int) -> int {
+    size := key.w
+    if size < 1 || size > MAX_CHUNK_STREAM_LOD_SIZE { return -1 }
 
-		// Same number of LOD cells every level.
-		// Each cell is twice as large, so the physical box
-		// doubles in size every LOD.
-		xz_box_size := base_xz_box_cells * lod_lev
-		y_box_size := base_y_box_cells * lod_lev
+    expected := 1
+    level := 0
+    for expected < size {
+        expected <<= 1
+        level += 1
+    }
 
-		x_start := center_x - xz_box_size/2
-		x_end := center_x + xz_box_size/2
+    if expected != size { return -1 }
+    if key.x%size != 0 || key.y%size != 0 || key.z%size != 0 { return -1 }
 
-		y_start := center_y - y_box_size/2
-		y_end := center_y + y_box_size/2
+    return level
+}
 
-		z_start := center_z - xz_box_size/2
-		z_end := center_z + xz_box_size/2
+chunk_key_intersects_bounds :: proc(key: [4]int, bounds: Chunk_Stream_Bounds) -> bool {
+    size := key.w
+    return key.x < bounds.max.x && key.x+size > bounds.min.x &&
+           key.y < bounds.max.y && key.y+size > bounds.min.y &&
+           key.z < bounds.max.z && key.z+size > bounds.min.z
+}
 
-		for x := x_start; x < x_end; x += lod_lev {
-			x_cell_end := x + lod_lev
+chunk_key_is_wanted :: proc(
+    key: [4]int,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    lod_level_count: int,
+) -> bool {
+    level := chunk_key_level(key)
+    if level < 0 || level >= lod_level_count { return false }
 
-			for y := y_start; y < y_end; y += lod_lev {
-				y_cell_end := y + lod_lev
+    size := key.w
+    current := bounds[level]
+    if key.x < current.min.x || key.x+size > current.max.x ||
+       key.y < current.min.y || key.y+size > current.max.y ||
+       key.z < current.min.z || key.z+size > current.max.z {
+        return false
+    }
 
-				for z := z_start; z < z_end; z += lod_lev {
-					z_cell_end := z + lod_lev
+    // Every coarser cell must be completely outside the previous finer box.
+    // Bounds are aligned to this level's grid, so no cell can be partial.
+    if level > 0 && chunk_key_intersects_bounds(key, bounds[level-1]) {
+        return false
+    }
 
-					// A coarse cell is skipped ONLY if the
-					// entire coarse cell is inside the
-					// previous finer LOD box.
-					inside_previous := false
+    return true
+}
 
-					if has_previous_box {
-						inside_previous =
-							x >= prev_x_start &&
-							x_cell_end <= prev_x_end &&
-							y >= prev_y_start &&
-							y_cell_end <= prev_y_end &&
-							z >= prev_z_start &&
-							z_cell_end <= prev_z_end
-					}
+chunk_key_intersects_chunk :: proc(a, b: [4]int) -> bool {
+    return a.x < b.x+b.w && a.x+a.w > b.x &&
+           a.y < b.y+b.w && a.y+a.w > b.y &&
+           a.z < b.z+b.w && a.z+a.w > b.z
+}
 
-					if inside_previous {
-						continue
-					}
+begin_chunk_retirement :: proc(w_map: ^Map, chunk_hd: Chunk_HD) -> bool {
+    // Use the same lock order as destroy_chunk and mesh preparation:
+    // map first, then the individual chunk. Unlinking the position here lets
+    // a newly wanted chunk be created before the old chunk's tasks have drained.
+    atom.atomic_rw_mutex_lock(&w_map.chunks_map_rw_mutex)
+    chunk, ok := hm.get(&w_map.chunks, chunk_hd)
+    if !ok {
+        atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
+        return false
+    }
 
-					key := [4]int{x, y, z, lod_lev}
+    atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+    if chunk.retiring {
+        atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+        atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
+        return false
+    }
 
-					if _,ok := get_chunk_by_pos_safe(w_map,key);ok{
-						continue
-					}
-					// log.log(.Debug,"add_chunck",key)
-					add_to_gen_chunk_q(w_map, key)
+    chunk.retiring = true
+    chunk_pos := chunk.pos
+    gpu_mesh_data_hd := chunk.gpu_mesh_data_hd
+    mapped_hd, mapped := w_map.chunks_map[chunk_pos]
+    if mapped && mapped_hd == chunk_hd {
+        delete_key(&w_map.chunks_map, chunk_pos)
+    }
+    atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+    atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
 
-					did_work = true
-					q_count += 1
+    // Hide the old GPU data immediately. Actual buffer and handle destruction
+    // is deferred until no worker task can still reference the chunk.
+    if hm.is_valid(&w_map.gpu_mesh_data_hm, gpu_mesh_data_hd) {
+        gpu_mesh_data, gpu_mesh_ok := hm.get(&w_map.gpu_mesh_data_hm, gpu_mesh_data_hd)
+        if gpu_mesh_ok { gpu_mesh_data.visible = false }
+    }
 
-					if q_count >= MAX_CHUNKS_TO_Q_AT_ONE_TIME {
-						return
-					}
-				}
-			}
-		}
+    update_neighbors_after_chunk_retirement(w_map, chunk_hd)
+    add_to_destroy_chunk_q(w_map, chunk_hd)
+    return true
+}
 
-		prev_x_start = x_start
-		prev_x_end = x_end
-		prev_y_start = y_start
-		prev_y_end = y_end
-		prev_z_start = z_start
-		prev_z_end = z_end
+model_side_opposite :: proc(side: Model_Sides) -> Model_Sides {
+    switch side {
+    case .pos_x: return .neg_x
+    case .neg_x: return .pos_x
+    case .pos_y: return .neg_y
+    case .neg_y: return .pos_y
+    case .pos_z: return .neg_z
+    case .neg_z: return .pos_z
+    case .extra: return .extra
+    }
+    return .extra
+}
 
-		has_previous_box = true
-	}
+chunk_stream_point_inside :: proc(point: [3]int, bounds: Chunk_Stream_Bounds) -> bool {
+    return point.x >= bounds.min.x && point.x < bounds.max.x &&
+           point.y >= bounds.min.y && point.y < bounds.max.y &&
+           point.z >= bounds.min.z && point.z < bounds.max.z
+}
 
-	return
+chunk_stream_find_wanted_key_at_pos :: proc(
+    point: [3]int,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    lod_level_count: int,
+) -> (key: [4]int, found: bool) {
+    for level := 0; level < lod_level_count; level += 1 {
+        size := 1 << cast(u32)level
+        candidate := [4]int{
+            floor_div(point.x, size)*size,
+            floor_div(point.y, size)*size,
+            floor_div(point.z, size)*size,
+            size,
+        }
+        if chunk_key_is_wanted(candidate, bounds, lod_level_count) {
+            return candidate, true
+        }
+    }
+    return
+}
+
+chunk_stream_region_has_wanted_lod :: proc(
+    key: [4]int,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    lod_level_count: int,
+) -> bool {
+    if key.w <= 0 { return false }
+    chunk_min := key.xyz
+    chunk_max := [3]int{key.x+key.w, key.y+key.w, key.z+key.w}
+
+    // The wanted region is the union of the nested LOD boxes, with each
+    // coarser level owning only the ring outside the previous finer box.
+    // This tests coverage with at most one box test per LOD, without walking
+    // replacement cells or doing any chunk-handle lookups.
+    for level := 0; level < lod_level_count; level += 1 {
+        region := bounds[level]
+        overlap_min := [3]int{
+            max(chunk_min.x, region.min.x),
+            max(chunk_min.y, region.min.y),
+            max(chunk_min.z, region.min.z),
+        }
+        overlap_max := [3]int{
+            min(chunk_max.x, region.max.x),
+            min(chunk_max.y, region.max.y),
+            min(chunk_max.z, region.max.z),
+        }
+        if overlap_min.x >= overlap_max.x || overlap_min.y >= overlap_max.y || overlap_min.z >= overlap_max.z {
+            continue
+        }
+        if level == 0 { return true }
+
+        inner := bounds[level-1]
+        if overlap_min.x < inner.min.x || overlap_max.x > inner.max.x ||
+           overlap_min.y < inner.min.y || overlap_max.y > inner.max.y ||
+           overlap_min.z < inner.min.z || overlap_max.z > inner.max.z {
+            return true
+        }
+    }
+    return false
+}
+
+chunk_stream_voxel_lighting_ready :: proc(w_map: ^Map, chunk: ^Chunk) -> bool {
+    atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+    ready := !chunk.retiring && chunk.light_data_q_state == .usable && lighting_ready_mask_complete(chunk.lighting_redy_mask)
+    vox_data_hd := chunk.vox_data_hd
+    atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+    if !ready { return false }
+    vox_data, vox_ok := hm.get(&w_map.vox_chunk_hm, vox_data_hd)
+    return vox_ok && atom.atomic_load(&vox_data.vox_gened)
+}
+
+chunk_mesh_side_render_ready :: proc(chunk: ^Chunk, side: Model_Sides) -> bool {
+    atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+    ready := chunk.mesh_q_state[side] == .usable && side in chunk.mesh_gpu_ready_mask
+    atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+    return ready
+}
+
+chunk_stream_mesh_boundary_ready :: proc(
+    w_map: ^Map,
+    chunk: ^Chunk,
+    side: Model_Sides,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    lod_level_count: int,
+) -> bool {
+    size := chunk.pos.w
+    neighbor_point := chunk.pos.xyz
+    switch side {
+    case .pos_x: neighbor_point.x += size
+    case .neg_x: neighbor_point.x -= size
+    case .pos_y: neighbor_point.y += size
+    case .neg_y: neighbor_point.y -= size
+    case .pos_z: neighbor_point.z += size
+    case .neg_z: neighbor_point.z -= size
+    case .extra: return true
+    }
+
+    // There is no replacement boundary outside the active clipbox.
+    outer_bounds := bounds[lod_level_count-1]
+    if !chunk_stream_point_inside(neighbor_point, outer_bounds) { return true }
+
+    neighbor_key, wanted := chunk_stream_find_wanted_key_at_pos(neighbor_point, bounds, lod_level_count)
+    if !wanted { return false }
+    neighbor_hd, exists := get_chunk_by_pos_safe(w_map, neighbor_key)
+    if !exists { return false }
+    neighbor, neighbor_ok := hm.get(&w_map.chunks, neighbor_hd)
+    if !neighbor_ok || !chunk_stream_voxel_lighting_ready(w_map, neighbor) { return false }
+
+    opposite := model_side_opposite(side)
+    if neighbor.pos.w > size {
+        // A coarser neighbor owns this transition face.
+        return chunk_mesh_side_render_ready(neighbor, opposite)
+    }
+    if neighbor.pos.w < size {
+        // This chunk is coarser and owns the face against four smaller cells.
+        return chunk_mesh_side_render_ready(chunk, side)
+    }
+
+    // Same-size neighbors mesh both sides of their shared boundary.
+    return chunk_mesh_side_render_ready(chunk, side) && chunk_mesh_side_render_ready(neighbor, opposite)
+}
+
+chunk_stream_chunk_render_ready :: proc(
+    w_map: ^Map,
+    chunk: ^Chunk,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    lod_level_count: int,
+) -> bool {
+    if !chunk_stream_voxel_lighting_ready(w_map, chunk) { return false }
+    for side in Model_Sides {
+        if side == .extra { continue }
+        if !chunk_stream_mesh_boundary_ready(w_map, chunk, side, bounds, lod_level_count) {
+            return false
+        }
+    }
+    return true
+}
+
+chunk_stream_replacement_state :: proc(
+    w_map: ^Map,
+    old_chunk_pos: [4]int,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    lod_level_count: int,
+) -> (needed: bool, renderable: bool) {
+    old_chunk_bounds := Chunk_Stream_Bounds{
+        min = old_chunk_pos.xyz,
+        max = {old_chunk_pos.x+old_chunk_pos.w, old_chunk_pos.y+old_chunk_pos.w, old_chunk_pos.z+old_chunk_pos.w},
+    }
+    renderable = true
+
+    for level := 0; level < lod_level_count; level += 1 {
+        size := 1 << cast(u32)level
+        region := bounds[level]
+        overlap_min := [3]int{
+            max(old_chunk_bounds.min.x, region.min.x),
+            max(old_chunk_bounds.min.y, region.min.y),
+            max(old_chunk_bounds.min.z, region.min.z),
+        }
+        overlap_max := [3]int{
+            min(old_chunk_bounds.max.x, region.max.x),
+            min(old_chunk_bounds.max.y, region.max.y),
+            min(old_chunk_bounds.max.z, region.max.z),
+        }
+        if overlap_min.x >= overlap_max.x || overlap_min.y >= overlap_max.y || overlap_min.z >= overlap_max.z {
+            continue
+        }
+
+        min_cell := [3]int{
+            floor_div(overlap_min.x, size),
+            floor_div(overlap_min.y, size),
+            floor_div(overlap_min.z, size),
+        }
+        max_cell := [3]int{
+            ceil_div(overlap_max.x, size),
+            ceil_div(overlap_max.y, size),
+            ceil_div(overlap_max.z, size),
+        }
+
+        for cx := min_cell.x; cx < max_cell.x; cx += 1 {
+            for cy := min_cell.y; cy < max_cell.y; cy += 1 {
+                for cz := min_cell.z; cz < max_cell.z; cz += 1 {
+                    key := [4]int{cx*size, cy*size, cz*size, size}
+                    if !chunk_key_is_wanted(key, bounds, lod_level_count) { continue }
+                    if !chunk_key_intersects_bounds(key, old_chunk_bounds) { continue }
+                    needed = true
+
+                    replacement_hd, exists := get_chunk_by_pos_safe(w_map, key)
+                    if !exists { return true, false }
+                    replacement, replacement_ok := hm.get(&w_map.chunks, replacement_hd)
+                    if !replacement_ok || !chunk_stream_chunk_render_ready(w_map, replacement, bounds, lod_level_count) {
+                        return true, false
+                    }
+                }
+            }
+        }
+    }
+
+    // No wanted LOD cell overlaps this chunk. It has no replacement to wait
+    // for and must be retired instead of being kept alive indefinitely.
+    return needed, true
+}
+
+removing_chunks_not_around_pos :: proc(w_map: ^Map, pos: [3]f32) -> (did_work: bool) {
+    player_chunk := pos_to_chunck_pos(pos)
+    settings := w_map.chunk_stream_settings
+    prepare_chunk_stream_cursor(w_map, player_chunk)
+
+    bounds, valid := make_chunk_stream_bounds(player_chunk, settings)
+    if !valid { return }
+
+    // Keep the nearest replacement-ready chunks first. This budget is
+    // independent of the load budget; unloads are allowed to process far more
+    // than the old 100-chunk load cap.
+    unload_budget := min(settings.max_chunk_unloads_per_update, MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE)
+    candidates: [MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE]Chunk_Unload_Candidate
+    candidate_count := 0
+
+    itor := hm.iterator_make(&w_map.chunks)
+    for chunk, chunk_hd in hm.iterate(&itor) {
+        if chunk.retiring || chunk_key_is_wanted(chunk.pos, bounds, settings.lod_level_count) {
+            continue
+        }
+
+        // If no LOD level wants any part of this chunk, retire it immediately.
+        // This is only a handful of bounds checks; it does not search for
+        // replacement chunks or wait for lighting/meshing to finish.
+        if !chunk_stream_region_has_wanted_lod(chunk.pos, bounds, settings.lod_level_count) {
+            if begin_chunk_retirement(w_map, chunk_hd) { did_work = true }
+            continue
+        }
+
+        dx := 0
+        dy := 0
+        dz := 0
+        if player_chunk.x < chunk.pos.x { dx = chunk.pos.x-player_chunk.x }
+        else if player_chunk.x >= chunk.pos.x+chunk.pos.w { dx = player_chunk.x-(chunk.pos.x+chunk.pos.w-1) }
+        if player_chunk.y < chunk.pos.y { dy = chunk.pos.y-player_chunk.y }
+        else if player_chunk.y >= chunk.pos.y+chunk.pos.w { dy = player_chunk.y-(chunk.pos.y+chunk.pos.w-1) }
+        if player_chunk.z < chunk.pos.z { dz = chunk.pos.z-player_chunk.z }
+        else if player_chunk.z >= chunk.pos.z+chunk.pos.w { dz = player_chunk.z-(chunk.pos.z+chunk.pos.w-1) }
+        distance := dx*dx + dy*dy + dz*dz
+
+        if candidate_count == unload_budget && distance >= candidates[candidate_count-1].distance {
+            continue
+        }
+
+        // Only do the expensive replacement mesh/readiness walk for chunks
+        // close enough to enter the nearest-first unload set.
+        replacement_needed, replacements_renderable := chunk_stream_replacement_state(
+            w_map, chunk.pos, bounds, settings.lod_level_count,
+        )
+        if !replacement_needed {
+            if begin_chunk_retirement(w_map, chunk_hd) { did_work = true }
+            continue
+        }
+        if !replacements_renderable { continue }
+
+        insert_at := candidate_count
+        for i := 0; i < candidate_count; i += 1 {
+            if distance < candidates[i].distance {
+                insert_at = i
+                break
+            }
+        }
+
+        if candidate_count < unload_budget { candidate_count += 1 }
+        for i := candidate_count-1; i > insert_at; i -= 1 {
+            candidates[i] = candidates[i-1]
+        }
+        candidates[insert_at] = Chunk_Unload_Candidate{chunk_hd=chunk_hd, distance=distance}
+    }
+
+    // Retire replacement-ready chunks from nearest to farthest.
+    for i := 0; i < candidate_count; i += 1 {
+        if begin_chunk_retirement(w_map, candidates[i].chunk_hd) {
+            did_work = true
+        }
+    }
+    return
+}
+
+adding_chunks_around_pos :: proc(w_map: ^Map, pos: [3]f32) -> (did_work: bool) {
+    player_chunk := pos_to_chunck_pos(pos)
+    settings := w_map.chunk_stream_settings
+    prepare_chunk_stream_cursor(w_map, player_chunk)
+    cursor := &w_map.chunk_stream_cursor
+
+    // The LOD scan is complete until the player enters a different chunk.
+    if cursor.level >= settings.lod_level_count { return }
+
+    if thread.pool_num_waiting(&w_map.t_pool) > 0 { return }
+    if chan.len(w_map.gen_chunk_chan) > 0 { return }
+    if hm.len(w_map.chunks_mesh_data) > 0 { return }
+
+    itor := hm.iterator_make(&w_map.chunks)
+    for chunk, _ in hm.iterate(&itor) {
+        for state in chunk.mesh_q_state {
+            if state == .in_q { return }
+        }
+    }
+
+    bounds, valid := make_chunk_stream_bounds(player_chunk, settings)
+    if !valid { return }
+
+    queued := 0
+    load_budget := min(settings.max_chunk_loads_per_update, MAX_CHUNKS_TO_ADD_PER_FRAME)
+
+    // Use the current player chunk as the scan center. The cursor is reset
+    // whenever that chunk changes, so no center needs to be stored in it.
+    for level := cursor.level; level < settings.lod_level_count; level += 1 {
+        size := 1 << cast(u32)level
+        region := bounds[level]
+
+        min_x := region.min.x / size
+        min_y := region.min.y / size
+        min_z := region.min.z / size
+        max_x := region.max.x / size
+        max_y := region.max.y / size
+        max_z := region.max.z / size
+
+        center_x := floor_div(player_chunk.x, size)
+        center_y := floor_div(player_chunk.y, size)
+        center_z := floor_div(player_chunk.z, size)
+
+        max_shell := max3_int(
+            max(abs_int(center_x-min_x), abs_int(max_x-1-center_x)),
+            max(abs_int(center_y-min_y), abs_int(max_y-1-center_y)),
+            max(abs_int(center_z-min_z), abs_int(max_z-1-center_z)),
+        )
+
+        start_shell := 0
+        if level == cursor.level { start_shell = cursor.shell }
+        for shell := start_shell; shell <= max_shell; shell += 1 {
+            shell_cell_count := 1
+            if shell > 0 {
+                width := shell*2+1
+                inner_width := width-2
+                shell_cell_count = 2*width*width + 2*width*inner_width + 2*inner_width*inner_width
+            }
+
+            start_cell := 0
+            if level == cursor.level && shell == cursor.shell { start_cell = cursor.cell_index }
+            for cell_index := start_cell; cell_index < shell_cell_count; cell_index += 1 {
+                offset := chunk_stream_shell_cell(shell, cell_index)
+                cx := center_x+offset.x
+                cy := center_y+offset.y
+                cz := center_z+offset.z
+
+                if cx < min_x || cx >= max_x || cy < min_y || cy >= max_y || cz < min_z || cz >= max_z { continue }
+
+                key := [4]int{cx*size, cy*size, cz*size, size}
+                if !chunk_key_is_wanted(key, bounds, settings.lod_level_count) { continue }
+                if _, exists := get_chunk_by_pos_safe(w_map, key); exists { continue }
+
+                add_to_gen_chunk_q(w_map, key)
+                did_work = true
+                queued += 1
+                if queued >= load_budget {
+                    cursor.level = level
+                    cursor.shell = shell
+                    cursor.cell_index = cell_index+1
+                    return
+                }
+            }
+            cursor.shell = shell+1
+            cursor.cell_index = 0
+        }
+
+        cursor.level = level+1
+        cursor.shell = 0
+        cursor.cell_index = 0
+    }
+
+    cursor.level = settings.lod_level_count
+    cursor.shell = 0
+    cursor.cell_index = 0
+    return
+}
+
+pool_task_references_chunk :: proc(
+    task: All_Tasks,
+    chunk_hd: Chunk_HD,
+    vox_data_hd: Vox_Chunk_Data_HD,
+    has_vox_data: bool,
+    light_data_hd: Light_Chunk_Data_HD,
+    has_light_data: bool,
+) -> bool {
+    switch t in task {
+    case Gen_Vox_Data_Task:
+        return t.chunk_hd == chunk_hd || (has_vox_data && t.vox_data_hd == vox_data_hd)
+    case Mesh_Chunk_Task:
+        return t.chunk_hd == chunk_hd
+    case Light_Chunk_Task:
+        if t.chunk_hd == chunk_hd || t.calling_chunk_hd == chunk_hd { return true }
+        if has_vox_data {
+            if t.vox_data_hd == vox_data_hd || t.calling_vox_data_hd == vox_data_hd { return true }
+            for hd in t.nabors_vox_data_hd { if hd == vox_data_hd { return true } }
+        }
+        for hd in t.nabors_chunk_hd { if hd == chunk_hd { return true } }
+    }
+    return false
+}
+
+update_neighbors_after_chunk_retirement :: proc(w_map: ^Map, chunk_hd: Chunk_HD) {
+    chunk, ok := hm.get(&w_map.chunks, chunk_hd)
+    if !ok { return }
+
+    for offset, direction in FULL_DIR_OFFSETS_r {
+        neighbor_pos := chunk.pos
+        neighbor_pos.xyz += offset * chunk.pos.w
+
+        neighbor_hd, exists := get_chunk_by_pos_safe(w_map, neighbor_pos)
+        if !exists { continue }
+
+        neighbor, neighbor_ok := hm.get(&w_map.chunks, neighbor_hd)
+        if !neighbor_ok { continue }
+
+        opposite_direction := OPPOITE_FULL_DIR_OFFSETS_r[direction]
+        atom.atomic_rw_mutex_lock(&neighbor.data_rw_mutex)
+        neighbor.lighting_redy_mask += {opposite_direction}
+        atom.atomic_rw_mutex_unlock(&neighbor.data_rw_mutex)
+    }
 }
 
 update_w_map_draw_cmds_buff::proc(w_map:^Map){
@@ -739,26 +1258,12 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map){
 	tg.clear_mesh_cpu(&mesh.cpu)
 	tg.clear_mesh_cpu(&chunck_shader_data.cpu)
 
-	// view_mat, proj_mat:=tg.make_view_mat_proj_mat(cam)
-	// frustum:=make_frustum(view_mat, proj_mat)
-
-
-
 	itor:=hm.iterator_make(&w_map.gpu_mesh_data_hm)
 	loop:for gpu_mesh, gpu_mesh_hd in hm.iterate(&itor) {
-		// cam_chunk_pos:=pos_to_chunck_pos(cam.pos)
-		// if should_cull_chunk(&frustum,gpu_mesh.chunk_shader_data.pos){
-		// 	continue
-		// }
+		if !gpu_mesh.visible { continue }
 		for draw_cmd, side in gpu_mesh.draw_cmd{
 
 			tmep_full_count+=1
-			// if draw_cmd.num_vertices == 0{
-			// 	continue
-			// }
-			// if should_cull_chunk_side(side,gpu_mesh.chunk_shader_data.pos, cast([3]i32)cam_chunk_pos){
-			// 	continue
-			// }
 			draw_cmd_:[1]sdl.GPUIndirectDrawCommand=draw_cmd
 			tg.append_to_mesh(&mesh.cpu,{},draw_cmd_[:])
 			chunck_shader_data_:[1]Chunk_Shader_Data=gpu_mesh.chunk_shader_data[side]
@@ -767,166 +1272,15 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map){
 		}
 	}
 
-	tg.update_mesh(w_map.draw_cmd_buf_hd)
-	tg.update_mesh(w_map.chunk_shader_data.mesh_hd)
+	tg.update_mesh(w_map.draw_cmd_buf_hd, false)
+	tg.update_mesh(w_map.chunk_shader_data.mesh_hd, false )
 	mesh.gpu.index_count = cast(u32)w_map.chunk_shader_data.count
 	mesh_2.gpu.index_count =  cast(u32)w_map.chunk_shader_data.count
-}
-
-should_cull_chunk_side :: proc(
-	side: Model_Sides,
-	chunk_pos: [4]i32,
-	cam_chunk_pos: [3]i32,
-) -> (cull: bool) {
-
-	if !g.settings.do_chunk_back_face_culling {
-		return false
-	}
-
-	size := chunk_pos.w
-
-	min_x := chunk_pos.x
-	min_y := chunk_pos.y
-	min_z := chunk_pos.z
-
-	max_x := chunk_pos.x + size - 1
-	max_y := chunk_pos.y + size - 1
-	max_z := chunk_pos.z + size - 1
-
-	switch side {
-	case .pos_x:
-		cull = cam_chunk_pos.x < min_x
-	case .neg_x:
-		cull = cam_chunk_pos.x > max_x
-	case .pos_y:
-		cull = cam_chunk_pos.y < min_y
-	case .neg_y:
-		cull = cam_chunk_pos.y > max_y
-	case .pos_z:
-		cull = cam_chunk_pos.z < min_z
-	case .neg_z:
-		cull = cam_chunk_pos.z > max_z
-	case .extra:
-	}
-	return
-}
-
-Frustum_Plane :: struct {
-    normal: [3]f32,
-    distance: f32,
-}
-
-Frustum :: struct {
-    planes: [6]Frustum_Plane,
-}
-
-make_frustum :: proc(view_mat: tg.Mat4, proj_mat: tg.Mat4) -> Frustum {
-    frustum: Frustum
-
-    vp := proj_mat * view_mat
-
-    // Left
-    frustum.planes[0].normal = {
-        vp[0][3] + vp[0][0],
-        vp[1][3] + vp[1][0],
-        vp[2][3] + vp[2][0],
-    }
-    frustum.planes[0].distance = vp[3][3] + vp[3][0]
-
-    // Right
-    frustum.planes[1].normal = {
-        vp[0][3] - vp[0][0],
-        vp[1][3] - vp[1][0],
-        vp[2][3] - vp[2][0],
-    }
-    frustum.planes[1].distance = vp[3][3] - vp[3][0]
-
-    // Bottom
-    frustum.planes[2].normal = {
-        vp[0][3] + vp[0][1],
-        vp[1][3] + vp[1][1],
-        vp[2][3] + vp[2][1],
-    }
-    frustum.planes[2].distance = vp[3][3] + vp[3][1]
-
-    // Top
-    frustum.planes[3].normal = {
-        vp[0][3] - vp[0][1],
-        vp[1][3] - vp[1][1],
-        vp[2][3] - vp[2][1],
-    }
-    frustum.planes[3].distance = vp[3][3] - vp[3][1]
-
-    // Near
-    // Vulkan / SDL_GPU depth range: 0 <= z <= w
-    frustum.planes[4].normal = {
-        vp[0][2],
-        vp[1][2],
-        vp[2][2],
-    }
-    frustum.planes[4].distance = vp[3][2]
-
-    // Far
-    frustum.planes[5].normal = {
-        vp[0][3] - vp[0][2],
-        vp[1][3] - vp[1][2],
-        vp[2][3] - vp[2][2],
-    }
-    frustum.planes[5].distance = vp[3][3] - vp[3][2]
-
-    // Normalize all planes.
-    for &plane in &frustum.planes {
-        length := math.sqrt(
-            plane.normal.x * plane.normal.x +
-            plane.normal.y * plane.normal.y +
-            plane.normal.z * plane.normal.z,
-        )
-
-        if length > 0 {
-            plane.normal /= length
-            plane.distance /= length
-        }
-    }
-
-    return frustum
-}
-
-
-should_cull_chunk :: proc(frustum: ^Frustum, chunk_pos: [4]i32) -> bool {
-	if !g.settings.do_chunk_frustum_culling {return false}
-
-	min_x := cast(f32)chunk_pos.x * CHUNK_SIZE
-	min_y := cast(f32)chunk_pos.y * CHUNK_SIZE
-	min_z := cast(f32)chunk_pos.z * CHUNK_SIZE
-
-	max_x := min_x + CHUNK_SIZE * cast(f32)chunk_pos.w
-	max_y := min_y + CHUNK_SIZE * cast(f32)chunk_pos.w
-	max_z := min_z + CHUNK_SIZE * cast(f32)chunk_pos.w
-
-	for plane in frustum.planes {
-		x := min_x
-		y := min_y
-		z := min_z
-
-		if plane.normal.x >= 0 {x = max_x}
-		if plane.normal.y >= 0 {y = max_y}
-		if plane.normal.z >= 0 {z = max_z}
-
-		if plane.normal.x*x +
-		   plane.normal.y*y +
-		   plane.normal.z*z +
-		   plane.distance < 0 {
-			return true
-		}
-	}
-
-	return false
 }
 
 render_map::proc(w_map:^Map){
 	tg.do_render_pass(&g.vox_pass, &g.cam, {w_map.map_mesh_hd},{&g.texture_facees,&g.geometry_facees, &w_map.chunk_shader_data}, {w_map.draw_cmd_buf_comped_hd},type = .face)
 }
-
 
 get_chunk_by_pos_safe::proc(w_map:^Map,pos:[4]int)->(chunk_hd:Chunk_HD, chunk_ok:bool){
 	atom.atomic_rw_mutex_shared_lock(&w_map.chunks_map_rw_mutex)
@@ -942,49 +1296,70 @@ Q_State::enum{
 	usable,
 	// finished,
 }
+
+set_chunk_light_q_state :: proc(chunk: ^Chunk, state: Q_State) {
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+	chunk.light_data_q_state = state
+	atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+}
+
+chunk_is_retiring :: proc(chunk: ^Chunk) -> bool {
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	retiring := chunk.retiring
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	return retiring
+}
+
+chunk_is_mesh_side_queued :: proc(chunk: ^Chunk, side: Model_Sides) -> bool {
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	queued := !chunk.retiring && chunk.mesh_q_state[side] == .in_q
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	return queued
+}
 manage_all_w_map_q::proc(w_map:^Map)->(did_work:bool){
-	// did_work = adding_chunks_around_pos(&g.w_map,g.cam.pos)
-	did_work = adding_chunks_around_pos(&g.w_map,{0,0,0})
-	did_work = removing_chunks_not_around_pos(&g.w_map,g.cam.pos)
-	// log.log(.Debug,g.cam.pos)
+    // Drain completed worker tasks before deciding what can be retired.
+    fin_work, fin_mesh_changed := fin_pool_tasks(w_map)
+    did_work = fin_work || did_work
+    mesh_changed := fin_mesh_changed
 
-	did_work = manage_gen_chunk_q(w_map)
+    // Keep old chunks only where a wanted LOD replacement covers them, and
+    // only until those replacement meshes are uploaded. Chunks with no wanted
+    // LOD coverage are retired immediately by removing_chunks_not_around_pos.
+    remove_work := removing_chunks_not_around_pos(w_map, tg.get_cam_pos_f32(&g.cam))
+    did_work = remove_work || did_work
 
-	did_work = manage_gen_vox_data_q(w_map)
+    did_work = adding_chunks_around_pos(w_map, tg.get_cam_pos_f32(&g.cam)) || did_work
+    did_work = manage_gen_chunk_q(w_map) || did_work
+    did_work = manage_gen_vox_data_q(w_map) || did_work
+    did_work = manage_set_block_cmd_q(w_map) || did_work
+    did_work = manage_chunk_needs_meshing_q(w_map) || did_work
+    did_work = manage_gen_mesh_data_q(w_map) || did_work
 
-	did_work = manage_set_block_cmd_q(w_map)
+    // Lighting completion can enqueue more meshing work. Process that work
+    // before upload and before testing retired chunks for final destruction.
+    fin_work, fin_mesh_changed = fin_pool_tasks(w_map)
+    did_work = fin_work || did_work
+    mesh_changed = fin_mesh_changed || mesh_changed
+    did_work = manage_chunk_needs_meshing_q(w_map) || did_work
+    did_work = manage_gen_mesh_data_q(w_map) || did_work
 
-	did_work = manage_chunk_needs_meshing_q(w_map)
+    upload_work := manage_upload_mesh_data_q(w_map)
+    did_work = upload_work || did_work
+    did_work = manage_destroy_mesh_data_q(w_map) || did_work
 
-	did_work = manage_gen_mesh_data_q(w_map)
+    // A retired chunk is freed only after every task and queue message that
+    // can reference its voxel, lighting, or mesh data has drained.
+    destroy_work := manage_destroy_chunk_q(w_map)
+    did_work = destroy_work || did_work
+    did_work = manage_destroy_vox_data_q(w_map) || did_work
+    did_work = manage_destroy_mesh_data_q(w_map) || did_work
 
-
-	did_work_mesh:= manage_upload_mesh_data_q(w_map)
-	if did_work_mesh{
-		did_work = true
-		update_w_map_draw_cmds_buff(&g.w_map)
-	}
-
-	did_work = manage_destroy_chunk_q(w_map)
-	did_work = manage_destroy_vox_data_q(w_map)
-	did_work = manage_destroy_mesh_data_q(w_map)
-
-
-	// did_work = manage_unload_mesh_data_q(w_map)
-	
-	chunk_pos:=pos_to_chunck_pos(g.cam.pos)
-
-
-    fin_pool_tasks(w_map)
-
-
-
+    if upload_work || remove_work || mesh_changed {
+        update_w_map_draw_cmds_buff(w_map)
+    }
 
     get_w_map_debug_info(w_map)
-
-	return
-
-// 
+    return
 }
 
 get_w_map_debug_info::proc(w_map:^Map){
@@ -1020,14 +1395,12 @@ Gen_Chunk_Q_Data::struct{
 	// q_state:Q_State,
 }
 manage_gen_chunk_q::proc(w_map:^Map)->(did_work:bool){
-
-	for {
+	queued_count := min(cast(int)chan.len(w_map.gen_chunk_chan), MAX_CHUNKS_TO_ADD_PER_FRAME)
+	for i := 0; i < queued_count; i += 1 {
 		value, ok := chan.try_recv(w_map.gen_chunk_chan)
-		if !ok {
-			break // More idiomatic than return here
-		}
-		did_work=true
-		do_a_gen_chunk_q(w_map,value)
+		if !ok { break }
+		did_work = true
+		do_a_gen_chunk_q(w_map, value)
 	}
 	return
 }
@@ -1036,75 +1409,106 @@ add_to_gen_chunk_q::proc(w_map:^Map,pos:[4]int){
 	return
 }
 do_a_gen_chunk_q::proc(w_map:^Map,q:Gen_Chunk_Q_Data){
-	add_chunk(w_map,q.pos)
+    // A request can sit in the channel while the viewer moves. Revalidate it
+    // so an obsolete LOD cell is never created after a clipbox change.
+    player_chunk := cast([3]int)g.cam.w_pos.step
+    bounds, valid := make_chunk_stream_bounds(player_chunk, w_map.chunk_stream_settings)
+    if !valid || !chunk_key_is_wanted(q.pos, bounds, w_map.chunk_stream_settings.lod_level_count) {
+        return
+    }
+    add_chunk(w_map,q.pos)
 }
 add_chunk::proc(w_map:^Map,pos:[4]int){
-	atom.atomic_rw_mutex_guard(&w_map.chunks_map_rw_mutex)
-	chunk_hd, chunk_ok := &w_map.chunks_map[pos]
-	if !chunk_ok{ // chesvks if there is a chunk in the map if not create one
-
-		w_map.chunks_map[pos] = {}
-		chunk_hd = &w_map.chunks_map[pos]
-	}else{
-		log.log(.Warning, "chunk allredy exsists at pos",pos)
+	atom.atomic_rw_mutex_lock(&w_map.chunks_map_rw_mutex)
+	_, exists := w_map.chunks_map[pos]
+	if exists {
+		atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
 		return
 	}
-	new_chunk_hd,new_chunk_hd_ok:=hm.add(&w_map.chunks,Chunk{pos = pos})
-	if new_chunk_hd_ok != .None{
-		log.log(.Error, "add_chunck() failed to add new chunck to chunck handle map")
+	new_chunk_hd, err := hm.add(&w_map.chunks, Chunk{pos=pos})
+	if err != .None {
+		atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
+		log.log(.Error, "add_chunk() failed to add chunk to handle map", err, pos)
 		return
 	}
-	chunk_hd^ = new_chunk_hd
-	add_to_gen_vox_data_q(w_map,new_chunk_hd,pos)
+	w_map.chunks_map[pos] = new_chunk_hd
+	atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
+	add_to_gen_vox_data_q(w_map, new_chunk_hd, pos)
 }
 
 Destroy_Chunk_Q_Data::struct{
 	data_hd:Chunk_HD,
 }
 manage_destroy_chunk_q::proc(w_map:^Map)->(did_work:bool){
-	for {
-		value, ok := chan.try_recv(w_map.destroy_chunk_chan)
-		if !ok {
-			break // More idiomatic than return here
-		}
-		did_work=true
-		do_a_destroy_chunk_q(w_map,value)
-	}
-	return
+    // Keep deferred destruction bounded. Unsafe chunks are requeued instead
+    // of spinning, while later entries get a chance on the next update.
+    destroy_budget := min(w_map.chunk_stream_settings.max_chunk_unloads_per_update, MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE)
+    if destroy_budget < 1 { destroy_budget = 1 }
+    queued_count := cast(int)chan.len(w_map.destroy_chunk_chan)
+    if queued_count > destroy_budget { queued_count = destroy_budget }
+    for i := 0; i < queued_count; i += 1 {
+        value, ok := chan.try_recv(w_map.destroy_chunk_chan)
+        if !ok { break }
+        if chunk_can_be_destroyed(w_map, value.data_hd) {
+            destroy_chunk(w_map, value.data_hd)
+            did_work = true
+        } else {
+            chan.send(w_map.destroy_chunk_chan, value)
+        }
+    }
+    return
 }
+
 add_to_destroy_chunk_q::proc(w_map:^Map,chunk_hd:Chunk_HD){
-	chan.send(w_map.destroy_chunk_chan,Destroy_Chunk_Q_Data{data_hd = chunk_hd})
-	return
+    chan.send(w_map.destroy_chunk_chan,Destroy_Chunk_Q_Data{data_hd = chunk_hd})
+    return
 }
-do_a_destroy_chunk_q::proc(w_map:^Map,q:Destroy_Chunk_Q_Data){
-	destroy_chunck(w_map,q.data_hd)
+
+chunk_can_be_destroyed :: proc(w_map: ^Map, chunk_hd: Chunk_HD) -> bool {
+	chunk, chunk_ok := hm.get(&w_map.chunks, chunk_hd)
+	if !chunk_ok { return true }
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	light_state := chunk.light_data_q_state
+	vox_data_hd := chunk.vox_data_hd
+	light_data_hd := chunk.light_data_hd
+	mesh_states := chunk.mesh_q_state
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	if light_state != .usable { return false }
+	for state in mesh_states { if state == .in_q { return false } }
+
+	has_vox_data := hm.is_valid(&w_map.vox_chunk_hm, vox_data_hd)
+	has_light_data := hm.is_valid(&w_map.light_chunk_hm, light_data_hd)
+	itor := hm.iterator_make(&w_map.pool_tasks)
+	for pool_task, _ in hm.iterate(&itor) {
+		if pool_task_references_chunk(pool_task.task, chunk_hd, vox_data_hd, has_vox_data, light_data_hd, has_light_data) {
+			return false
+		}
+	}
+	return true
 }
-destroy_chunck::proc(w_map:^Map,hd:Chunk_HD){
-	log.log(.Debug,"testing if destroy_chunck working")
+
+
+destroy_chunk::proc(w_map:^Map,hd:Chunk_HD){
+	// The map lock prevents new meshing preparations from discovering this
+	// chunk while its data lock drains already-running readers.
+	atom.atomic_rw_mutex_lock(&w_map.chunks_map_rw_mutex)
 	chunk,ok:=hm.get(&w_map.chunks,hd)
 	if !ok{
+		atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
 		log.log(.Warning,"cant find chunk",hd,"to destroy")
 		return
 	}
 
-	add_to_destroy_vox_data_q(w_map, chunk.vox_data_hd)
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+	chunk_pos := chunk.pos
+	vox_data_hd := chunk.vox_data_hd
+	gpu_mesh_data_hd := chunk.gpu_mesh_data_hd
+	mapped_hd, mapped := w_map.chunks_map[chunk_pos]
+	if mapped && mapped_hd == hd { delete_key(&w_map.chunks_map, chunk_pos) }
+	atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
 
-	// for mesh_hd in chunk.mesh_data{
-	// 	mesh_valid:=hm.is_valid(&w_map.chunks_mesh_data, mesh_hd)
-	// 	if mesh_valid{
-	// 		add_to_destroy_mesh_data_q(w_map, mesh_hd)
-	// 	}
-	// }
-	
-	valid:=hm.is_valid(&w_map.gpu_mesh_data_hm,chunk.gpu_mesh_data_hd)
-	if valid{
-		// add_to_unload_mesh_data_q(w_map,chunk.gpu_mesh_data_hd)
-		unload_mesh_data(w_map,chunk.gpu_mesh_data_hd)
-	}
-	atom.atomic_rw_mutex_lock(&w_map.chunks_map_rw_mutex)
-	delete_key(&w_map.chunks_map, chunk.pos)
-	atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
 	found,err:=hm.remove(&w_map.chunks,hd)
+	atom.atomic_rw_mutex_unlock(&w_map.chunks_map_rw_mutex)
 	if err !=.None{
 		log.log(.Error, "failed to remove chunk",err,hd)
 		return
@@ -1113,7 +1517,9 @@ destroy_chunck::proc(w_map:^Map,hd:Chunk_HD){
 		log.log(.Error, "failed to remove chunk cant find",hd)
 		return
 	}
-	
+
+	add_to_destroy_vox_data_q(w_map, vox_data_hd)
+	if hm.is_valid(&w_map.gpu_mesh_data_hm,gpu_mesh_data_hd) { unload_mesh_data(w_map,gpu_mesh_data_hd) }
 }
 
 Gen_Vox_Data_Q_Data::struct{
@@ -1137,7 +1543,12 @@ add_to_gen_vox_data_q::proc(w_map:^Map,chunk_hd:Chunk_HD,pos:[4]int){
 	return
 }
 do_a_gen_vox_data_q::proc(w_map:^Map,q:Gen_Vox_Data_Q_Data,index:int){
-
+	chunk, chunk_ok := get_chunk(w_map, q.data_hd)
+	if !chunk_ok { return }
+	if chunk_is_retiring(chunk) {
+		set_chunk_light_q_state(chunk, .usable)
+		return
+	}
 	gen_chunk_vox_data(w_map,q,index)
 }
 
@@ -1147,14 +1558,18 @@ gen_chunk_vox_data::proc(w_map:^Map,q:Gen_Vox_Data_Q_Data,index:int){
 	assert(ok)
 
 	vox_chunk_hd:=make_new_vox_chunk_data(w_map, .u0)
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
 	chunk.vox_data_hd = vox_chunk_hd
+	atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
 	vox_chunk,vox_chunk_ok:=get_vox_chunk_data(w_map,vox_chunk_hd)
 	assert(vox_chunk_ok)
 
 	init_chunk_lighting_ready_mask(w_map, q.data_hd)
 
 	light_chunk_hd:=make_new_light_chunk_data(w_map, .u0)
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
 	chunk.light_data_hd = light_chunk_hd
+	atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
 	light_chunk,light_chunk_ok:=get_light_chunk_data(w_map,light_chunk_hd)
 	assert(light_chunk_ok)
 
@@ -1297,6 +1712,8 @@ gen_vox_data :: proc(
 ){
 	chunk,chunk_ok:=hm.get(&t.w_map.chunks,t.chunk_hd)
 	assert(chunk_ok)
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+	defer atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
 	vox_chunk,vox_chunk_ok:=hm.get(&t.w_map.vox_chunk_hm,t.vox_data_hd)
 	assert(vox_chunk_ok)
 	light,light_ok:=hm.get(&t.w_map.light_chunk_hm,chunk.light_data_hd)
@@ -1306,15 +1723,25 @@ gen_vox_data :: proc(
 	lod_lev := pos.w
 	assert(lod_lev > 0)
 
-	xz_scl:f64 = 0.001
-	y_scl:f64 = 600.0
+	// Keep the original terrain noise and its original height range. The new
+	// low-frequency fields only decide where broad flatlands and rare large
+	// mountain systems occur; they must not replace the original terrain.
+	local_noise_scale:f64 = 0.0012
+	flatland_noise_scale:f64 = 0.00001
+	mountain_region_noise_scale:f64 = 0.000006
+	mountain_ridge_noise_scale:f64 = 0.00002
+
+	original_terrain_height:f64 = 90.0
+	flatland_base_height:f64 = 300.0
+	flatland_variation:f64 = 18.0
+	massive_mountain_height:f64 = 30000.0
 
 	world_x_start := pos.x * CHUNK_SIZE
 	world_y_start := pos.y * CHUNK_SIZE
 	world_z_start := pos.z * CHUNK_SIZE
 
-	// Cache the noise samples shared between neighboring columns.
-	// The extra row and column provide the height_x and height_z samples.
+	// Cache final world heights, including the extra row and column required
+	// to classify slopes without sampling noise again in the voxel loop.
 	height_samples:[CHUNK_SIZE+1][CHUNK_SIZE+1]f32
 
 	for z := 0; z <= CHUNK_SIZE; z += 1 {
@@ -1322,14 +1749,49 @@ gen_vox_data :: proc(
 
 		for x := 0; x <= CHUNK_SIZE; x += 1 {
 			world_x := world_x_start + x * lod_lev + lod_lev / 2
+			noise_x := cast(f64)world_x
+			noise_z := cast(f64)world_z
 
-			height_samples[z][x] = nos.noise_2d(
+			// Original terrain: preserve the old 0..600 height contribution.
+			local_noise := nos.noise_2d(
 				6223378936854776807,
-				{
-					cast(f64)world_x * xz_scl,
-					cast(f64)world_z * xz_scl,
-				},
+				{noise_x * local_noise_scale, noise_z * local_noise_scale},
 			)
+			original_height := math.pow((local_noise + 1.0) * 0.5, 2.5) * cast(f32)original_terrain_height
+
+			// Large-scale flatland selector. Only regions where this field is
+			// high are flattened; all other regions keep the original terrain.
+			flatland_noise := nos.noise_2d(
+				1384739205847381021,
+				{noise_x * flatland_noise_scale, noise_z * flatland_noise_scale},
+			)
+			flatland_mask := max(0.0, min(1.0, (flatland_noise + 0.15) / 0.60))
+			flatland_mask = flatland_mask * flatland_mask * (3.0 - 2.0 * flatland_mask)
+			flatland_height := cast(f32)flatland_base_height + cast(f32)flatland_noise * cast(f32)flatland_variation
+			base_height := original_height * (1.0 - flatland_mask) + flatland_height * flatland_mask
+
+			// Low-frequency selector creates uncommon, very large mountain systems.
+			// Its higher frequency than before makes mountain regions appear more often.
+			mountain_region_noise := nos.noise_2d(
+				7960286522194355707,
+				{noise_x * mountain_region_noise_scale, noise_z * mountain_region_noise_scale},
+			)
+			mountain_mask := max(0.0, min(1.0, (mountain_region_noise - 0.48) / 0.42))
+			mountain_mask = mountain_mask * mountain_mask * (3.0 - 2.0 * mountain_mask)
+
+			// Broad ridge field shapes the interior of each mountain region.
+			// It remains much larger than the local terrain, but has enough variation
+			// to form multiple visible ridges instead of one nearly featureless dome.
+			mountain_ridge_noise := nos.noise_2d(
+				4127505447032374729,
+				{noise_x * mountain_ridge_noise_scale, noise_z * mountain_ridge_noise_scale},
+			)
+			ridge := max(0.0, 1.0 - math.abs(mountain_ridge_noise))
+			ridge = math.pow(ridge, 1.5)
+			mountain_height := cast(f32)ridge * cast(f32)massive_mountain_height * cast(f32)mountain_mask
+
+			final_height := base_height + mountain_height
+			height_samples[z][x] = cast(f32)final_height
 		}
 	}
 
@@ -1348,45 +1810,36 @@ gen_vox_data :: proc(
 	air_pal_index:u16
 	has_air_pal:=false
 
-	// X is now the inner loop so column writes are contiguous in memory.
+	// X is the inner loop so column writes remain contiguous in memory.
 	for z := 0; z < CHUNK_SIZE; z += 1 {
 		for x := 0; x < CHUNK_SIZE; x += 1 {
 			height := height_samples[z][x]
 			height_x := height_samples[z][x+1]
 			height_z := height_samples[z+1][x]
 
+			// Use the final world-height gradient. This keeps broad flat regions
+			// grassy while the much steeper mountain ridges become stone.
 			change_x := math.abs(height_x - height)
 			change_z := math.abs(height_z - height)
-
 			height_change := max(change_x/cast(f32)lod_lev, change_z/cast(f32)lod_lev)
 			is_steep := height_change > 0.003
 
-			height = (height + 1.0) * 0.5
-			height = math.pow(height, 2.5)
-
-			world_height := cast(int)(height * cast(f32)y_scl)
+			world_height := cast(int)height
 			solid_height := (world_height - world_y_start) / lod_lev
 
 			mask_index := x + z*CHUNK_SIZE
 			sun_masks[mask_index] = 0
 
-			// if solid_height <= 0 {
-			// 	sun_masks[mask_index] = 0xFFFF_FFFF
-			// 	sun_count += CHUNK_SIZE
-			// 	continue
-			// }
-
 			if solid_height <= 0 {
 				sun_masks[mask_index] = 0xFFFF_FFFF
 				sun_count += CHUNK_SIZE
-			
+
 				if !has_air_pal {
 					air_pal_index = get_or_add_palette_index(vox_chunk,Block_Palette_Data{item=g.df_items[.air],state={},})
 					has_air_pal = true
 				}
 				continue
 			}
-		
 
 			if solid_height > CHUNK_SIZE {
 				solid_height = CHUNK_SIZE
@@ -1439,6 +1892,7 @@ gen_vox_data :: proc(
 	init_worldgen_sun_light(light,sun_masks[:],sun_count)
 }
 
+
 Check_Needs_Meshing_Q_Data::struct{
 	pos:[4]int,
 }
@@ -1468,118 +1922,125 @@ check_needs_meshing_q::proc(w_map:^Map,q:Check_Needs_Meshing_Q_Data){
 
 check_if_chunk_needs_meshing :: proc(w_map:^Map,pos:[4]int) {
 	chunk_hd,ok := get_chunk_by_pos_safe(w_map,pos)
-	assert(ok)
+	if !ok { return }
 
 	chunk_data,chunk_data_ok := hm.dynamic_get(&w_map.chunks,chunk_hd)
-	assert(chunk_data_ok)
-
+	if !chunk_data_ok { return }
+	atom.atomic_rw_mutex_shared_lock(&chunk_data.data_rw_mutex)
+	chunk_retiring := chunk_data.retiring
+	chunk_light_ready := chunk_data.light_data_q_state == .usable && lighting_ready_mask_complete(chunk_data.lighting_redy_mask)
 	vox_hd := chunk_data.vox_data_hd
+	atom.atomic_rw_mutex_shared_unlock(&chunk_data.data_rw_mutex)
+	if chunk_retiring || !chunk_light_ready { return }
+
 	vox_data,vox_data_ok := hm.dynamic_get(&w_map.vox_chunk_hm,vox_hd)
 	assert(vox_data_ok)
 
-	if !atom.atomic_load(&vox_data.vox_gened) {return}
+	if !atom.atomic_load(&vox_data.vox_gened) { return }
 
-	lod_size := pos.w
+	for side in Model_Sides {
+		if side == .extra { continue }
+		check_chunk_side_needs_meshing(w_map,chunk_hd,chunk_data,side)
+	}
+}
 
-	next_side: for side in Model_Sides {
-		if side == .extra {continue next_side}
+check_if_chunk_needs_meshing_side :: proc(
+	w_map:^Map,
+	pos:[4]int,
+	side:Model_Sides,
+){
+	if side == .extra { return }
 
-		opposite_side := OPPOSITE_MODEL_SIDE_r[side]
+	chunk_hd,ok := get_chunk_by_pos_safe(w_map,pos)
+	if !ok { return }
 
-		offset := model_side_to_offset(side)
-		key := pos
-		key += {offset[0]*lod_size,offset[1]*lod_size,offset[2]*lod_size,0}
+	chunk_data,chunk_data_ok := hm.dynamic_get(&w_map.chunks,chunk_hd)
+	if !chunk_data_ok { return }
+	atom.atomic_rw_mutex_shared_lock(&chunk_data.data_rw_mutex)
+	chunk_retiring := chunk_data.retiring
+	chunk_light_ready := chunk_data.light_data_q_state == .usable && lighting_ready_mask_complete(chunk_data.lighting_redy_mask)
+	vox_hd := chunk_data.vox_data_hd
+	atom.atomic_rw_mutex_shared_unlock(&chunk_data.data_rw_mutex)
+	if chunk_retiring || !chunk_light_ready { return }
 
-		neighbor_chunk_hds:[4]Chunk_HD
-		neighbor_chunk_ok:bool
-		neighbor_chunk_hds[0],neighbor_chunk_ok = get_chunk_by_pos_safe(w_map,key)
+	vox_data,vox_data_ok := hm.dynamic_get(&w_map.vox_chunk_hm,vox_hd)
+	assert(vox_data_ok)
 
-		has_4_neighbors := false
-		neighbor_count := 1
+	if !atom.atomic_load(&vox_data.vox_gened) { return }
 
-		if !neighbor_chunk_ok {
-			if lod_size <= 1 {continue next_side}
+	check_chunk_side_needs_meshing(w_map,chunk_hd,chunk_data,side)
+}
 
-			half := lod_size/2
+check_chunk_side_needs_meshing :: proc(
+	w_map:^Map,
+	chunk_hd:Chunk_HD,
+	chunk_data:^Chunk,
+	side:Model_Sides,
+){
+	lod_size := chunk_data.pos.w
+	offset := model_side_to_offset(side)
+	key := chunk_data.pos
+	key += {offset[0]*lod_size,offset[1]*lod_size,offset[2]*lod_size,0}
 
-			u_offset,v_offset:[4]int
-			switch side {
-			case .pos_x, .neg_x:
-				u_offset = {0,half,0,0}
-				v_offset = {0,0,half,0}
-			case .pos_y, .neg_y:
-				u_offset = {half,0,0,0}
-				v_offset = {0,0,half,0}
-			case .pos_z, .neg_z:
-				u_offset = {half,0,0,0}
-				v_offset = {0,half,0,0}
-			case .extra:
-				continue next_side
-			}
+	neighbor_chunk_hd, neighbor_exists := get_chunk_by_pos_safe(w_map,key)
+	has_4_neighbors := false
+	neighbor_count := 1
+	neighbor_chunk_hds: [4]Chunk_HD
+	neighbor_chunk_hds[0] = neighbor_chunk_hd
 
-			lower_lod_base := key
-			lower_lod_base.w = half
-
-			lower_lod_key:[4][4]int
-			lower_lod_key[0] = lower_lod_base
-			lower_lod_key[1] = lower_lod_base + u_offset
-			lower_lod_key[2] = lower_lod_base + u_offset + v_offset
-			lower_lod_key[3] = lower_lod_base + v_offset
-
-			has_4_neighbors = true
-			neighbor_count = 4
-
-			for i in 0..<4 {
-				lower_ok:bool
-				neighbor_chunk_hds[i],lower_ok = get_chunk_by_pos_safe(w_map,lower_lod_key[i])
-				if !lower_ok {continue next_side}
-			}
+	if !neighbor_exists {
+		if lod_size <= 1 { return }
+		half := lod_size/2
+		u_offset,v_offset:[4]int
+		switch side {
+		case .pos_x, .neg_x:
+			u_offset = {0,half,0,0}
+			v_offset = {0,0,half,0}
+		case .pos_y, .neg_y:
+			u_offset = {half,0,0,0}
+			v_offset = {0,0,half,0}
+		case .pos_z, .neg_z:
+			u_offset = {half,0,0,0}
+			v_offset = {0,half,0,0}
+		case .extra:
+			return
 		}
 
-		neighbor_chunks:[4]^Chunk
+		lower_lod_base := chunk_data.pos
+		lower_lod_base.w = half
+		face_axis := int(side)/2
+		if offset[face_axis] > 0 { lower_lod_base[face_axis] += lod_size }
+		else { lower_lod_base[face_axis] -= half }
 
-		for i in 0..<neighbor_count {
-			neighbor_chunk,neighbor_chunk_ok := get_chunk(w_map,neighbor_chunk_hds[i])
-			if !neighbor_chunk_ok {continue next_side}
-			neighbor_chunks[i] = neighbor_chunk
+		lower_lod_key:[4][4]int
+		lower_lod_key[0] = lower_lod_base
+		lower_lod_key[1] = lower_lod_base + u_offset
+		lower_lod_key[2] = lower_lod_base + v_offset
+		lower_lod_key[3] = lower_lod_base + u_offset + v_offset
+
+		has_4_neighbors = true
+		neighbor_count = 4
+		for i in 0..<4 {
+			neighbor_chunk_hds[i], neighbor_exists = get_chunk_by_pos_safe(w_map,lower_lod_key[i])
+			if !neighbor_exists { return }
 		}
+	}
 
-		for i in 0..<neighbor_count {
-			neighbor_vox_data,neighbor_vox_data_ok := get_vox_chunk_data(w_map,neighbor_chunks[i].vox_data_hd)
-			if !neighbor_vox_data_ok {continue next_side}
-			if !atom.atomic_load(&neighbor_vox_data.vox_gened) {continue next_side}
-		}
+	for i in 0..<neighbor_count {
+		neighbor_chunk, neighbor_ok := get_chunk(w_map,neighbor_chunk_hds[i])
+		if !neighbor_ok { return }
+		atom.atomic_rw_mutex_shared_lock(&neighbor_chunk.data_rw_mutex)
+		neighbor_ready := !neighbor_chunk.retiring && neighbor_chunk.light_data_q_state == .usable && lighting_ready_mask_complete(neighbor_chunk.lighting_redy_mask)
+		neighbor_vox_hd := neighbor_chunk.vox_data_hd
+		atom.atomic_rw_mutex_shared_unlock(&neighbor_chunk.data_rw_mutex)
+		if !neighbor_ready { return }
+		neighbor_vox_data, neighbor_vox_ok := get_vox_chunk_data(w_map,neighbor_vox_hd)
+		if !neighbor_vox_ok || !atom.atomic_load(&neighbor_vox_data.vox_gened) { return }
+	}
 
-		neighbor_vox_chunk_hd:[4]Vox_Chunk_Data_HD
-
-		if has_4_neighbors {
-			for i in 0..<4 {
-				neighbor_vox_chunk_hd[i] = neighbor_chunks[i].vox_data_hd
-			}
-		}else{
-			neighbor_vox_hd := neighbor_chunks[0].vox_data_hd
-			neighbor_vox_chunk_hd = {neighbor_vox_hd,neighbor_vox_hd,neighbor_vox_hd,neighbor_vox_hd}
-		}
-
-		add_to_gen_mesh_data_q(
-			w_map = w_map,
-			chunk_hd = chunk_hd,
-			vox_chunk_hd = vox_hd,
-			neighbor_vox_chunk_hd = neighbor_vox_chunk_hd,
-			has_4_neighbors = has_4_neighbors,
-			side = side,
-		)
-
-		if !has_4_neighbors {
-			add_to_gen_mesh_data_q(
-				w_map = w_map,
-				chunk_hd = neighbor_chunk_hds[0],
-				vox_chunk_hd = neighbor_chunks[0].vox_data_hd,
-				neighbor_vox_chunk_hd = {vox_hd,vox_hd,vox_hd,vox_hd},
-				has_4_neighbors = false,
-				side = opposite_side,
-			)
-		}
+	add_to_gen_mesh_data_q(w_map,chunk_hd,side)
+	if !has_4_neighbors {
+		add_to_gen_mesh_data_q(w_map,neighbor_chunk_hds[0],model_side_opposite(side))
 	}
 }
 
@@ -1610,12 +2071,8 @@ do_a_destroy_vox_data_q::proc(w_map:^Map,q:Destroy_Vox_Data_Q_Data){
 
 
 Gen_Mesh_Data_Q_Data::struct{
-
-	data_hd:Chunk_HD,
-	vox_chunk_hd:Vox_Chunk_Data_HD,
-	neighbor_vox_chunk_hd:[4]Vox_Chunk_Data_HD,
-	has_4_neighbors:bool,
-	side:Model_Sides,
+	data_hd: Chunk_HD,
+	side: Model_Sides,
 }
 manage_gen_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
 	for {
@@ -1628,34 +2085,33 @@ manage_gen_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
 	}
 	return
 }
-add_to_gen_mesh_data_q::proc(
-	w_map:^Map,
-	chunk_hd:Chunk_HD,
-	vox_chunk_hd:Vox_Chunk_Data_HD,
-	neighbor_vox_chunk_hd:[4]Vox_Chunk_Data_HD,
-	has_4_neighbors:bool,
-	side:Model_Sides
-){
+add_to_gen_mesh_data_q::proc(w_map:^Map, chunk_hd:Chunk_HD, side:Model_Sides){
 	chunk, chunk_ok:=hm.get(&w_map.chunks,chunk_hd)
-	assert(chunk_ok)
-
-	if chunk.mesh_q_state[side] == .in_q {return}
+	if !chunk_ok { return }
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+	if chunk.retiring || chunk.mesh_q_state[side] == .in_q {
+		atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+		return
+	}
 	chunk.mesh_q_state[side] = .in_q
-	chan.send(w_map.gen_mesh_data_chan,Gen_Mesh_Data_Q_Data{chunk_hd,vox_chunk_hd,neighbor_vox_chunk_hd,has_4_neighbors,side})
+	// Keep the previous GPU side visible until a replacement mesh uploads.
+	atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+	chan.send(w_map.gen_mesh_data_chan,Gen_Mesh_Data_Q_Data{data_hd=chunk_hd,side=side})
 	return
 }
 do_a_gen_mesh_data_q::proc(w_map:^Map,q:Gen_Mesh_Data_Q_Data){
-
-	mesh_chunk_side(
-		w_map = w_map, 
-		chunk_hd=q.data_hd, 
-		// neighbor_chunk_hd=q.neighbor_data_hd, 
-		vox_data_hd=q.vox_chunk_hd, 
-		neighbor_vox_hd = q.neighbor_vox_chunk_hd,
-		has_4_neighbors= q.has_4_neighbors,
-		side = q.side
-	)
-
+	chunk, chunk_ok := hm.get(&w_map.chunks, q.data_hd)
+	if !chunk_ok { return }
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	retiring := chunk.retiring
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	if retiring {
+		atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+		chunk.mesh_q_state[q.side] = .usable
+		atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+		return
+	}
+	mesh_chunk_side(w_map=w_map, chunk_hd=q.data_hd, side=q.side)
 }
 
 // do_gen_mesh_data_task::proc(task: thread.Task){
@@ -1898,6 +2354,14 @@ fill_out_light_chunk_info::proc(t:Light_Chunk_Task)->(info:Lighting_Chunk_Info){
 
 	return
 }
+update_chunk_lighting_with_lock :: proc(t: Light_Chunk_Task) {
+	chunk, chunk_ok := hm.get(&t.w_map.chunks, t.chunk_hd)
+	if !chunk_ok { return }
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+	defer atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+	update_chunk_lighting(t)
+}
+
 update_chunk_lighting::proc(t:Light_Chunk_Task) {
 	info:=fill_out_light_chunk_info(t)
 	if len(info.light_q.remove_q) > 0 {
@@ -2284,119 +2748,432 @@ lighting_ready_mask_complete :: proc(ready_mask: bit_set[Full_Directions]) -> bo
 	return card(ready_mask) == len(FULL_DIR_OFFSETS_r)
 }
 
-notify_chunk_lighting_ready :: proc(w_map:^Map,chunk_hd:Chunk_HD) {
-	chunk,chunk_ok:=hm.get(&w_map.chunks,chunk_hd)
-	assert(chunk_ok)
-	assert(chunk.light_data_q_state == .usable)
+notify_coarser_neighbors_for_meshing :: proc(w_map: ^Map, fine_chunk: ^Chunk) {
+	// Copy the fine chunk's immutable position and readiness under its read lock.
+	atom.atomic_rw_mutex_shared_lock(&fine_chunk.data_rw_mutex)
+	fine_pos := fine_chunk.pos
+	fine_ready := !fine_chunk.retiring && fine_chunk.light_data_q_state == .usable && lighting_ready_mask_complete(fine_chunk.lighting_redy_mask)
+	atom.atomic_rw_mutex_shared_unlock(&fine_chunk.data_rw_mutex)
+	if !fine_ready { return }
 
-	lod_size:=chunk.pos.w
+	fine_size := fine_pos.w
+	max_lod_size := 1 << cast(u32)(w_map.chunk_stream_settings.lod_level_count-1)
+	if fine_size <= 0 || fine_size >= max_lod_size { return }
+	coarse_size := fine_size * 2
+	seen_coarse_positions: [26][4]int
+	seen_count := 0
 
-	for offset,direction in FULL_DIR_OFFSETS_r {
-		neighbor_pos:=chunk.pos
-		neighbor_pos.xyz += offset * lod_size
+	// A finer chunk can contribute light to a coarser chunk across a face,
+	// edge, or corner. Find every adjacent coarse cell, not just six face
+	// neighbors, so diagonal corner-light dependencies trigger a remesh too.
+	for offset, _ in FULL_DIR_OFFSETS_r {
+		coarse_pos: [4]int
+		for axis in 0..<3 {
+			target := fine_pos[axis]
+			if offset[axis] > 0 { target -= 1 }
+			else if offset[axis] < 0 { target += fine_size }
+			coarse_pos[axis] = floor_div(target, coarse_size) * coarse_size
+		}
+		coarse_pos.w = coarse_size
 
-		neighbor_chunk_hd,neighbor_exists:=get_chunk_by_pos_safe(w_map,neighbor_pos)
+		duplicate := false
+		for i in 0..<seen_count {
+			if seen_coarse_positions[i] == coarse_pos { duplicate = true; break }
+		}
+		if duplicate { continue }
+		seen_coarse_positions[seen_count] = coarse_pos
+		seen_count += 1
+
+		coarse_hd, exists := get_chunk_by_pos_safe(w_map, coarse_pos)
+		if !exists { continue }
+		coarse_chunk, coarse_ok := hm.get(&w_map.chunks, coarse_hd)
+		if !coarse_ok { continue }
+		atom.atomic_rw_mutex_shared_lock(&coarse_chunk.data_rw_mutex)
+		coarse_ready := !coarse_chunk.retiring && coarse_chunk.light_data_q_state == .usable && lighting_ready_mask_complete(coarse_chunk.lighting_redy_mask)
+		coarse_pos_snapshot := coarse_chunk.pos
+		atom.atomic_rw_mutex_shared_unlock(&coarse_chunk.data_rw_mutex)
+		if coarse_ready { add_to_chunk_needs_meshing_q(w_map, coarse_pos_snapshot) }
+	}
+}
+
+notify_chunk_lighting_ready :: proc(w_map:^Map, chunk_hd:Chunk_HD) {
+	chunk, chunk_ok := hm.get(&w_map.chunks, chunk_hd)
+	if !chunk_ok { return }
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	lod_size := chunk.pos.w
+	chunk_pos := chunk.pos
+	is_usable := chunk.light_data_q_state == .usable
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	if !is_usable { return }
+
+	for offset, direction in FULL_DIR_OFFSETS_r {
+		neighbor_pos := chunk_pos
+		neighbor_pos.xyz += offset*lod_size
+		neighbor_hd, neighbor_exists := get_chunk_by_pos_safe(w_map, neighbor_pos)
 		if !neighbor_exists {
+			atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
 			chunk.lighting_redy_mask += {direction}
+			atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
 			continue
 		}
 
-		neighbor_chunk,neighbor_ok:=hm.get(&w_map.chunks,neighbor_chunk_hd)
-		if !neighbor_ok {continue}
+		neighbor_chunk, neighbor_ok := hm.get(&w_map.chunks, neighbor_hd)
+		if !neighbor_ok { continue }
+		opposite_direction := OPPOITE_FULL_DIR_OFFSETS_r[direction]
+		atom.atomic_rw_mutex_shared_lock(&neighbor_chunk.data_rw_mutex)
+		neighbor_usable := neighbor_chunk.light_data_q_state == .usable && !neighbor_chunk.retiring
+		atom.atomic_rw_mutex_shared_unlock(&neighbor_chunk.data_rw_mutex)
 
-		opposite_direction:=OPPOITE_FULL_DIR_OFFSETS_r[direction]
-		// opposite_direction:=FULL_DIRECTION_LOOKUP_r[-offset.x+1][-offset.y+1][-offset.z+1]
-
-		if neighbor_chunk.light_data_q_state == .usable {
+		if neighbor_usable {
+			atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
 			chunk.lighting_redy_mask += {direction}
+			atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
 		}
 
-		neighbor_was_ready:=opposite_direction in neighbor_chunk.lighting_redy_mask
+		atom.atomic_rw_mutex_lock(&neighbor_chunk.data_rw_mutex)
+		neighbor_was_ready := opposite_direction in neighbor_chunk.lighting_redy_mask
 		neighbor_chunk.lighting_redy_mask += {opposite_direction}
+		neighbor_ready := lighting_ready_mask_complete(neighbor_chunk.lighting_redy_mask)
+		neighbor_retiring := neighbor_chunk.retiring
+		neighbor_pos_snapshot := neighbor_chunk.pos
+		atom.atomic_rw_mutex_unlock(&neighbor_chunk.data_rw_mutex)
 
-		if !neighbor_was_ready && lighting_ready_mask_complete(neighbor_chunk.lighting_redy_mask) {
-			add_to_chunk_needs_meshing_q(w_map,neighbor_chunk.pos)
+		if !neighbor_was_ready && neighbor_ready {
+			add_to_chunk_needs_meshing_q(w_map, neighbor_pos_snapshot)
+			if !neighbor_retiring { notify_coarser_neighbors_for_meshing(w_map, neighbor_chunk) }
 		}
 	}
 
-	if lighting_ready_mask_complete(chunk.lighting_redy_mask) {
-		add_to_chunk_needs_meshing_q(w_map,chunk.pos)
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	chunk_ready := lighting_ready_mask_complete(chunk.lighting_redy_mask)
+	chunk_retiring := chunk.retiring
+	chunk_pos = chunk.pos
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	if !chunk_retiring {
+		if chunk_ready { add_to_chunk_needs_meshing_q(w_map, chunk_pos) }
+		notify_coarser_neighbors_for_meshing(w_map, chunk)
 	}
 }
-init_chunk_lighting_ready_mask :: proc(w_map:^Map,chunk_hd:Chunk_HD) {
-	chunk,chunk_ok:=hm.get(&w_map.chunks,chunk_hd)
-	assert(chunk_ok)
 
+init_chunk_lighting_ready_mask :: proc(w_map:^Map, chunk_hd:Chunk_HD) {
+	chunk, chunk_ok := hm.get(&w_map.chunks, chunk_hd)
+	if !chunk_ok { return }
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
 	chunk.lighting_redy_mask = {}
-	lod_size:=chunk.pos.w
+	lod_size := chunk.pos.w
+	chunk_pos := chunk.pos
+	atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
 
-	for offset,direction in FULL_DIR_OFFSETS_r {
-		neighbor_pos:=chunk.pos
-		neighbor_pos.xyz += offset * lod_size
-
-		neighbor_chunk_hd,neighbor_exists:=get_chunk_by_pos_safe(w_map,neighbor_pos)
+	for offset, direction in FULL_DIR_OFFSETS_r {
+		neighbor_pos := chunk_pos
+		neighbor_pos.xyz += offset*lod_size
+		neighbor_hd, neighbor_exists := get_chunk_by_pos_safe(w_map, neighbor_pos)
 		if !neighbor_exists {
+			atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
 			chunk.lighting_redy_mask += {direction}
+			atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+			continue
+		}
+		neighbor_chunk, neighbor_ok := hm.get(&w_map.chunks, neighbor_hd)
+		if !neighbor_ok { continue }
+		opposite_direction := OPPOITE_FULL_DIR_OFFSETS_r[direction]
+		atom.atomic_rw_mutex_lock(&neighbor_chunk.data_rw_mutex)
+		neighbor_chunk.lighting_redy_mask -= {opposite_direction}
+		neighbor_ready := neighbor_chunk.light_data_q_state == .usable && !neighbor_chunk.retiring
+		atom.atomic_rw_mutex_unlock(&neighbor_chunk.data_rw_mutex)
+		if neighbor_ready {
+			atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+			chunk.lighting_redy_mask += {direction}
+			atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+		}
+	}
+}
+
+mesh_chunk_lighting_ready_locked :: proc(chunk: ^Chunk) -> bool {
+	return !chunk.retiring && chunk.light_data_q_state == .usable && chunk.light_data_hd != {} && lighting_ready_mask_complete(chunk.lighting_redy_mask)
+}
+
+mesh_chunk_voxels_ready_locked :: proc(w_map: ^Map, chunk: ^Chunk) -> bool {
+	if !mesh_chunk_lighting_ready_locked(chunk) || chunk.vox_data_hd == {} { return false }
+	vox_data, vox_ok := get_vox_chunk_data(w_map, chunk.vox_data_hd)
+	return vox_ok && atom.atomic_load(&vox_data.vox_gened)
+}
+
+mesh_add_chunk_read_lock :: proc(prepared: ^Mesh_Prepared_Chunk_Data, chunk_hd: Chunk_HD, chunk: ^Chunk) -> (locked: bool, newly_locked: bool) {
+	for i in 0..<prepared.locked_chunk_count {
+		if prepared.locked_chunk_hds[i] == chunk_hd { return true, false }
+	}
+	if prepared.locked_chunk_count >= len(prepared.locked_chunk_hds) { return false, false }
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	if chunk.retiring {
+		atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+		return false, false
+	}
+	prepared.locked_chunk_hds[prepared.locked_chunk_count] = chunk_hd
+	prepared.locked_chunk_count += 1
+	return true, true
+}
+
+mesh_remove_chunk_read_lock :: proc(prepared: ^Mesh_Prepared_Chunk_Data, chunk_hd: Chunk_HD, chunk: ^Chunk) {
+	for i in 0..<prepared.locked_chunk_count {
+		if prepared.locked_chunk_hds[i] == chunk_hd {
+			atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+			for j in i..<prepared.locked_chunk_count-1 { prepared.locked_chunk_hds[j] = prepared.locked_chunk_hds[j+1] }
+			prepared.locked_chunk_count -= 1
+			prepared.locked_chunk_hds[prepared.locked_chunk_count] = {}
+			return
+		}
+	}
+}
+
+release_mesh_chunk_data :: proc(w_map: ^Map, prepared: ^Mesh_Prepared_Chunk_Data) {
+	for i := prepared.locked_chunk_count-1; i >= 0; i -= 1 {
+		chunk_hd := prepared.locked_chunk_hds[i]
+		chunk, chunk_ok := hm.get(&w_map.chunks, chunk_hd)
+		assert(chunk_ok, "mesh read lock lost its owning chunk handle")
+		atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	}
+	prepared.locked_chunk_count = 0
+}
+
+get_chunk_by_pos_unlocked :: proc(w_map: ^Map, pos: [4]int) -> (chunk_hd: Chunk_HD, ok: bool) {
+	chunk_hd, ok = w_map.chunks_map[pos]
+	return
+}
+
+mesh_neighbor_is_ready :: proc(prepared: ^Mesh_Prepared_Chunk_Data, chunk_hd: Chunk_HD, chunk: ^Chunk) -> bool {
+	locked, newly_locked := mesh_add_chunk_read_lock(prepared, chunk_hd, chunk)
+	if !locked { return false }
+	if !mesh_chunk_lighting_ready_locked(chunk) {
+		if newly_locked { mesh_remove_chunk_read_lock(prepared, chunk_hd, chunk) }
+		return false
+	}
+	return true
+}
+
+mesh_find_neighbor_chunk_locked :: proc(
+	w_map: ^Map,
+	prepared: ^Mesh_Prepared_Chunk_Data,
+	pos: [4]int,
+) -> (chunk: ^Chunk, exists: bool, ready: bool) {
+	hd:Chunk_HD
+	hd, exists = get_chunk_by_pos_unlocked(w_map, pos)
+	if !exists { return }
+	chunk_ok:bool
+	chunk, chunk_ok = hm.get(&w_map.chunks, hd)
+	if !chunk_ok { return nil, true, false }
+	ready = mesh_neighbor_is_ready(prepared, hd, chunk)
+	return
+}
+
+gather_mesh_light_neighbors_locked :: proc(
+	w_map: ^Map,
+	chunk: ^Chunk,
+	side: Model_Sides,
+	prepared: ^Mesh_Prepared_Chunk_Data,
+) -> (neighbors: [Full_Directions]Mesh_Light_Neighbor, ok: bool) {
+	size := chunk.pos.w
+	face_axis := int(side)/2
+	face_sign := 1
+	if (int(side)&1) != 0 { face_sign = -1 }
+
+	for offset, direction in FULL_DIR_OFFSETS_r {
+		// A sample can cross the face-normal boundary, either tangent
+		// boundary, or any combination of those. It can also cross only a
+		// tangent boundary while remaining inside the face-normal axis.
+		face_offset := offset[face_axis]
+		if face_offset != 0 && face_offset != face_sign { continue }
+
+		neighbor_pos := chunk.pos
+		neighbor_pos.xyz += offset*size
+		neighbor_chunk, same_exists, same_ready := mesh_find_neighbor_chunk_locked(w_map, prepared, neighbor_pos)
+		if same_exists {
+			if !same_ready { return neighbors, false }
+			neighbors[direction].same_lod = neighbor_chunk.light_data_hd
 			continue
 		}
 
-		neighbor_chunk,neighbor_ok:=hm.get(&w_map.chunks,neighbor_chunk_hd)
-		if !neighbor_ok {continue}
+		zero_axis_count := 0
+		for axis in 0..<3 { if offset[axis] == 0 { zero_axis_count += 1 } }
+		combination_count := 1 << cast(u32)zero_axis_count
+		if size > 1 {
+			half_size := size/2
+			for combination in 0..<combination_count {
+				fine_pos := chunk.pos
+				zero_axis_index := 0
+				for axis in 0..<3 {
+					if offset[axis] > 0 { fine_pos[axis] += size }
+					else if offset[axis] < 0 { fine_pos[axis] -= half_size }
+					else {
+						if (combination & (1 << cast(u32)zero_axis_index)) != 0 { fine_pos[axis] += half_size }
+						zero_axis_index += 1
+					}
+				}
+				fine_pos.w = half_size
+				fine_chunk, fine_exists, fine_ready := mesh_find_neighbor_chunk_locked(w_map, prepared, fine_pos)
+				if !fine_exists { continue }
+				if !fine_ready { return neighbors, false }
+				entry_index := neighbors[direction].fine_count
+				if entry_index >= len(neighbors[direction].fine_lod) { return neighbors, false }
+				neighbors[direction].fine_lod[entry_index] = Mesh_Light_Neighbor_Entry{
+					light_hd=fine_chunk.light_data_hd,
+					pos=fine_chunk.pos.xyz,
+					size=fine_chunk.pos.w,
+				}
+				neighbors[direction].fine_count += 1
+			}
+		}
 
-		opposite_direction:=OPPOITE_FULL_DIR_OFFSETS_r[direction]
+		// A partially present fine set is only safe when its missing coverage
+		// can be sampled from the complete coarse parent as a fallback.
+		need_coarse := neighbors[direction].fine_count < combination_count
+		max_lod_size := 1 << cast(u32)(w_map.chunk_stream_settings.lod_level_count-1)
 
-		// This new chunk is not ready yet, so invalidate the neighbor's old ready bit.
-		neighbor_chunk.lighting_redy_mask -= {opposite_direction}
-
-		// Record whether this neighbor's lighting is already valid.
-		if neighbor_chunk.light_data_q_state == .usable {
-			chunk.lighting_redy_mask += {direction}
+		if need_coarse && size < max_lod_size {
+			coarse_size := size*2
+			coarse_pos := chunk.pos
+			for axis in 0..<3 {
+				target := chunk.pos[axis]
+				if offset[axis] > 0 { target += size }
+				else if offset[axis] < 0 { target -= 1 }
+				else { target += size/2 }
+				coarse_pos[axis] = floor_div(target,coarse_size)*coarse_size
+			}
+			coarse_pos.w = coarse_size
+			coarse_chunk, coarse_exists, coarse_ready := mesh_find_neighbor_chunk_locked(w_map, prepared, coarse_pos)
+			if coarse_exists {
+				if !coarse_ready { return neighbors, false }
+				neighbors[direction].coarse_lod = Mesh_Light_Neighbor_Entry{
+					light_hd=coarse_chunk.light_data_hd,
+					pos=coarse_chunk.pos.xyz,
+					size=coarse_chunk.pos.w,
+				}
+				neighbors[direction].has_coarse_lod = true
+			}
+		}
+		if neighbors[direction].fine_count > 0 && neighbors[direction].fine_count < combination_count && !neighbors[direction].has_coarse_lod {
+			return neighbors, false
 		}
 	}
+	return neighbors, true
 }
 
+// Lock order is always chunks_map_rw_mutex (shared), then Chunk.data_rw_mutex
+// (shared). The map lock is dropped after discovery; chunk locks remain until
+// release_mesh_chunk_data so voxel/light payload handles cannot be invalidated.
+prepare_mesh_chunk_data :: proc(t: Mesh_Chunk_Task) -> (prepared: Mesh_Prepared_Chunk_Data, ok: bool) {
+	w_map := t.w_map
+	atom.atomic_rw_mutex_shared_lock(&w_map.chunks_map_rw_mutex)
+	map_locked := true
+	keep_chunk_locks := false
+	defer { if map_locked { atom.atomic_rw_mutex_shared_unlock(&w_map.chunks_map_rw_mutex) } }
+	defer { if !keep_chunk_locks { release_mesh_chunk_data(w_map, &prepared) } }
 
-mesh_chunk_side::proc(
-	w_map:^Map,
-	chunk_hd:Chunk_HD, 
-	// neighbor_chunk_hd:Chunk_HD, 
-	vox_data_hd:Vox_Chunk_Data_HD, 
-	neighbor_vox_hd:[4]Vox_Chunk_Data_HD,
-	
-	has_4_neighbors:bool,
-	side:Model_Sides
-){
+	chunk, chunk_ok := hm.get(&w_map.chunks, t.chunk_hd)
+	if !chunk_ok { return }
+	locked, _ := mesh_add_chunk_read_lock(&prepared, t.chunk_hd, chunk)
+	if !locked || !mesh_chunk_voxels_ready_locked(w_map, chunk) { return }
 
-	chunk, ok := get_chunk(w_map,chunk_hd)
-	if !ok{log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")");return}
+	prepared.chunk_pos = chunk.pos.xyz
+	prepared.chunk_size = chunk.pos.w
+	prepared.chunk_vox_hd = chunk.vox_data_hd
+	prepared.chunk_light_hd = chunk.light_data_hd
 
-	chunk_vox,vox_ok:=get_vox_chunk_data(w_map,vox_data_hd)
-	if !vox_ok{log.log(.Warning,"get_vox_chunk_data(w_map,chunk.vox_data_hd)", vox_data_hd);return}
-
-	neighbor_vox,neighbor_vox_ok:=get_vox_chunk_data(w_map,neighbor_vox_hd[0])
-	if !neighbor_vox_ok{log.log(.Warning,"get_vox_chunk_data(w_map,neighbor_vox_hd)",neighbor_vox_hd);return}
-
-	mesh_data_hd,err:= hm.add(&w_map.chunks_mesh_data,Chunk_Mesh_Data{})
-	if err != .None{ log.log(.Error,"failed to add mesh_hd to chunk.mesh_data[side] err = {",err,"}",mesh_data_hd);return}
-
-	mesh_data,mesh_data_ok:=get_chunk_mesh_data(w_map,mesh_data_hd,)
-	if !mesh_data_ok {log.log(.Error,"failed, mesh_hd not valid",mesh_data_hd);return}
-
-	neighbor_light_data_hd:[Full_Directions]Light_Chunk_Data_HD
-	FULL_DIR_OFFSETS:=FULL_DIR_OFFSETS
-	for &hd,dir in &neighbor_light_data_hd{
-		offset:=FULL_DIR_OFFSETS[dir] * chunk.pos.w
-		new_pos:=chunk.pos
-		new_pos.xyz+=offset
-		
-		nab_chunk_hd,ok:=get_chunk_by_pos_safe(w_map,new_pos)
-		if !ok {continue}
-		nab_chunk,nab_chunk_ok:=hm.get(&w_map.chunks,nab_chunk_hd)
-		if !nab_chunk_ok{continue}
-		hd=nab_chunk.light_data_hd
+	// Resolve the voxel neighbor used by the face mask. It is either one
+	// same-LOD chunk or the four half-size chunks covering the face.
+	lod_size := chunk.pos.w
+	offset := model_side_to_offset(t.side)
+	face_pos := chunk.pos
+	face_pos.xyz += offset*lod_size
+	face_hd, face_exists := get_chunk_by_pos_unlocked(w_map, face_pos)
+	if face_exists {
+		face_chunk, face_ok := hm.get(&w_map.chunks, face_hd)
+		if !face_ok || !mesh_neighbor_is_ready(&prepared, face_hd, face_chunk) || !mesh_chunk_voxels_ready_locked(w_map, face_chunk) { return }
+		for i in 0..<4 { prepared.neighbor_vox_hd[i] = face_chunk.vox_data_hd }
+	}else{
+		if lod_size <= 1 { return }
+		half := lod_size/2
+		u_offset, v_offset: [4]int
+		switch t.side {
+		case .pos_x, .neg_x:
+			u_offset = {0,half,0,0}
+			v_offset = {0,0,half,0}
+		case .pos_y, .neg_y:
+			u_offset = {half,0,0,0}
+			v_offset = {0,0,half,0}
+		case .pos_z, .neg_z:
+			u_offset = {half,0,0,0}
+			v_offset = {0,half,0,0}
+		case .extra:
+			return
+		}
+		fine_base := chunk.pos
+		fine_base.w = half
+		face_axis := int(t.side)/2
+		if offset[face_axis] > 0 { fine_base[face_axis] += lod_size }
+		else { fine_base[face_axis] -= half }
+		fine_positions: [4][4]int
+		fine_positions[0] = fine_base
+		fine_positions[1] = fine_base + u_offset
+		fine_positions[2] = fine_base + v_offset
+		fine_positions[3] = fine_base + u_offset + v_offset
+		for i in 0..<4 {
+			fine_hd, fine_exists := get_chunk_by_pos_unlocked(w_map, fine_positions[i])
+			if !fine_exists { return }
+			fine_chunk, fine_ok := hm.get(&w_map.chunks, fine_hd)
+			if !fine_ok || !mesh_neighbor_is_ready(&prepared, fine_hd, fine_chunk) || !mesh_chunk_voxels_ready_locked(w_map, fine_chunk) { return }
+			prepared.neighbor_vox_hd[i] = fine_chunk.vox_data_hd
+		}
+		prepared.has_4_neighbors = true
 	}
 
-	start_mesh_chunk_task(w_map,Mesh_Chunk_Task{w_map,chunk_hd,vox_data_hd,neighbor_vox_hd,neighbor_light_data_hd,mesh_data_hd,has_4_neighbors,side})
+	prepared.neighbor_light_data, ok = gather_mesh_light_neighbors_locked(w_map, chunk, t.side, &prepared)
+	if !ok { return }
+
+	// Once all required chunks are read-locked, the global map lock is no
+	// longer needed. The per-chunk locks keep their handles/data alive until
+	// mesh_by_bit_mask finishes.
+	atom.atomic_rw_mutex_shared_unlock(&w_map.chunks_map_rw_mutex)
+	map_locked = false
+	keep_chunk_locks = true
+	ok = true
+	return
+}
+
+mesh_chunk_side :: proc(w_map: ^Map, chunk_hd: Chunk_HD, side: Model_Sides) {
+	chunk, chunk_ok := hm.get(&w_map.chunks, chunk_hd)
+	if !chunk_ok { return }
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	can_mesh := !chunk.retiring && chunk.mesh_q_state[side] == .in_q
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	if !can_mesh {
+		atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+		if chunk.mesh_q_state[side] == .in_q { chunk.mesh_q_state[side] = .usable }
+		atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+		return
+	}
+
+	mesh_data_hd, err := hm.add(&w_map.chunks_mesh_data, Chunk_Mesh_Data{})
+	if err != .None {
+		atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+		chunk.mesh_q_state[side] = .usable
+		atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+		log.log(.Error, "failed to add mesh_hd to chunk.mesh_data[side] err = ", err, mesh_data_hd)
+		return
+	}
+	_, mesh_data_ok := get_chunk_mesh_data(w_map, mesh_data_hd)
+	if !mesh_data_ok {
+		atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+		chunk.mesh_q_state[side] = .usable
+		atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+		log.log(.Error, "failed, mesh_hd not valid", mesh_data_hd)
+		return
+	}
+	start_mesh_chunk_task(w_map, Mesh_Chunk_Task{
+		w_map=w_map,
+		chunk_hd=chunk_hd,
+		side=side,
+	}, mesh_data_hd)
 }
 
 Mask_Lookup :: struct {
@@ -2461,7 +3238,14 @@ get_meshing_data_at_pos :: proc(
 		return vox_data,neighbor_vox_data,local_pos,neighbor_pos,true
 	}
 
-	if info.has_4_neighbors {return}
+	if info.has_4_neighbors {
+		// The face mask already combines all four fine neighbors. Keep this
+		// boundary voxel on the meshing path; its light is sampled separately.
+		neighbor_vox_data = info.neighbor_vox_data[0]
+		if neighbor_vox_data == nil {return}
+		neighbor_pos = {}
+		return vox_data,neighbor_vox_data,local_pos,neighbor_pos,true
+	}
 
 	neighbor_vox_data = info.neighbor_vox_data[0]
 	if neighbor_vox_data == nil {return}
@@ -2475,43 +3259,37 @@ get_meshing_data_at_pos :: proc(
 }
 
 
+
 mesh_by_bit_mask :: proc(
 	t:Mesh_Chunk_Task,
+	mesh_hd: Chunk_Mesh_Data_HD,
 ) -> (face_count: int) {
 
-	mesh,mesh_ok := hm.get(&t.w_map.chunks_mesh_data,t.mesh_hd)
+	mesh,mesh_ok := hm.get(&t.w_map.chunks_mesh_data,mesh_hd)
 	assert(mesh_ok)
-	mesh.face_count = 0
+	mesh.face_count = -1
 
 	if t.side == .extra {return}
 
-	chunk_vox_data,vox_ok := get_vox_chunk_data(t.w_map,t.vox_data_hd)
-	if !vox_ok {log.log(.Error,"failed, vox_data_hd not valid",t.vox_data_hd);return}
+	prepared,prepared_ok:=prepare_mesh_chunk_data(t)
+	if !prepared_ok {return}
+	defer release_mesh_chunk_data(t.w_map, &prepared)
 
-	chunk_data,chunk_ok := hm.get(&t.w_map.chunks,t.chunk_hd)
-	if !chunk_ok {log.log(.Error,"failed, chunk_hd not valid",t.chunk_hd);return}
-
-	chunk_light_data,light_ok := hm.get(&t.w_map.light_chunk_hm,chunk_data.light_data_hd)
-	assert(light_ok)
+	chunk_vox_data,chunk_vox_ok:=get_vox_chunk_data(t.w_map,prepared.chunk_vox_hd)
+	if !chunk_vox_ok {return}
+	neighbors_vox: [4]^Vox_Chunk_Data
+	neighbor_count := 1
+	if prepared.has_4_neighbors { neighbor_count = 4 }
+	for i in 0..<neighbor_count {
+		neighbors_vox[i], _ = get_vox_chunk_data(t.w_map,prepared.neighbor_vox_hd[i])
+		if neighbors_vox[i] == nil {return}
+	}
+	neighbor_vox:=neighbors_vox[0]
+	chunk_light_data,chunk_light_ok:=get_light_chunk_data(t.w_map,prepared.chunk_light_hd)
+	if !chunk_light_ok {log.log(.Error,"mesh_by_bit_mask: invalid chunk light data",prepared.chunk_light_hd);return}
 
 	assert(chunk_vox_data.backing_mask_data != nil)
 	assert(chunk_vox_data.backing_world_data != nil)
-
-	neighbors_vox:[4]^Vox_Chunk_Data
-	neighbor_vox:^Vox_Chunk_Data
-
-	if t.has_4_neighbors {
-		for i in 0..<4 {
-			neighbor_vox_ok:bool
-			neighbors_vox[i],neighbor_vox_ok = get_vox_chunk_data(t.w_map,t.neighbor_vox_hd[i])
-			if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",t.neighbor_vox_hd);return}
-		}
-		neighbor_vox = neighbors_vox[0]
-	}else{
-		neighbor_vox_data,neighbor_vox_ok := get_vox_chunk_data(t.w_map,t.neighbor_vox_hd[0])
-		if !neighbor_vox_ok {log.log(.Error,"failed, neighbor_vox_data_hd not valid",t.neighbor_vox_hd);return}
-		neighbor_vox = neighbor_vox_data
-	}
 
 	chunk_mask,chunk_mask_ok := hm.get(&chunk_vox_data.backing_mask_data.hm,chunk_vox_data.vox_mask_hd)
 	if !chunk_mask_ok {log.log(.Error,"failed, chunk mask not valid",chunk_vox_data.vox_mask_hd);return}
@@ -2521,12 +3299,12 @@ mesh_by_bit_mask :: proc(
 	sampled_neighbor_mask:[CHUNK_SIZE * CHUNK_SIZE]u32
 	cur_neighbor_mask:^[CHUNK_SIZE * CHUNK_SIZE]u32
 
-	if t.has_4_neighbors {
+	if prepared.has_4_neighbors {
 		masks:[4][CHUNK_SIZE * CHUNK_SIZE]u32
 
 		for i in 0..<4 {
 			n_mask,n_mask_ok := hm.get(&neighbors_vox[i].backing_mask_data.hm,neighbors_vox[i].vox_mask_hd)
-			if !n_mask_ok {log.log(.Error,"failed, neighbor mask not valid",t.neighbor_vox_hd[i]);return}
+			if !n_mask_ok {log.log(.Error,"failed, neighbor mask not valid",prepared.neighbor_vox_hd[i]);return}
 			masks[i] = n_mask.is_opaque_mask
 		}
 
@@ -2547,9 +3325,9 @@ mesh_by_bit_mask :: proc(
 
 	meshing_chunk_info:Meshing_Chunk_Info={
 		vox_data = chunk_vox_data,
-		neighbor_vox_data = neighbor_vox,
+		neighbor_vox_data = neighbors_vox,
 		side = t.side,
-		has_4_neighbors = t.has_4_neighbors,
+		has_4_neighbors = prepared.has_4_neighbors,
 	}
 	MASK_LOOKUP_r:=MASK_LOOKUP
 	lookup := MASK_LOOKUP_r[t.side]
@@ -2661,7 +3439,10 @@ mesh_by_bit_mask :: proc(
 								block_offset,
 							)
 
-							if !occluded && nab_pal_index != 0 {
+							// For a four-chunk LOD transition, the reduced neighbor
+							// mask already tests all four fine voxels. Do not let one
+							// selected child voxel hide the entire coarse face.
+							if !occluded && nab_pal_index != 0 && !prepared.has_4_neighbors {
 								occluded=face_is_fully_occluded_by_chain(
 									neighbor_vox_data,
 									nab_pal_index,
@@ -2680,7 +3461,7 @@ mesh_by_bit_mask :: proc(
 										voxel_light[corner_id]=sample_corner_light(
 											t.w_map,
 											chunk_light_data,
-											t.neighbor_light_data_hd,
+											&prepared,
 											t.side,
 											x,cast(int)y,z,
 											corner_id,
@@ -2727,7 +3508,7 @@ mesh_by_bit_mask :: proc(
 									block_offset,
 								)
 
-								if !extra_occluded && on_block_boundary && nab_pal_index != 0 {
+								if !extra_occluded && on_block_boundary && nab_pal_index != 0 && !prepared.has_4_neighbors {
 									extra_occluded=face_is_fully_occluded_by_chain(
 										neighbor_vox_data,
 										nab_pal_index,
@@ -2747,7 +3528,7 @@ mesh_by_bit_mask :: proc(
 										voxel_light[corner_id]=sample_corner_light(
 											t.w_map,
 											chunk_light_data,
-											t.neighbor_light_data_hd,
+											&prepared,
 											t.side,
 											x,cast(int)y,z,
 											corner_id,
@@ -3026,18 +3807,21 @@ LIGHT_CORNER_SAMPLE_OFFSETS :: [Directions][4][4][3]int{
 sample_corner_light :: proc(
 	w_map: ^Map,
 	light_data: ^Light_Chunk_Data,
-	neighbor_light_data_hd: [Full_Directions]Light_Chunk_Data_HD,
+	prepared: ^Mesh_Prepared_Chunk_Data,
 	side: Model_Sides,
 	x, y, z: int,
 	corner_id: int,
 ) -> u32 {
-	if side == .extra {return LIGHT_MAX_PACKED}
+	if side == .extra { return LIGHT_MAX_PACKED }
 
 	side_index := cast(Directions)side
 	corner_sample_offsets := LIGHT_CORNER_SAMPLE_OFFSETS_r[side_index][corner_id]
-
-	neighbor_light_data: [Full_Directions]^Light_Chunk_Data
-	neighbor_checked: [Full_Directions]bool
+	neighbor_light_cache: [Full_Directions]^Light_Chunk_Data
+	neighbor_light_checked: [Full_Directions]bool
+	fine_light_cache: [Full_Directions][4]^Light_Chunk_Data
+	fine_light_checked: [Full_Directions][4]bool
+	coarse_light_cache: [Full_Directions]^Light_Chunk_Data
+	coarse_light_checked: [Full_Directions]bool
 	sun_light_weighted_sum: [3]int
 	block_light_weighted_sum: [3]int
 
@@ -3049,30 +3833,106 @@ sample_corner_light :: proc(
 		for axis_index in 0..<3 {
 			if sample_position[axis_index] < 0 {
 				neighbor_chunk_offset[axis_index] = -1
-				sample_position[axis_index] += CHUNK_SIZE
 			} else if sample_position[axis_index] >= CHUNK_SIZE {
 				neighbor_chunk_offset[axis_index] = 1
-				sample_position[axis_index] -= CHUNK_SIZE
 			}
 		}
 
 		sample_light_data := light_data
+		local_sample_position := sample_position
 
 		if neighbor_chunk_offset != {0,0,0} {
 			neighbor_direction := FULL_DIRECTION_LOOKUP_r[neighbor_chunk_offset[0]+1][neighbor_chunk_offset[1]+1][neighbor_chunk_offset[2]+1]
+			neighbor := &prepared.neighbor_light_data[neighbor_direction]
+			found_neighbor := false
 
-			if !neighbor_checked[neighbor_direction] {
-				neighbor_data,neighbor_ok := hm.get(&w_map.light_chunk_hm,neighbor_light_data_hd[neighbor_direction])
-				if neighbor_ok {neighbor_light_data[neighbor_direction] = neighbor_data}
-				neighbor_checked[neighbor_direction] = true
+			// Prefer an equal-LOD neighbor. Resolve the handle locally and cache
+			// only for this corner calculation; no pointers survive the call.
+			if !neighbor_light_checked[neighbor_direction] {
+				if neighbor.same_lod != {} {
+					neighbor_light_cache[neighbor_direction], _ = get_light_chunk_data(w_map,neighbor.same_lod)
+				}
+				neighbor_light_checked[neighbor_direction] = true
+			}
+			if neighbor_light_cache[neighbor_direction] != nil {
+				sample_light_data = neighbor_light_cache[neighbor_direction]
+				for axis_index in 0..<3 {
+					if local_sample_position[axis_index] < 0 { local_sample_position[axis_index] += CHUNK_SIZE }
+					else if local_sample_position[axis_index] >= CHUNK_SIZE { local_sample_position[axis_index] -= CHUNK_SIZE }
+				}
+				found_neighbor = true
+			} else {
+				// Convert the source sample-cell center to world voxel coordinates.
+				// This lets us select the actual fine/coarse chunk that contains it,
+				// including samples that cross only a tangent chunk boundary.
+				world_sample_position: [3]int
+				for axis_index in 0..<3 {
+					world_sample_position[axis_index] = prepared.chunk_pos[axis_index]*CHUNK_SIZE + sample_position[axis_index]*prepared.chunk_size + prepared.chunk_size/2
+				}
+
+				for fine_index in 0..<neighbor.fine_count {
+					fine_neighbor := neighbor.fine_lod[fine_index]
+					if fine_neighbor.size <= 0 { continue }
+					candidate_local_position: [3]int
+					inside_fine_neighbor := true
+					for axis_index in 0..<3 {
+						relative_world_position := world_sample_position[axis_index] - fine_neighbor.pos[axis_index]*CHUNK_SIZE
+						if relative_world_position < 0 || relative_world_position >= CHUNK_SIZE*fine_neighbor.size {
+							inside_fine_neighbor = false
+							break
+						}
+						candidate_local_position[axis_index] = relative_world_position/fine_neighbor.size
+					}
+					if !inside_fine_neighbor { continue }
+					if !fine_light_checked[neighbor_direction][fine_index] {
+						fine_light_cache[neighbor_direction][fine_index], _ = get_light_chunk_data(w_map,fine_neighbor.light_hd)
+						fine_light_checked[neighbor_direction][fine_index] = true
+					}
+					if fine_light_cache[neighbor_direction][fine_index] == nil { continue }
+					sample_light_data = fine_light_cache[neighbor_direction][fine_index]
+					local_sample_position = candidate_local_position
+					found_neighbor = true
+					break
+				}
+
+				if !found_neighbor && neighbor.has_coarse_lod {
+					coarse_neighbor := neighbor.coarse_lod
+					coarse_local_position: [3]int
+					inside_coarse_neighbor := coarse_neighbor.size > 0
+					for axis_index in 0..<3 {
+						relative_world_position := world_sample_position[axis_index] - coarse_neighbor.pos[axis_index]*CHUNK_SIZE
+						if relative_world_position < 0 || relative_world_position >= CHUNK_SIZE*coarse_neighbor.size {
+							inside_coarse_neighbor = false
+							break
+						}
+						coarse_local_position[axis_index] = relative_world_position/coarse_neighbor.size
+					}
+					if inside_coarse_neighbor {
+						if !coarse_light_checked[neighbor_direction] {
+							coarse_light_cache[neighbor_direction], _ = get_light_chunk_data(w_map,coarse_neighbor.light_hd)
+							coarse_light_checked[neighbor_direction] = true
+						}
+						if coarse_light_cache[neighbor_direction] != nil {
+							sample_light_data = coarse_light_cache[neighbor_direction]
+							local_sample_position = coarse_local_position
+							found_neighbor = true
+						}
+					}
+				}
 			}
 
-			sample_light_data = neighbor_light_data[neighbor_direction]
+			if !found_neighbor {
+				// At an unloaded/world edge, clamp to this chunk's edge light instead
+				// of injecting a zero-valued sample that creates a black seam.
+				for axis_index in 0..<3 {
+					if local_sample_position[axis_index] < 0 { local_sample_position[axis_index] = 0 }
+					else if local_sample_position[axis_index] >= CHUNK_SIZE { local_sample_position[axis_index] = CHUNK_SIZE-1 }
+				}
+				sample_light_data = light_data
+			}
 		}
 
-		if sample_light_data == nil {continue}
-
-		voxel_index := sample_position[1] + sample_position[0]*CHUNK_SIZE + sample_position[2]*CHUNK_SIZE*CHUNK_SIZE
+		voxel_index := local_sample_position[1] + local_sample_position[0]*CHUNK_SIZE + local_sample_position[2]*CHUNK_SIZE*CHUNK_SIZE
 		sampled_light := get_light_in_chunk_index(sample_light_data,cast(u16)voxel_index)
 
 		for channel_index in 0..<3 {
@@ -3090,6 +3950,7 @@ sample_corner_light :: proc(
 
 	return ((sun_r&31)<<25)|((sun_g&31)<<20)|((sun_b&31)<<15)|((block_r&31)<<10)|((block_g&31)<<5)|(block_b&31)
 }
+
 LIGHT_CORNER_SAMPLE_WEIGHT :: 64
 
 Destroy_Mesh_Data_Q_Data::struct{
@@ -3152,6 +4013,18 @@ add_to_upload_mesh_data_q::proc(
 	return
 }
 do_a_upload_mesh_data_q::proc(w_map:^Map,q:Upload_Mesh_Data_Q_Data, copy_pass: ^sdl.GPUCopyPass){
+	chunk, chunk_ok := hm.get(&w_map.chunks, q.data_hd)
+	if !chunk_ok {
+		add_to_destroy_mesh_data_q(w_map, q.mesh_hd)
+		return
+	}
+	atom.atomic_rw_mutex_shared_lock(&chunk.data_rw_mutex)
+	retiring := chunk.retiring
+	atom.atomic_rw_mutex_shared_unlock(&chunk.data_rw_mutex)
+	if retiring {
+		add_to_destroy_mesh_data_q(w_map, q.mesh_hd)
+		return
+	}
 	upload_chunk_side_to_gpu(w_map,q.data_hd,q.mesh_hd,q.side,copy_pass)
 }
 
@@ -3159,11 +4032,21 @@ do_a_upload_mesh_data_q::proc(w_map:^Map,q:Upload_Mesh_Data_Q_Data, copy_pass: ^
 upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh_Data_HD, side:Model_Sides, copy_pass: ^sdl.GPUCopyPass){
 	chunk, chunk_ok := get_chunk(w_map,chunk_hd)
 	if !chunk_ok{log.log(.Error, "failed invalid chunk_hd(",chunk_hd,")") ;return}
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+	defer atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+	if chunk.retiring {
+		add_to_destroy_mesh_data_q(w_map,mesh_hd)
+		return
+	}
 
 	mesh,mesh_ok:=get_chunk_mesh_data(w_map,mesh_hd)
 	if !mesh_ok {log.log(.Warning,"no mesh data found",mesh_hd) ;return}
 
-	if mesh.face_count == 0{add_to_destroy_mesh_data_q(w_map,mesh_hd) ;return}
+	if mesh.face_count == 0{
+		chunk.mesh_gpu_ready_mask += {side}
+		add_to_destroy_mesh_data_q(w_map,mesh_hd)
+		return
+	}
 
 	gpu_data,gpu_data_ok:=hm.get(&w_map.gpu_mesh_data_hm,chunk.gpu_mesh_data_hd)
 	if !gpu_data_ok{
@@ -3177,6 +4060,7 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 		tg.free_list_free(&w_map.chunks_in_mesh,gpu_data.range_in_map_mesh[side])
 		// unload_mesh_data(w_map,chunk.gpu_mesh_data_hd)
 	}
+	gpu_data.visible = true
 
 	num_of_gpu_mesh_slots:=cast(u32)math.ceil(cast(f32)mesh.face_count/CHUNK_MAX_FACE_NUM)
 
@@ -3200,6 +4084,7 @@ upload_chunk_side_to_gpu::proc(w_map:^Map, chunk_hd:Chunk_HD, mesh_hd:Chunk_Mesh
 	gpu_data.draw_cmd[side].num_vertices = cast(u32)mesh.face_count * 6
 	gpu_data.draw_cmd[side].first_vertex = first_face * 6
 	gpu_data.draw_cmd[side].num_instances = 1 
+	chunk.mesh_gpu_ready_mask += {side}
 
 	add_to_destroy_mesh_data_q(w_map,mesh_hd)
 }
@@ -3318,50 +4203,48 @@ add_to_set_block_cmd_q::proc(w_map:^Map,cmd:Set_Block_CMD){
 	chan.send(w_map.set_block_chan, cmd)
 	return
 }
-do_a_set_block_cmd_q::proc(w_map:^Map,q:Set_Block_CMD){
-	chunk_hd,chunk_hd_ok:=get_chunk_by_pos_safe(w_map,q.chunk_pos)
-	if !chunk_hd_ok {return}
-	chunk,chunk_ok:=hm.get(&w_map.chunks,chunk_hd)
-	if !chunk_ok {return}
-	chunk_vox,chunk_vox_ok:=hm.get(&w_map.vox_chunk_hm,chunk.vox_data_hd)
-	if !chunk_vox_ok {return}
-	if !chunk_vox.vox_gened{return}
+do_a_set_block_cmd_q::proc(w_map:^Map, q:Set_Block_CMD) {
+	chunk_hd, chunk_hd_ok := get_chunk_by_pos_safe(w_map, q.chunk_pos)
+	if !chunk_hd_ok { return }
+	chunk, chunk_ok := hm.get(&w_map.chunks, chunk_hd)
+	if !chunk_ok { return }
 
-	m_qs:=&chunk.mesh_q_state
-	if m_qs[.pos_x]!=.usable{return}
-	if m_qs[.neg_x]!=.usable{return}
-	if m_qs[.pos_y]!=.usable{return}
-	if m_qs[.neg_y]!=.usable{return}
-	if m_qs[.pos_z]!=.usable{return}
-	if m_qs[.neg_z]!=.usable{return}
+	atom.atomic_rw_mutex_lock(&chunk.data_rw_mutex)
+	locked := true
+	defer { if locked { atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex) } }
+	if chunk.retiring { return }
+	m_qs := &chunk.mesh_q_state
+	if m_qs[.pos_x] != .usable || m_qs[.neg_x] != .usable || m_qs[.pos_y] != .usable || m_qs[.neg_y] != .usable || m_qs[.pos_z] != .usable || m_qs[.neg_z] != .usable { return }
 
-	old_pal_index:=get_palette_index_by_pos(chunk_vox,q.pos_in_chunk)
+	vox_data_hd := chunk.vox_data_hd
+	chunk_vox, chunk_vox_ok := hm.get(&w_map.vox_chunk_hm, vox_data_hd)
+	if !chunk_vox_ok || !atom.atomic_load(&chunk_vox.vox_gened) { return }
 
+	old_pal_index := get_palette_index_by_pos(chunk_vox, q.pos_in_chunk)
 	switch q.action {
 	case .replace_cell:
-		p_index:=get_or_add_palette_index(chunk_vox,q.new_block)
-		set_palette_index(chunk_vox,pos_to_vox_index(q.pos_in_chunk),p_index)
-
+		p_index := get_or_add_palette_index(chunk_vox, q.new_block)
+		set_palette_index(chunk_vox, pos_to_vox_index(q.pos_in_chunk), p_index)
 	case .append_child:
-		set_child_block_in_chunk(chunk_vox,q.pos_in_chunk,q.new_block.item,q.new_block.state)
-
+		set_child_block_in_chunk(chunk_vox, q.pos_in_chunk, q.new_block.item, q.new_block.state)
 	case .destroy_from:
-		destroyed:=destroy_block_in_chunk(chunk_vox,q.pos_in_chunk,q.target_pal_index)
-		if !destroyed {return}
+		destroyed := destroy_block_in_chunk(chunk_vox, q.pos_in_chunk, q.target_pal_index)
+		if !destroyed { return }
 	}
 
-	new_pal_index:=get_palette_index_by_pos(chunk_vox,q.pos_in_chunk)
-	if old_pal_index == new_pal_index {return}
+	new_pal_index := get_palette_index_by_pos(chunk_vox, q.pos_in_chunk)
+	if old_pal_index == new_pal_index { return }
 
-	light_q_hd,err:=hm.add(&w_map.light_qs_hm,Light_Q{})
-	assert(err ==.None)
+	light_q_hd, err := hm.add(&w_map.light_qs_hm, Light_Q{})
+	assert(err == .None)
+	update_block_lighting_after_set(w_map, chunk_vox, q.pos_in_chunk, light_q_hd)
 
-	update_block_lighting_after_set(w_map,chunk_vox,q.pos_in_chunk,light_q_hd)
-
-	start_light_chunk_task(w_map,Light_Chunk_Task{
+	atom.atomic_rw_mutex_unlock(&chunk.data_rw_mutex)
+	locked = false
+	start_light_chunk_task(w_map, Light_Chunk_Task{
 		w_map=w_map,
 		chunk_hd=chunk_hd,
-		vox_data_hd=chunk.vox_data_hd,
+		vox_data_hd=vox_data_hd,
 		light_q_hd=light_q_hd,
 	})
 }

@@ -141,6 +141,15 @@ Vertex_Data :: struct #align(16) {
 	layer:u32,
 	col_over:[4]f32,
 }
+Vertex_Data_Step :: struct #align(16) {
+    pos: Vec4,
+    step: [4]i32,
+    col: Vec4,
+    uv: [2]f32,
+    img_index: u32,
+    layer: u32,
+    col_over: [4]f32,
+}
 Vertex_Data_t :: struct #align(16){
 	pos:Vec4,
 	// _1:f32,
@@ -152,9 +161,14 @@ Vertex_Data_t :: struct #align(16){
 	col_over:[4]f32,
 }
 
-UBO ::struct{
-	mvp: matrix[4,4]f32,
-	viewport_size:[2]f32,
+UBO :: struct {
+    mvp: matrix[4,4]f32,
+    camera_step: [4]i32,
+    camera_pos: [4]f32,
+    step_size: f32,
+    _padding: [3]f32,
+    viewport_size: [2]f32,
+    _padding_2: [2]f32,
 }
 
 // rot:f32=0// FIXME this should not be heare
@@ -561,7 +575,13 @@ do_render_pass::proc(
 
 	mvp:=cam.mvp
 	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
-	pass.ubo = {mvp = mvp * modl_mat, viewport_size = cast([2]f32)cam.texture_size}
+	pass.ubo = {
+	    mvp = mvp * modl_mat,
+	    camera_step = {cam.w_pos.step.x, cam.w_pos.step.y, cam.w_pos.step.z, 0},
+	    camera_pos = {cam.w_pos.pos.x, cam.w_pos.pos.y, cam.w_pos.pos.z, 0},
+	    step_size = cam.step_size,
+	    viewport_size = cast([2]f32)cam.texture_size,
+	}
 
 	sdl.BindGPUGraphicsPipeline(pass.render_pas,pass.pipeline[s.g_render_settings.msaa_samp_count][pipeline_vs])
 
@@ -654,79 +674,51 @@ do_render_pass::proc(
 }
 
 Frustum_Cull_Params :: struct {
-	mvp: Mat4,
-	chunk_count: u32,
-	do_chunk_back_face_culling: u32,
-	_padding: [2]u32,
-	cam_chunk_pos:[4]i32,
+    mvp: Mat4,
+    chunk_count: u32,
+    do_chunk_back_face_culling: u32,
+    _padding: [2]u32,
+    cam_chunk_pos: [4]i32,
+    camera_pos: [4]f32,
+    step_size: f32,
+    _padding2: [3]f32,
 }
 
 frustum_cull_indirect :: proc(
-	pass:^C_Pass,
-	chunk_data_buf:[]^sdl.GPUBuffer,
-	source_cmd_buf:[]^sdl.GPUBuffer,
-	culled_cmd_buf:^sdl.GPUBuffer,
-	cam:^Camera,
-	chunk_count:u32,
+    pass:^C_Pass,
+    chunk_data_buf:[]^sdl.GPUBuffer,
+    source_cmd_buf:[]^sdl.GPUBuffer,
+    culled_cmd_buf:^sdl.GPUBuffer,
+    cam:^Camera,
+    chunk_count:u32,
 ) {
-	if pass == nil || chunk_count == 0 {return}
+    if pass == nil || chunk_count == 0 {return}
 
-	rw_binding := sdl.GPUStorageBufferReadWriteBinding{buffer = culled_cmd_buf, cycle = true}
-	start_compute(pass, {rw_binding})
-	if pass.compute_pas == nil {return}
+    rw_binding := sdl.GPUStorageBufferReadWriteBinding{buffer = culled_cmd_buf, cycle = true}
+    start_compute(pass, {rw_binding})
+    if pass.compute_pas == nil {return}
 
-	sdl.BindGPUComputeStorageBuffers(pass.compute_pas, 0, raw_data(source_cmd_buf), 1)
-	sdl.BindGPUComputeStorageBuffers(pass.compute_pas, 1, raw_data(chunk_data_buf), 1)
+    sdl.BindGPUComputeStorageBuffers(pass.compute_pas, 0, raw_data(source_cmd_buf), 1)
+    sdl.BindGPUComputeStorageBuffers(pass.compute_pas, 1, raw_data(chunk_data_buf), 1)
 
-	cam_chunk_pos := [4]i32{
-	    i32(math.floor(cast(f32)cam.pos.x / 32)),
-	    i32(math.floor(cast(f32)cam.pos.y / 32)),
-	    i32(math.floor(cast(f32)cam.pos.z / 32)),
-	    0,
-	}
-	
-	do_chunk_back_face_culling := u32(1)
-	// if g.settings.do_chunk_back_face_culling {
-	//     do_chunk_back_face_culling = 1
-	// }
-	
-	params := Frustum_Cull_Params{
-	    mvp = cam.mvp,
-	    chunk_count = chunk_count,
-	    do_chunk_back_face_culling = do_chunk_back_face_culling,
-	    cam_chunk_pos = cam_chunk_pos,
-	}
-	sdl.PushGPUComputeUniformData(pass.frame_data.render_cmd_buf, 0, &params, size_of(params))
+    do_chunk_back_face_culling := u32(1)
 
-	sdl.DispatchGPUCompute(pass.compute_pas, (chunk_count + 63) / 64, 1, 1)
+    params := Frustum_Cull_Params{
+        mvp = cam.mvp,
+        chunk_count = chunk_count,
+        do_chunk_back_face_culling = do_chunk_back_face_culling,
+        cam_chunk_pos = {cam.w_pos.step.x, cam.w_pos.step.y, cam.w_pos.step.z, 0},
+        camera_pos = {cam.w_pos.pos.x, cam.w_pos.pos.y, cam.w_pos.pos.z, 0},
+        step_size = cam.step_size,
+    }
 
-	submit_compute(pass)
+    sdl.PushGPUComputeUniformData(pass.frame_data.render_cmd_buf, 0, &params, size_of(params))
+
+    sdl.DispatchGPUCompute(pass.compute_pas, (chunk_count + 63) / 64, 1, 1)
+
+    submit_compute(pass)
 }
 
-make_view_mat_proj_mat::proc(cam:^Camera)->(view_mat:Mat4,proj_mat:Mat4){
-	switch cam.type {
-	case .perspective:
-		view_mat = lin.matrix4_look_at_f32(cam.pos, cam.target, {0,1,0})
-		proj_mat = lin.matrix4_perspective_f32(
-			lin.to_radians(cast(f32)90 * cam.zoom), 
-			cast(f32)cam.texture_size.x / cast(f32)cam.texture_size.y,
-			0.1, 
-			100000,
-		)
-	case .orthographic:
-		pos:=cam.pos
-		view_mat = lin.matrix4_translate_f32({-pos.x,-pos.y,-pos.z})
-		proj_mat = lin.matrix_ortho3d_f32(
-			left= 0, 
-			right= cast(f32)cam.texture_size.x * cam.zoom, 
-			bottom= -cast(f32)cam.texture_size.y * cam.zoom, 
-			top= 0, 
-			near= -1.001, 
-			far= 1000,
-		)
-	}
-	return
-}
 
 check_and_resize_all_frame_buffers::proc(
 	cam:^Camera,
@@ -1010,18 +1002,28 @@ Camera_Types::enum{
 	orthographic,
 }
 
-Camera ::struct {
-	pos:[3]f32,
-	target:[3]f32,
-	zoom:f32,
-	look:Look_Dir,
+Camera :: struct {
+	w_pos: World_Pos,// Camera position relative to its current step. for small worlds this is all you need
+	target: [3]f32,
+
+
+	step_size: f32,//World-space distance represented by one step. 
+
+	zoom: f32,
+	look: Look_Dir,
 	mvp: Mat4,
-	texture_size:[2]i32,
-	type:Camera_Types,
-	depth_texture_createinfo : sdl.GPUTextureCreateInfo,
+	texture_size: [2]i32,
+	type: Camera_Types,
+	depth_texture_createinfo: sdl.GPUTextureCreateInfo,
 	depth_texture: ^sdl.GPUTexture,
-	// msaa_depth_texture: ^sdl.GPUTexture,
-} 
+}
+
+// a very acurit pos to reduse persition errors
+World_Pos :: struct {
+	step: [3]i32,// Integer position of that step. used when in a masive world and you start runing into persition errrors
+	pos: [3]f32, //Camera position relative to its current step. for small worlds this is all you need
+}
+
 Look_Dir::struct{
 	yaw: f32,
 	pitch: f32,
@@ -1045,43 +1047,111 @@ delete_camera::proc(cam:^Camera){
 		sdl.ReleaseGPUTexture(s.gpu_device,cam.depth_texture)
 	}
 }
-screane_space_to_world_2d::proc(cam:^Camera,pos:[2]f32)->(world:[2]f32){
-	pos_world :[2]f32= {pos.x,pos.y} * cam.zoom
-	world = cam.pos.xy + pos_world
-	return 
+screane_space_to_world_2d_f32 :: proc(cam:^Camera, pos:[2]f32) -> (world:[2]f32) {
+    world = get_cam_pos_f32(cam).xy + pos * cam.zoom
+    return
 }
+
+
+
+screane_space_to_world_2d :: proc(cam:^Camera, pos:[2]f32) -> (world:World_Pos) {
+    delta := [3]f64{f64(pos.x * cam.zoom),f64(pos.y * cam.zoom),0,}
+    return world_pos_add(cam.w_pos, delta, cam.step_size)
+}
+
 update_camera::proc(cam:^Camera,){
 	v,p:=make_view_mat_proj_mat(cam)
 	cam.mvp = p*v
 }
 
+normalize_camera_step :: proc(cam: ^Camera) {
+    if cam.step_size <= 0 {return}
+
+    for axis in 0..<3 {
+        delta := i32(math.floor(cam.w_pos.pos[axis] / cam.step_size))
+        cam.w_pos.step[axis] += delta
+        cam.w_pos.pos[axis] -= f32(delta) * cam.step_size
+    }
+}
+
 // this is a very rudimenty controler and should only be used for testing
-update_camera_3d::proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=.5,){
-	move_input:Vec2
-	speed:=speed
-	
-	if is_input_event(.move_u,always_consume_p = false, always_consume_d = false) do move_input.y = 1
-	else if is_input_event(.move_d,always_consume_p = false, always_consume_d = false) do move_input.y = -1
-	if is_input_event(.move_l,always_consume_p = false, always_consume_d = false) do move_input.x = -1
-	else if is_input_event(.move_r,always_consume_p = false, always_consume_d = false) do move_input.x = 1
-	
-	if is_input_event(.ui_shift,always_consume_p = false, always_consume_d = false){speed*=80}
-	look_input := s.input_events.mouse_move * sensitivity * dt
-	
-	cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)
-	cam.look.pitch = math.clamp(cam.look.pitch - look_input.y, -89, 89)
+update_camera_3d :: proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=.5) {
+    move_input:Vec2
+    speed:=speed
 
-	look_mat := lin.matrix3_from_yaw_pitch_roll_f32(lin.to_radians(cam.look.yaw), lin.to_radians(cam.look.pitch), 0)
+    if is_input_event(.move_u, always_consume_p = false, always_consume_d = false) do move_input.y = 1
+    else if is_input_event(.move_d, always_consume_p = false, always_consume_d = false) do move_input.y = -1
 
-	forward := look_mat * Vec3 {0,0,-1}
-	right := look_mat * Vec3 {1,0,0}
-	move_dir := forward * move_input.y + right * move_input.x
-	// move_dir.y = 0
+    if is_input_event(.move_l, always_consume_p = false, always_consume_d = false) do move_input.x = -1
+    else if is_input_event(.move_r, always_consume_p = false, always_consume_d = false) do move_input.x = 1
 
-	motion := lin.normalize0(move_dir) * speed * dt
+    if is_input_event(.ui_shift, always_consume_p = false, always_consume_d = false) {
+        speed *= 80
+    }
 
-	cam.pos += motion
-	cam.target = cam.pos + forward
+    look_input := s.input_events.mouse_move * sensitivity * dt
+
+    cam.look.yaw = math.wrap(cam.look.yaw - look_input.x, 360)
+    cam.look.pitch = math.clamp(cam.look.pitch - look_input.y, -89, 89)
+
+    look_mat := lin.matrix3_from_yaw_pitch_roll_f32(
+        lin.to_radians(cam.look.yaw),
+        lin.to_radians(cam.look.pitch),
+        0,
+    )
+
+    forward := look_mat * Vec3{0, 0, -1}
+    right := look_mat * Vec3{1, 0, 0}
+
+    move_dir := forward * move_input.y + right * move_input.x
+    motion := lin.normalize0(move_dir) * speed * dt
+
+    camera_add_pos_f32(cam, motion)
+}
+
+make_view_mat_proj_mat :: proc(cam:^Camera) -> (view_mat:Mat4, proj_mat:Mat4) {
+    switch cam.type {
+    case .perspective:
+        forward := camera_get_forward(cam)
+
+        view_mat = lin.matrix4_look_at_f32(
+            {0, 0, 0},
+            forward,
+            {0, 1, 0},
+        )
+
+        proj_mat = lin.matrix4_perspective_f32(
+            lin.to_radians(cast(f32)90 * cam.zoom),
+            cast(f32)cam.texture_size.x / cast(f32)cam.texture_size.y,
+            0.1,
+            300000,
+        )
+
+    case .orthographic:
+        view_mat = 1
+
+        proj_mat = lin.matrix_ortho3d_f32(
+            left = 0,
+            right = cast(f32)cam.texture_size.x * cam.zoom,
+            bottom = -cast(f32)cam.texture_size.y * cam.zoom,
+            top = 0,
+            near = -1.001,
+            far = 1000,
+        )
+    }
+
+    return
+}
+
+camera_get_forward :: proc(cam:^Camera) -> (forward:Vec3) {
+    look_mat := lin.matrix3_from_yaw_pitch_roll_f32(
+        lin.to_radians(cam.look.yaw),
+        lin.to_radians(cam.look.pitch),
+        0,
+    )
+
+    forward = look_mat * Vec3{0, 0, -1}
+    return
 }
 
 
@@ -1116,6 +1186,96 @@ update_camera_2d_pan::proc(cam:^Camera, dt:f32=1, speed:f32=1,){
 	// 	motion := move_input * (speed*cam.zoom) * dt
 	// 	cam.pos += motion
 	// }
+}
+
+
+get_cam_pos_f64 :: proc(cam:^Camera) -> (result: [3]f64) {
+	return world_pos_to_f64(cam.w_pos, cam.step_size)
+}
+world_pos_to_f64 :: proc(pos: World_Pos, step_size: f32) -> (result: [3]f64) {
+    if step_size <= 0 do return cast([3]f64)pos.pos
+
+    for axis in 0..<3 {
+        result[axis] = f64(pos.step[axis]) * f64(step_size) + f64(pos.pos[axis])
+    }
+    return
+}
+
+get_cam_pos_f32 :: proc(cam:^Camera) -> (result: [3]f32) {
+	return world_pos_to_f32(cam.w_pos, cam.step_size)
+}
+world_pos_to_f32 :: proc(pos: World_Pos, step_size: f32) -> (result: [3]f32) {
+        if step_size <= 0 do return pos.pos
+
+    for axis in 0..<3 {
+        result[axis] = cast(f32)pos.step[axis] * step_size + pos.pos[axis]
+    }
+    return
+}
+
+world_pos_from_f64 :: proc(pos: [3]f64, step_size: f32) -> (result: World_Pos) {
+    if step_size <= 0 {
+        result.pos = cast([3]f32)pos
+        return
+    }
+
+    size := f64(step_size)
+    for axis in 0..<3 {
+        step := i32(math.floor(pos[axis] / size))
+        result.step[axis] = step
+        result.pos[axis] = cast(f32)(pos[axis] - f64(step) * size)
+    }
+    return
+}
+
+world_pos_from_f32 :: proc(pos: [3]f32, step_size: f32) -> (result: World_Pos) {
+    return world_pos_from_f64(cast([3]f64)pos, step_size)
+}
+
+world_pos_add :: proc(pos: World_Pos, delta: [3]f64, step_size: f32) -> (result: World_Pos) {
+    result = pos
+
+    if step_size <= 0 {
+        result.pos += cast([3]f32)delta
+        result.step = {}
+        return
+    }
+
+    size := f64(step_size)
+
+    for axis in 0..<3 {
+        local := f64(result.pos[axis]) + delta[axis]
+        step_delta := i32(math.floor(local / size))
+
+        result.step[axis] += step_delta
+        result.pos[axis] = cast(f32)(local - f64(step_delta) * size)
+
+        if result.pos[axis] >= step_size {
+            result.step[axis] += 1
+            result.pos[axis] -= step_size
+        }
+    }
+
+    return
+}
+
+camera_add_pos_f32 :: proc(cam: ^Camera, delta: [3]f32) {
+    camera_add_pos(cam, cast([3]f64)delta)
+}
+
+camera_add_pos :: proc(cam: ^Camera, delta: [3]f64) {
+    cam.w_pos = world_pos_add(cam.w_pos, delta, cam.step_size)
+}
+
+
+
+
+camera_set_pos_f64 :: proc(cam: ^Camera, pos: [3]f64) {
+    cam.w_pos = world_pos_from_f64(pos, cam.step_size)
+}
+
+camera_set_pos_f32 :: proc(cam: ^Camera, pos: [3]f32) {
+    cam.w_pos = world_pos_from_f32(pos, cam.step_size)
 }
 
 

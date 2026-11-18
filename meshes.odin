@@ -153,7 +153,7 @@ delete_mesh::proc(mesh_hd:Mesh_Handle){
 	hm.remove(&s.meshes,mesh_hd)
 	
 }
-update_mesh::proc(mesh_hd:Mesh_Handle){
+update_mesh::proc(mesh_hd:Mesh_Handle, cycle := true){
 	mesh:=get_mesh(mesh_hd)
 	vertices_byte_size := len(mesh.cpu.vertex_buf.buffer.buf)
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
@@ -178,7 +178,7 @@ update_mesh::proc(mesh_hd:Mesh_Handle){
 				buffer = mesh.gpu.vertex_buf, 
 				size = cast(u32)vertices_byte_size,
 			},
-			cycle = true,
+			cycle = cycle,
 		)
 	}
 
@@ -193,7 +193,7 @@ update_mesh::proc(mesh_hd:Mesh_Handle){
 				buffer = mesh.gpu.index_buf,
 				size = cast(u32)indices_byte_size,
 			},
-			cycle = true,
+			cycle = cycle,
 		)
 	}
 	mesh.gpu.vertex_count = cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
