@@ -13,6 +13,7 @@ struct Input{
 	uint texture_face_index : TEXCOORD7;
 	// float4 clip_box : TEXCOORD11;
 	nointerpolation uint4 packed_light : TEXCOORD8;
+	float fog_distance : TEXCOORD9;
 
 };
 
@@ -142,9 +143,6 @@ float4 main(Input input) : SV_Target0 {
 	// ------------------------------------------------------------
 
 	Texture2DArray mask_tex = g_Textures[tex.mask_index];
-	
-		
-	
 	float mask = g_Textures[tex.mask_index].Sample(
 		smp[tex.mask_index],
 		float3(lod_uv, tex.mask_layer)
@@ -187,7 +185,7 @@ float4 main(Input input) : SV_Target0 {
 	float3 sun_light = lerp(lerp(sun0,sun1,input.face_uv.x),lerp(sun3,sun2,input.face_uv.x),input.face_uv.y);
 	float3 block_light = lerp(lerp(block0,block1,input.face_uv.x),lerp(block3,block2,input.face_uv.x),input.face_uv.y);
 	
-	float SUN_STRENGTH = 0.5;
+	float SUN_STRENGTH = 1.0;
 	
 	float3 sun = saturate(sun_light) * SUN_STRENGTH;
 	float3 block = saturate(block_light);
@@ -202,8 +200,35 @@ float4 main(Input input) : SV_Target0 {
 	
 	light = saturate(light);
 	
-	// Apply lighting to the final textured and masked color.
+
+	// World lighting
+	// ------------------------------------------------------------
+	
 	color.rgb *= light;
-	// return color;
-	return color * input.color* float4(input.shading, input.shading, input.shading, 1.0);
+	
+	float4 final_color = color * input.color *
+		float4(input.shading, input.shading, input.shading, 1.0);
+	
+	// ------------------------------------------------------------
+	// Atmospheric fog
+	// ------------------------------------------------------------
+	
+	static const float FOG_START = 1000.0;
+	static const float FOG_END = 950000.0;
+	
+	static const float3 FOG_COLOR = float3(0.48, 0.66, 0.78);
+	
+	float fog_amount = smoothstep(
+		FOG_START,
+		FOG_END,
+		input.fog_distance
+	);
+	
+	final_color.rgb = lerp(
+		final_color.rgb,
+		FOG_COLOR,
+		fog_amount
+	);
+
+	return final_color;
 }

@@ -51,6 +51,11 @@ DEFALT_OPAQUET_DEPTH_STENCIL_STATE :sdl.GPUDepthStencilState:{
 	enable_depth_write = true,
 	compare_op = .LESS_OR_EQUAL,
 }
+DEFALT_OPAQUET_DEPTH_STENCIL_STATE_REVERS_Z :sdl.GPUDepthStencilState:{
+	enable_depth_test = true,
+	enable_depth_write = true,
+	compare_op = .GREATER_OR_EQUAL,
+}
 DEFALT_MASKED_DEPTH_STENCIL_STATE :sdl.GPUDepthStencilState:{
 	enable_depth_test = true,
 	enable_depth_write = true,
@@ -130,6 +135,16 @@ DEFALT_OPAQUE_PASS:Render_Pass_Info:{
 	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
 	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
 	depth_stencil_state =        DEFALT_OPAQUET_DEPTH_STENCIL_STATE,
+	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
+	blend_state =                DEFALT_OPAQUET_BLEND_STATE,
+	vertex_input_state = sdl.GPUVertexInputState{},
+}
+DEFALT_OPAQUE_PASS_REVERS_Z:Render_Pass_Info:{
+	clear_color = {1, .3, 1, 1},
+	has_depth_stencil_target = true,
+	// depth_texture_createinfo =   DEFALT_DEPTH_TEXTURE_CREATEINFO,
+	// depth_msaa_texture_createinfo =   DEFALT_MSSA_DEPTH_TEXTURE_CREATEINFO,
+	depth_stencil_state =        DEFALT_OPAQUET_DEPTH_STENCIL_STATE_REVERS_Z,
 	rasterizer_state =           DEFALT_RASTERRIZER_STATE,
 	blend_state =                DEFALT_OPAQUET_BLEND_STATE,
 	vertex_input_state = sdl.GPUVertexInputState{},

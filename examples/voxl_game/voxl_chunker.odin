@@ -34,20 +34,35 @@ import "core:math/bits"
 Vox_Render_Settings::struct{
 	do_chunk_back_face_culling:bool,
 	do_chunk_frustum_culling:bool,
-	xz_render_distance:int,
-	y_render_distance:int,
-	lod_levels:int,
-	lod_depth:int,
+	chunker_settings:Chunker_Settings,
 
 }
 DF_VOX_RENDER_SETTINGS:Vox_Render_Settings:{
 	do_chunk_back_face_culling = true,
 	do_chunk_frustum_culling = true,
-	xz_render_distance = 4,
-	y_render_distance = 4,
-	lod_levels = 20,
-	lod_depth = 8,
+	chunker_settings = DF_CHUNKER_SETTINGS,
+
 }
+
+
+Chunker_Settings :: struct {
+    lod_level_count: int,                  // Includes LOD0 (size 1).
+    lod_band_width: int,                   // Nominal full ring thickness in the next LOD's chunks.
+    lod0_radius_xz: int,                   // LOD0 half-extent in base chunks.
+    lod0_radius_y: int,                    // LOD0 vertical half-extent in base chunks.
+    max_chunk_loads_per_update: int,
+    max_chunk_unloads_per_update: int,
+}
+
+DF_CHUNKER_SETTINGS: Chunker_Settings: {
+    lod_level_count = 16,
+    lod_band_width = 8,
+    lod0_radius_xz = 8,
+    lod0_radius_y = 4,
+    max_chunk_loads_per_update = 100,
+    max_chunk_unloads_per_update = 512,
+}
+
 Vox_Render_Debug_Info::struct{
 
 	chunks_map_len:			int,
@@ -86,41 +101,24 @@ CHUNK_MAX_FACE_NUM::  CHUNK_SIZE * CHUNK_SIZE / 2
 MAX_NUM_DRAW_CMD_BUF::MAX_NUM_CHUNKS / 8
 
 // Nine levels cover chunk sizes 1, 2, 4, ..., 256.
-MAX_CHUNK_STREAM_LOD_LEVELS :: 12
+MAX_CHUNK_STREAM_LOD_LEVELS :: 16
 MAX_CHUNK_STREAM_LOD_SIZE :: 1 << (MAX_CHUNK_STREAM_LOD_LEVELS-1)
 MAX_CHUNKS_TO_ADD_PER_FRAME :: 100
 MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE :: 512
 
-Chunk_Stream_Settings :: struct {
-    lod_level_count: int,                  // Includes LOD0 (size 1).
-    lod_band_width: int,                   // Nominal full ring thickness in the next LOD's chunks.
-    lod0_radius_xz: int,                   // LOD0 half-extent in base chunks.
-    lod0_radius_y: int,                    // LOD0 vertical half-extent in base chunks.
-    max_chunk_loads_per_update: int,
-    max_chunk_unloads_per_update: int,
-}
-
-DF_CHUNK_STREAM_SETTINGS: Chunk_Stream_Settings: {
-    lod_level_count = 12,
-    lod_band_width = 8,
-    lod0_radius_xz = 8,
-    lod0_radius_y = 4,
-    max_chunk_loads_per_update = 50,
-    max_chunk_unloads_per_update = 512,
-}
 
 // Bounds are base-chunk coordinates with an exclusive maximum.
-Chunk_Stream_Bounds :: struct {
+Chunker_Bounds :: struct {
     min: [3]int,
     max: [3]int,
 }
 
-Chunk_Unload_Candidate :: struct {
+Chunker_Unload_Candidate :: struct {
     chunk_hd: Chunk_HD,
     distance: int,
 }
 
-Chunk_Stream_Cursor :: struct {
+Chunker_Cursor :: struct {
     level, shell, cell_index: int,
 }
 
@@ -156,8 +154,8 @@ Map::struct{
 
 	t_pool:thread.Pool,
 	pool_tasks:Pool_Tasks_HM,
-	chunk_stream_settings: Chunk_Stream_Settings,
-	chunk_stream_cursor: Chunk_Stream_Cursor,
+	// chunker_settings: Chunker_Settings,
+	chunker_cursor: Chunker_Cursor,
 
 
 	set_block_chan:chan.Chan(Set_Block_CMD,.Both),
@@ -253,6 +251,7 @@ Mesh_Light_Neighbor_Entry :: struct {
 
 Mesh_Light_Neighbor :: struct {
 	same_lod: Light_Chunk_Data_HD,
+	same_lod_vox_hd: Vox_Chunk_Data_HD,
 	fine_lod: [4]Mesh_Light_Neighbor_Entry,
 	fine_count: int,
 	coarse_lod: Mesh_Light_Neighbor_Entry,
@@ -550,7 +549,7 @@ get_chunk_mesh_data::proc(w_map:^Map, mesh_data_hd:Chunk_Mesh_Data_HD,)->(mesh_d
 }
 
 init_map::proc(w_map:^Map){
-	w_map.chunk_stream_settings = DF_CHUNK_STREAM_SETTINGS
+	
 	// w_map.t_pool
 	pool_allocator: mem.Allocator
 	pool_allocator = runtime.heap_allocator()
@@ -631,7 +630,7 @@ prepare_chunk_stream_cursor :: proc(w_map: ^Map, player_chunk: [3]int) {
        w_map.stream_chunk_pos.z != player_chunk.z {
         w_map.stream_chunk_pos = player_chunk
         w_map.stream_chunk_pos_valid = true
-        w_map.chunk_stream_cursor = {}
+        w_map.chunker_cursor = {}
     }
 }
 
@@ -671,8 +670,8 @@ chunk_stream_shell_cell :: proc(shell, cell_index: int) -> [3]int {
 }
 make_chunk_stream_bounds :: proc(
     player_chunk: [3]int,
-    settings: Chunk_Stream_Settings,
-) -> (bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds, ok: bool) {
+    settings: Chunker_Settings,
+) -> (bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunker_Bounds, ok: bool) {
     if settings.lod_level_count < 1 || settings.lod_level_count > MAX_CHUNK_STREAM_LOD_LEVELS { return }
     if settings.lod_band_width < 1 || settings.lod0_radius_xz < 1 || settings.lod0_radius_y < 1 { return }
     if settings.max_chunk_loads_per_update < 1 || settings.max_chunk_unloads_per_update < 1 { return }
@@ -729,7 +728,7 @@ chunk_key_level :: proc(key: [4]int) -> int {
     return level
 }
 
-chunk_key_intersects_bounds :: proc(key: [4]int, bounds: Chunk_Stream_Bounds) -> bool {
+chunk_key_intersects_bounds :: proc(key: [4]int, bounds: Chunker_Bounds) -> bool {
     size := key.w
     return key.x < bounds.max.x && key.x+size > bounds.min.x &&
            key.y < bounds.max.y && key.y+size > bounds.min.y &&
@@ -738,7 +737,7 @@ chunk_key_intersects_bounds :: proc(key: [4]int, bounds: Chunk_Stream_Bounds) ->
 
 chunk_key_is_wanted :: proc(
     key: [4]int,
-    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunker_Bounds,
     lod_level_count: int,
 ) -> bool {
     level := chunk_key_level(key)
@@ -820,7 +819,7 @@ model_side_opposite :: proc(side: Model_Sides) -> Model_Sides {
     return .extra
 }
 
-chunk_stream_point_inside :: proc(point: [3]int, bounds: Chunk_Stream_Bounds) -> bool {
+chunk_stream_point_inside :: proc(point: [3]int, bounds: Chunker_Bounds) -> bool {
     return point.x >= bounds.min.x && point.x < bounds.max.x &&
            point.y >= bounds.min.y && point.y < bounds.max.y &&
            point.z >= bounds.min.z && point.z < bounds.max.z
@@ -828,7 +827,7 @@ chunk_stream_point_inside :: proc(point: [3]int, bounds: Chunk_Stream_Bounds) ->
 
 chunk_stream_find_wanted_key_at_pos :: proc(
     point: [3]int,
-    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunker_Bounds,
     lod_level_count: int,
 ) -> (key: [4]int, found: bool) {
     for level := 0; level < lod_level_count; level += 1 {
@@ -848,7 +847,7 @@ chunk_stream_find_wanted_key_at_pos :: proc(
 
 chunk_stream_region_has_wanted_lod :: proc(
     key: [4]int,
-    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunker_Bounds,
     lod_level_count: int,
 ) -> bool {
     if key.w <= 0 { return false }
@@ -907,7 +906,7 @@ chunk_stream_mesh_boundary_ready :: proc(
     w_map: ^Map,
     chunk: ^Chunk,
     side: Model_Sides,
-    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunker_Bounds,
     lod_level_count: int,
 ) -> bool {
     size := chunk.pos.w
@@ -950,7 +949,7 @@ chunk_stream_mesh_boundary_ready :: proc(
 chunk_stream_chunk_render_ready :: proc(
     w_map: ^Map,
     chunk: ^Chunk,
-    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunker_Bounds,
     lod_level_count: int,
 ) -> bool {
     if !chunk_stream_voxel_lighting_ready(w_map, chunk) { return false }
@@ -966,10 +965,10 @@ chunk_stream_chunk_render_ready :: proc(
 chunk_stream_replacement_state :: proc(
     w_map: ^Map,
     old_chunk_pos: [4]int,
-    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunk_Stream_Bounds,
+    bounds: [MAX_CHUNK_STREAM_LOD_LEVELS]Chunker_Bounds,
     lod_level_count: int,
 ) -> (needed: bool, renderable: bool) {
-    old_chunk_bounds := Chunk_Stream_Bounds{
+    old_chunk_bounds := Chunker_Bounds{
         min = old_chunk_pos.xyz,
         max = {old_chunk_pos.x+old_chunk_pos.w, old_chunk_pos.y+old_chunk_pos.w, old_chunk_pos.z+old_chunk_pos.w},
     }
@@ -1029,7 +1028,7 @@ chunk_stream_replacement_state :: proc(
 
 removing_chunks_not_around_pos :: proc(w_map: ^Map, pos: [3]f32) -> (did_work: bool) {
     player_chunk := pos_to_chunck_pos(pos)
-    settings := w_map.chunk_stream_settings
+    settings := g.settings.chunker_settings
     prepare_chunk_stream_cursor(w_map, player_chunk)
 
     bounds, valid := make_chunk_stream_bounds(player_chunk, settings)
@@ -1039,7 +1038,7 @@ removing_chunks_not_around_pos :: proc(w_map: ^Map, pos: [3]f32) -> (did_work: b
     // independent of the load budget; unloads are allowed to process far more
     // than the old 100-chunk load cap.
     unload_budget := min(settings.max_chunk_unloads_per_update, MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE)
-    candidates: [MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE]Chunk_Unload_Candidate
+    candidates: [MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE]Chunker_Unload_Candidate
     candidate_count := 0
 
     itor := hm.iterator_make(&w_map.chunks)
@@ -1094,7 +1093,7 @@ removing_chunks_not_around_pos :: proc(w_map: ^Map, pos: [3]f32) -> (did_work: b
         for i := candidate_count-1; i > insert_at; i -= 1 {
             candidates[i] = candidates[i-1]
         }
-        candidates[insert_at] = Chunk_Unload_Candidate{chunk_hd=chunk_hd, distance=distance}
+        candidates[insert_at] = Chunker_Unload_Candidate{chunk_hd=chunk_hd, distance=distance}
     }
 
     // Retire replacement-ready chunks from nearest to farthest.
@@ -1108,9 +1107,9 @@ removing_chunks_not_around_pos :: proc(w_map: ^Map, pos: [3]f32) -> (did_work: b
 
 adding_chunks_around_pos :: proc(w_map: ^Map, pos: [3]f32) -> (did_work: bool) {
     player_chunk := pos_to_chunck_pos(pos)
-    settings := w_map.chunk_stream_settings
+    settings :=g.settings.chunker_settings
     prepare_chunk_stream_cursor(w_map, player_chunk)
-    cursor := &w_map.chunk_stream_cursor
+    cursor := &w_map.chunker_cursor
 
     // The LOD scan is complete until the player enters a different chunk.
     if cursor.level >= settings.lod_level_count { return }
@@ -1271,15 +1270,20 @@ update_w_map_draw_cmds_buff::proc(w_map:^Map){
 			w_map.chunk_shader_data.count+=1
 		}
 	}
+	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
+	tg.update_mesh(w_map.draw_cmd_buf_hd,  cycle = false, command_buf = copy_cmd_buf)
+	tg.update_mesh(w_map.chunk_shader_data.mesh_hd, cycle = false , command_buf = copy_cmd_buf)
+	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 
-	tg.update_mesh(w_map.draw_cmd_buf_hd, false)
-	tg.update_mesh(w_map.chunk_shader_data.mesh_hd, false )
 	mesh.gpu.index_count = cast(u32)w_map.chunk_shader_data.count
 	mesh_2.gpu.index_count =  cast(u32)w_map.chunk_shader_data.count
+
+	atom.atomic_store(&w_map.did_work,false)
 }
 
-render_map::proc(w_map:^Map){
-	tg.do_render_pass(&g.vox_pass, &g.cam, {w_map.map_mesh_hd},{&g.texture_facees,&g.geometry_facees, &w_map.chunk_shader_data}, {w_map.draw_cmd_buf_comped_hd},type = .face)
+render_map::proc(w_map:^Map, cmd_count:u32){
+	// tg.do_render_pass(&g.vox_pass, &g.cam, {w_map.map_mesh_hd},{&g.texture_facees,&g.geometry_facees, &w_map.chunk_shader_data}, {w_map.draw_cmd_buf_comped_hd},type = .face)
+	tg.do_render_pass_face_inderect(&g.vox_pass, &g.cam, {w_map.map_mesh_hd},{&g.texture_facees,&g.geometry_facees, &w_map.chunk_shader_data}, {w_map.draw_cmd_buf_comped_hd},cmd_count,do_revers_z=true)
 }
 
 get_chunk_by_pos_safe::proc(w_map:^Map,pos:[4]int)->(chunk_hd:Chunk_HD, chunk_ok:bool){
@@ -1353,12 +1357,15 @@ manage_all_w_map_q::proc(w_map:^Map)->(did_work:bool){
     did_work = destroy_work || did_work
     did_work = manage_destroy_vox_data_q(w_map) || did_work
     did_work = manage_destroy_mesh_data_q(w_map) || did_work
-
     if upload_work || remove_work || mesh_changed {
         update_w_map_draw_cmds_buff(w_map)
     }
-
     get_w_map_debug_info(w_map)
+
+    temp_did_work:=atom.atomic_load(&w_map.did_work)
+    if !temp_did_work{
+	    atom.atomic_store(&w_map.did_work,did_work)
+    }
     return
 }
 
@@ -1412,8 +1419,8 @@ do_a_gen_chunk_q::proc(w_map:^Map,q:Gen_Chunk_Q_Data){
     // A request can sit in the channel while the viewer moves. Revalidate it
     // so an obsolete LOD cell is never created after a clipbox change.
     player_chunk := cast([3]int)g.cam.w_pos.step
-    bounds, valid := make_chunk_stream_bounds(player_chunk, w_map.chunk_stream_settings)
-    if !valid || !chunk_key_is_wanted(q.pos, bounds, w_map.chunk_stream_settings.lod_level_count) {
+    bounds, valid := make_chunk_stream_bounds(player_chunk, g.settings.chunker_settings)
+    if !valid || !chunk_key_is_wanted(q.pos, bounds, g.settings.chunker_settings.lod_level_count) {
         return
     }
     add_chunk(w_map,q.pos)
@@ -1442,7 +1449,7 @@ Destroy_Chunk_Q_Data::struct{
 manage_destroy_chunk_q::proc(w_map:^Map)->(did_work:bool){
     // Keep deferred destruction bounded. Unsafe chunks are requeued instead
     // of spinning, while later entries get a chance on the next update.
-    destroy_budget := min(w_map.chunk_stream_settings.max_chunk_unloads_per_update, MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE)
+    destroy_budget := min(g.settings.chunker_settings.max_chunk_unloads_per_update, MAX_CHUNK_UNLOAD_CANDIDATES_PER_UPDATE)
     if destroy_budget < 1 { destroy_budget = 1 }
     queued_count := cast(int)chan.len(w_map.destroy_chunk_chan)
     if queued_count > destroy_budget { queued_count = destroy_budget }
@@ -1578,134 +1585,8 @@ gen_chunk_vox_data::proc(w_map:^Map,q:Gen_Vox_Data_Q_Data,index:int){
 	assert(light_q_ok)
 
 	vox_chunk.pos = q.pos
-	// chunk.chunk_shader_data.pos = {
-	// 	cast(i32)q.pos.x,
-	// 	cast(i32)q.pos.y,
-	// 	cast(i32)q.pos.z,
-	// 	cast(i32)q.pos.w,
-	// }
-
 	start_gen_vox_dat_task(w_map,Gen_Vox_Data_Task{w_map = w_map,vox_data_hd=vox_chunk_hd,chunk_hd = q.data_hd,light_q_hd = light_q_hd })
 }
-
-
-
-
-// gen_vox_data :: proc(
-// 	t:Gen_Vox_Data_Task,
-// 	// w_map:^Map,
-// 	// vox_chunk_hd:Vox_Chunk_Data_HD,
-// 	// chunk:^Chunk,
-// ){
-// 	chunk,chunk_ok:=hm.get(&t.w_map.chunks,t.chunk_hd)
-// 	assert(chunk_ok)
-// 	vox_chunk,vox_chunk_ok:=hm.get(&t.w_map.vox_chunk_hm,t.vox_data_hd)
-// 	assert(vox_chunk_ok)
-// 	light,light_ok:=hm.get(&t.w_map.light_chunk_hm,chunk.light_data_hd)
-// 	assert(light_ok)
-
-// 	pos:=vox_chunk.pos
-// 	vox_chunk.pos = pos
-// 	lod_lev := pos.w
-
-
-// 	xz_scl:f64 = 0.001
-// 	y_scl:f64 = 600.0
-
-// 	world_x_start := pos.x * CHUNK_SIZE
-// 	world_y_start := pos.y * CHUNK_SIZE
-// 	world_z_start := pos.z * CHUNK_SIZE
-
-	
-// 	grass_pal_index := get_or_add_palette_index_by_item_hd(vox_chunk, g.df_items[.grass])
-// 	stone_pal_index := get_or_add_palette_index_by_item_hd(vox_chunk, g.df_items[.stone_slate])
-
-// 	chunk_has_changed:bool
-
-// 	sun_masks:[CHUNK_SIZE * CHUNK_SIZE]u32
-// 	sun_count:=0
-
-// 	for x := 0; x < CHUNK_SIZE; x += 1 {
-// 		world_x := world_x_start + x * lod_lev + lod_lev / 2
-
-// 		for z := 0; z < CHUNK_SIZE; z += 1 {
-// 			world_z := world_z_start + z * lod_lev + lod_lev / 2
-
-// 			height := nos.noise_2d(
-// 				6223378936854776807,
-// 				{
-// 					cast(f64)world_x * xz_scl,
-// 					cast(f64)world_z * xz_scl,
-// 				},
-// 			)
-
-// 			height_x := nos.noise_2d(
-// 				6223378936854776807,
-// 				{
-// 					cast(f64)(world_x + lod_lev) * xz_scl,
-// 					cast(f64)world_z * xz_scl,
-// 				},
-// 			)
-
-// 			height_z := nos.noise_2d(
-// 				6223378936854776807,
-// 				{
-// 					cast(f64)world_x * xz_scl,
-// 					cast(f64)(world_z + lod_lev) * xz_scl,
-// 				},
-// 			)
-
-// 			change_x := math.abs(height_x - height)
-// 			change_z := math.abs(height_z - height)
-
-// 			height_change := max(change_x/cast(f32)lod_lev, change_z/cast(f32)lod_lev)
-// 			is_steep := height_change > 0.003
-
-// 			height = (height + 1.0) * 0.5
-// 			height = math.pow(height, 2.5)
-
-// 			world_height := cast(int)(height * cast(f32)y_scl)
-// 			solid_height := (world_height - world_y_start) / lod_lev
-
-// 			mask_index := x + z*CHUNK_SIZE
-			
-// 			if solid_height <= 0 {
-// 				sun_masks[mask_index] = 0xFFFF_FFFF
-// 				sun_count += CHUNK_SIZE
-// 				continue
-// 			}
-			
-// 			if solid_height > CHUNK_SIZE {
-// 				solid_height = CHUNK_SIZE
-// 			}
-			
-// 			if solid_height < CHUNK_SIZE {
-// 				sun_masks[mask_index] = 0xFFFF_FFFF << u32(solid_height)
-// 				sun_count += CHUNK_SIZE-solid_height
-// 			}
-
-// 			if is_steep {
-// 				set_blocks_in_chunk_by_col_pal_index(
-// 					vox_chunk,
-// 					stone_pal_index,
-// 					{cast(u8)x, cast(u8)z},
-// 					cast(u8)solid_height,
-// 				)
-// 			} else {
-// 				set_blocks_in_chunk_by_col_pal_index(
-// 					vox_chunk,
-// 					grass_pal_index,
-// 					{cast(u8)x, cast(u8)z},
-// 					cast(u8)solid_height,
-// 				)
-// 			}
-// 		}
-// 	}
-
-// 	init_worldgen_sun_light(light,sun_masks[:],sun_count)
-
-	
-// }
 
 gen_vox_data :: proc(
 	t:Gen_Vox_Data_Task,
@@ -2757,7 +2638,7 @@ notify_coarser_neighbors_for_meshing :: proc(w_map: ^Map, fine_chunk: ^Chunk) {
 	if !fine_ready { return }
 
 	fine_size := fine_pos.w
-	max_lod_size := 1 << cast(u32)(w_map.chunk_stream_settings.lod_level_count-1)
+	max_lod_size := 1 << cast(u32)(g.settings.chunker_settings.lod_level_count-1)
 	if fine_size <= 0 || fine_size >= max_lod_size { return }
 	coarse_size := fine_size * 2
 	seen_coarse_positions: [26][4]int
@@ -2983,6 +2864,10 @@ gather_mesh_light_neighbors_locked :: proc(
 		// tangent boundary while remaining inside the face-normal axis.
 		face_offset := offset[face_axis]
 		if face_offset != 0 && face_offset != face_sign { continue }
+// 
+		// face_offset := offset[face_axis]
+		// vertical_ctm_neighbor := offset.x == 0 && offset.z == 0 && offset.y != 0
+		// if face_offset != 0 && face_offset != face_sign && !vertical_ctm_neighbor { continue }
 
 		neighbor_pos := chunk.pos
 		neighbor_pos.xyz += offset*size
@@ -2990,6 +2875,7 @@ gather_mesh_light_neighbors_locked :: proc(
 		if same_exists {
 			if !same_ready { return neighbors, false }
 			neighbors[direction].same_lod = neighbor_chunk.light_data_hd
+			neighbors[direction].same_lod_vox_hd = neighbor_chunk.vox_data_hd
 			continue
 		}
 
@@ -3027,7 +2913,7 @@ gather_mesh_light_neighbors_locked :: proc(
 		// A partially present fine set is only safe when its missing coverage
 		// can be sampled from the complete coarse parent as a fallback.
 		need_coarse := neighbors[direction].fine_count < combination_count
-		max_lod_size := 1 << cast(u32)(w_map.chunk_stream_settings.lod_level_count-1)
+		max_lod_size := 1 << cast(u32)(g.settings.chunker_settings.lod_level_count-1)
 
 		if need_coarse && size < max_lod_size {
 			coarse_size := size*2
@@ -3130,6 +3016,8 @@ prepare_mesh_chunk_data :: proc(t: Mesh_Chunk_Task) -> (prepared: Mesh_Prepared_
 	prepared.neighbor_light_data, ok = gather_mesh_light_neighbors_locked(w_map, chunk, t.side, &prepared)
 	if !ok { return }
 
+
+
 	// Once all required chunks are read-locked, the global map lock is no
 	// longer needed. The per-chunk locks keep their handles/data alive until
 	// mesh_by_bit_mask finishes.
@@ -3194,6 +3082,253 @@ MASK_LOOKUP :[Model_Sides]Mask_Lookup: {
 	.extra=	{},
 }
 
+
+CTM_FACE_OFFSETS : [Model_Sides][8][3]int :{
+	.pos_x = {
+		{0,0,1}, {0,-1,1}, {0,-1,0}, {0,-1,-1},
+		{0,0,-1}, {0,1,-1}, {0,1,0}, {0,1,1},
+	},
+	.neg_x = {
+		{0,0,-1}, {0,-1,-1}, {0,-1,0}, {0,-1,1},
+		{0,0,1}, {0,1,1}, {0,1,0}, {0,1,-1},
+	},
+	.pos_y = {
+		{-1,0,0}, {-1,0,1}, {0,0,1}, {1,0,1},
+		{1,0,0}, {1,0,-1}, {0,0,-1}, {-1,0,-1},
+	},
+	// .neg_y = {
+	// 	{-1,0,0}, {-1,0,1}, {0,0,1}, {1,0,1},
+	// 	{1,0,0}, {1,0,-1}, {0,0,-1}, {-1,0,-1},
+	// },
+	.neg_y = {
+		{1,0,0}, {1,0,1}, {0,0,1}, {-1,0,1},
+		{-1,0,0}, {-1,0,-1}, {0,0,-1}, {1,0,-1},
+	},
+	.pos_z = {
+		{-1,0,0}, {-1,-1,0}, {0,-1,0}, {1,-1,0},
+		{1,0,0}, {1,1,0}, {0,1,0}, {-1,1,0},
+	},
+	.neg_z = {
+		{1,0,0}, {1,-1,0}, {0,-1,0}, {-1,-1,0},
+		{-1,0,0}, {-1,1,0}, {0,1,0}, {1,1,0},
+	},
+	.extra = {}
+}
+
+CTM_4_TILE_MAP :: [4]int{3,2,0,1}
+
+// Conventional 47-tile CTM neighbor map.
+// Bit order: left, down-left, down, down-right, right, up-right, up, up-left.
+CTM_CARDINAL_TILE_MAP : [16]u8 = {
+	0, 3, 12, 15,
+	1, 2, 13, 14,
+	36, 39, 24, 27,
+	37, 38, 25, 26,
+}
+
+// Index is the missing-diagonal mask:
+// bit 0 = down-right
+// bit 1 = down-left
+// bit 2 = up-right
+// bit 3 = up-left
+CTM_SURROUNDED_TILE_MAP : [16]u8 = {
+	26, 32, 33, 11,
+	44, 10, 35, 20,
+	45, 34, 23, 8,
+	22, 21, 9, 46,
+}
+
+ctm_47_tile_index :: proc(mask:u8)->int {
+	left := (mask & 0x01) != 0
+	down_left := (mask & 0x02) != 0
+	down := (mask & 0x04) != 0
+	down_right := (mask & 0x08) != 0
+	right := (mask & 0x10) != 0
+	up_right := (mask & 0x20) != 0
+	up := (mask & 0x40) != 0
+	up_left := (mask & 0x80) != 0
+
+	cardinal:u8
+	if left { cardinal |= 1 }
+	if down { cardinal |= 2 }
+	if right { cardinal |= 4 }
+	if up { cardinal |= 8 }
+
+	index := int(CTM_CARDINAL_TILE_MAP[cardinal])
+
+	switch index {
+	case 13:
+		if !down_right { index = 4 }
+	case 15:
+		if !down_left { index = 5 }
+	case 37:
+		if !up_right { index = 16 }
+	case 39:
+		if !up_left { index = 17 }
+
+	case 14:
+		if !down_right && !down_left { index = 7 }
+		else if down_right && !down_left { index = 31 }
+		else if !down_right && down_left { index = 29 }
+
+	case 25:
+		if !down_right && !up_right { index = 6 }
+		else if down_right && !up_right { index = 30 }
+		else if !down_right && up_right { index = 28 }
+
+	case 27:
+		if !up_left && !down_left { index = 19 }
+		else if up_left && !down_left { index = 41 }
+		else if !up_left && down_left { index = 43 }
+
+	case 38:
+		if !up_left && !up_right { index = 18 }
+		else if !up_left && up_right { index = 40 }
+		else if up_left && !up_right { index = 42 }
+
+	case 26:
+		missing:u8
+		if !down_right { missing |= 1 }
+		if !down_left { missing |= 2 }
+		if !up_right { missing |= 4 }
+		if !up_left { missing |= 8 }
+
+		index = int(CTM_SURROUNDED_TILE_MAP[missing])
+	}
+
+	return index
+}
+ctm_neighbor_item :: proc(
+	w_map: ^Map,
+	prepared: ^Mesh_Prepared_Chunk_Data,
+	vox_data: ^Vox_Chunk_Data,
+	block_pos: [3]int,
+	offset: [3]int,
+) -> Item_HD {
+	neighbor_pos := block_pos + offset
+	chunk_offset: [3]int
+
+	for axis in 0..<3 {
+		if neighbor_pos[axis] < 0 {
+			chunk_offset[axis] = -1
+			neighbor_pos[axis] += CHUNK_SIZE
+		}else if neighbor_pos[axis] >= CHUNK_SIZE {
+			chunk_offset[axis] = 1
+			neighbor_pos[axis] -= CHUNK_SIZE
+		}
+	}
+
+	neighbor_vox_data := vox_data
+
+	if chunk_offset != {0,0,0} {
+		direction := FULL_DIRECTION_LOOKUP_r[chunk_offset.x+1][chunk_offset.y+1][chunk_offset.z+1]
+		neighbor_vox_hd := prepared.neighbor_light_data[direction].same_lod_vox_hd
+		if neighbor_vox_hd == {} {return {}}
+
+		neighbor_vox_data, ok := get_vox_chunk_data(w_map,neighbor_vox_hd)
+		if !ok || !atom.atomic_load(&neighbor_vox_data.vox_gened) {return {}}
+	}
+
+	pal_index := get_palette_index_by_pos(neighbor_vox_data,cast([3]u8)neighbor_pos)
+	if pal_index == 0 {return {}}
+
+	return neighbor_vox_data.backing_chunk_data_abstract.pal[pal_index].item
+}
+ctm_variant_hash :: proc(world_pos: [3]int, item_hd: Item_HD) -> u32 {
+	h := cast(u32)world_pos.x * 0x8da6b343
+	h = cast(u32)world_pos.y * 0xd8163841
+	h = cast(u32)world_pos.z * 0xcb1ab31f
+	h = cast(u32)item_hd.idx * 0x9e3779b9
+	h = h >> 16
+	h *= 0x7feb352d
+	h = h >> 15
+	h *= 0x846ca68b
+	h = h >> 16
+	return h
+}
+connected_texture_face_index :: proc(
+	w_map: ^Map,
+	prepared: ^Mesh_Prepared_Chunk_Data,
+	vox_data: ^Vox_Chunk_Data,
+	block_pos: [3]int,
+	item_hd: Item_HD,
+	set: Texture_Set,
+	side: Model_Sides,
+) -> int {
+	tile_index := 0
+	texture_count := 1
+	// CTM_47_TILE_MAP:=CTM_47_TILE_MAP
+	CTM_FACE_OFFSETS:=CTM_FACE_OFFSETS
+	CTM_4_TILE_MAP:=CTM_4_TILE_MAP
+	switch set.set_type {
+	case .single:
+	case .full_ct:
+		texture_count = 47
+		neighbor_mask: u8
+
+		for i in 0..<8 {
+			neighbor_item := ctm_neighbor_item(w_map,prepared,vox_data,block_pos,CTM_FACE_OFFSETS[side][i])
+			if neighbor_item == item_hd {
+				neighbor_mask |= u8(1) << u32(i)
+			}
+		}
+
+		tile_index = ctm_47_tile_index(neighbor_mask)
+
+	case .vert_ct:
+		texture_count = 4
+		neighbor_mask: u8
+
+		if ctm_neighbor_item(w_map,prepared,vox_data,block_pos,CTM_FACE_OFFSETS[side][2]) == item_hd { neighbor_mask |= 1 }
+		if ctm_neighbor_item(w_map,prepared,vox_data,block_pos,CTM_FACE_OFFSETS[side][6]) == item_hd { neighbor_mask |= 2 }
+
+		tile_index = CTM_4_TILE_MAP[neighbor_mask]
+
+	case .hori_ct:
+		texture_count = 4
+		neighbor_mask: u8
+
+		if ctm_neighbor_item(w_map,prepared,vox_data,block_pos,CTM_FACE_OFFSETS[side][0]) == item_hd { neighbor_mask |= 1 }
+		if ctm_neighbor_item(w_map,prepared,vox_data,block_pos,CTM_FACE_OFFSETS[side][4]) == item_hd { neighbor_mask |= 2 }
+
+		tile_index = CTM_4_TILE_MAP[neighbor_mask]
+
+	case .top_ct:
+		texture_count = 2
+		if ctm_neighbor_item(w_map,prepared,vox_data,block_pos,{0,1,0}) == item_hd {
+			tile_index = 1
+		}
+
+	case .bot_ct:
+		texture_count = 2
+		if ctm_neighbor_item(w_map,prepared,vox_data,block_pos,{0,-1,0}) == item_hd {
+			tile_index = 1
+		}
+	}
+
+	variant_count := int(set.extra_variant_count)+1
+	variant_index := 0
+
+	if variant_count > 1 {
+		world_pos := prepared.chunk_pos*CHUNK_SIZE + block_pos*prepared.chunk_size
+		h := ctm_variant_hash(world_pos,item_hd)
+
+		switch set.variant_type {
+		case .even:
+			variant_index = int(h % cast(u32)variant_count)
+
+		case .rare:
+			// Each successive variant is less likely than the previous one.
+			for i := 1; i < variant_count; i += 1 {
+				if (h & 3) != 0 {break}
+				variant_index = i
+				h >>= 2
+			}
+		}
+	}
+
+	return set.index + variant_index*texture_count + tile_index
+}
 
 Meshing_Chunk_Info :: struct {
 	vox_data: ^Vox_Chunk_Data,
@@ -3385,6 +3520,7 @@ mesh_by_bit_mask :: proc(
 
 			vox_data,neighbor_vox_data,local_pos,neighbor_pos,ok := get_meshing_data_at_pos(&meshing_chunk_info,{x,cast(int)y,z})
 			if !ok {continue}
+			local_block_pos := [3]int{x,cast(int)y,z}
 
 			pal_index:=get_palette_index_by_pos(vox_data,local_pos)
 			if pal_index == 0 {continue}
@@ -3425,8 +3561,15 @@ mesh_by_bit_mask :: proc(
 						if geometry_index >= 0 {
 
 							geometry:=&g.all_face_data[geometry_index]
-							face.texture_face_index=cast(u16)item.texture_data.sides[geometry.texture_slot]
-						
+							face.texture_face_index = cast(u16)connected_texture_face_index(
+								t.w_map,
+								&prepared,
+								chunk_vox_data,
+								local_block_pos,
+								block_p_d.item,
+								item.texture_data.sides[geometry.texture_slot],
+								t.side,
+							)
 
 							occluded:=face_is_fully_occluded_by_chain(
 								vox_data,
@@ -3438,7 +3581,6 @@ mesh_by_bit_mask :: proc(
 								{},
 								block_offset,
 							)
-
 							// For a four-chunk LOD transition, the reduced neighbor
 							// mask already tests all four fine voxels. Do not let one
 							// selected child voxel hide the entire coarse face.
@@ -3454,7 +3596,6 @@ mesh_by_bit_mask :: proc(
 									block_offset,
 								)
 							}
-
 							if !occluded {
 								if !voxel_light_sampled {
 									for corner_id in 0..<4 {
@@ -3477,7 +3618,6 @@ mesh_by_bit_mask :: proc(
 								face_count+=1
 							}
 						}
-
 						// Imported and other additional geometry.
 						if model_data.extra_count > 0 {
 							extra_start:=model_data.cube_indices[.extra]
@@ -3488,7 +3628,15 @@ mesh_by_bit_mask :: proc(
 								extra_geometry:=&g.all_face_data[extra_geometry_index]
 								if extra_geometry.side != t.side {continue}
 
-								face.texture_face_index=cast(u16)item.texture_data.sides[extra_geometry.texture_slot]
+								face.texture_face_index = cast(u16)connected_texture_face_index(
+									t.w_map,
+									&prepared,
+									chunk_vox_data,
+									local_block_pos,
+									block_p_d.item,
+									item.texture_data.sides[extra_geometry.texture_slot],
+									t.side,
+								)
 
 								on_block_boundary:=false
 								if boundary_positive {
@@ -3507,7 +3655,6 @@ mesh_by_bit_mask :: proc(
 									{},
 									block_offset,
 								)
-
 								if !extra_occluded && on_block_boundary && nab_pal_index != 0 && !prepared.has_4_neighbors {
 									extra_occluded=face_is_fully_occluded_by_chain(
 										neighbor_vox_data,
@@ -3546,7 +3693,6 @@ mesh_by_bit_mask :: proc(
 						}
 					}
 				}
-
 				next:=block_p_d.multy_block_index
 				if next == 0 {
 					chain_finished=true
@@ -3920,7 +4066,6 @@ sample_corner_light :: proc(
 					}
 				}
 			}
-
 			if !found_neighbor {
 				// At an unloaded/world edge, clamp to this chunk's edge light instead
 				// of injecting a zero-valued sample that creates a black seam.
@@ -3931,10 +4076,8 @@ sample_corner_light :: proc(
 				sample_light_data = light_data
 			}
 		}
-
 		voxel_index := local_sample_position[1] + local_sample_position[0]*CHUNK_SIZE + local_sample_position[2]*CHUNK_SIZE*CHUNK_SIZE
 		sampled_light := get_light_in_chunk_index(sample_light_data,cast(u16)voxel_index)
-
 		for channel_index in 0..<3 {
 			sun_light_weighted_sum[channel_index] += int(sampled_light.sun[channel_index])*LIGHT_CORNER_SAMPLE_WEIGHT
 			block_light_weighted_sum[channel_index] += int(sampled_light.block[channel_index])*LIGHT_CORNER_SAMPLE_WEIGHT
@@ -4093,15 +4236,9 @@ upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.
 	mesh:=tg.get_mesh(mesh_hd)
 	vertices_byte_size := len(vertices)*size_of(E)
 	offset_byte_size:=offset*size_of(E)
-
 	transfer_mem := transmute([^]byte)sdl.MapGPUTransferBuffer(s.gpu_device, transfer_buffer, cycle = true)
-
 	copy(transfer_mem[:vertices_byte_size],mem.slice_to_bytes(vertices[:]))
-
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, transfer_buffer)
-	// copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
-	// copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
-	
 	if vertices_byte_size > 0 {
 		sdl.UploadToGPUBuffer(
 			copy_pass = copy_pass,
@@ -4117,36 +4254,8 @@ upload_data_to_mesh_by_offset::proc(mesh_hd:tg.Mesh_Handle,transfer_buffer:^sdl.
 			cycle = false,
 		)
 	}
-	
-	// sdl.EndGPUCopyPass(copy_pass)
-	// ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
 }
 
-// Unload_Mesh_Data_Q_Data::struct{
-// 	gpu_mesh_hd:GPU_Mesh_Data_HD,
-// }
-// manage_unload_mesh_data_q::proc(w_map:^Map)->(did_work:bool){
-// 	for {
-// 		value, ok := chan.try_recv(w_map.unload_mesh_data_chan)
-// 		if !ok {
-// 			break // More idiomatic than return here
-// 		}
-// 		did_work=true
-// 		do_a_unload_mesh_data_q(w_map, value)
-// 	}
-
-// 	return
-// }
-// add_to_unload_mesh_data_q::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD){
-
-// 	chan.send(w_map.unload_mesh_data_chan, Unload_Mesh_Data_Q_Data{gpu_mesh_hd})
-// 	return
-// }
-// do_a_unload_mesh_data_q::proc(w_map:^Map,q:Unload_Mesh_Data_Q_Data){
-
-// 	unload_mesh_data(w_map,q.gpu_mesh_hd)
-
-// }
 unload_mesh_data::proc(w_map:^Map,gpu_mesh_hd:GPU_Mesh_Data_HD){
 	gpu_mesh,gpu_mesh_ok:=hm.get(&w_map.gpu_mesh_data_hm,gpu_mesh_hd)
 	if gpu_mesh_ok{
@@ -4269,31 +4378,24 @@ update_block_lighting_after_set :: proc(
 
 	if pal_index != 0 {
 		chain_finished:=false
-
 		for _ in 0..<ab.pal_count^ {
 			assert(pal_index < ab.pal_count^,"invalid multiblock lighting chain")
-
 			block:=ab.pal[pal_index]
 			item,item_ok:=reg.get(&g.item_reg,block.item)
-
 			if item_ok {
 				is_opaque=is_opaque || item.is_opaque
-
 				emission.r=max(emission.r,item.light_emission.r)
 				emission.g=max(emission.g,item.light_emission.g)
 				emission.b=max(emission.b,item.light_emission.b)
 			}
-
 			pal_index=block.multy_block_index
 			if pal_index == 0 {
 				chain_finished=true
 				break
 			}
 		}
-
 		assert(chain_finished,"cycle detected in multiblock lighting chain")
 	}
-
 	if !is_opaque {
 		append(&q.seed_q,Light_Seed_Q_CMD{pos=pos,type=.sun})
 		append(&q.seed_q,Light_Seed_Q_CMD{pos=pos,type=.block})
@@ -4308,12 +4410,9 @@ update_block_lighting_after_set :: proc(
 	}
 }
 
-
 init_chunker_thread::proc(){
 	g.chunker_thread = thread.create_and_start(do_chunkering,self_cleanup = false)
 }
-
-
 
 do_chunkering::proc(){
 	tg.name_thread("Chunkering")
@@ -4323,9 +4422,7 @@ do_chunkering::proc(){
 	defer tg.end_tracking_allocator(&tracking_allocator)
 	log.log(.Info,"starting chunker thread")
 	log.log(.Info, "free GPU mesh space = ", tg.free_list_space_lef(&g.w_map.chunks_in_mesh))
-
 	for !s.app_should_close{
-		
 		did_work:=manage_all_w_map_q(&g.w_map)
 		if did_work{
 			atom.atomic_store_explicit(&g.w_map.did_work, did_work, .Release)

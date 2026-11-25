@@ -1,5 +1,6 @@
 package voxl_game
 
+import math "core:math"
 import "../../sstring"
 import "base:runtime"
 import "core:time"
@@ -98,6 +99,13 @@ Game::struct{
 
 	player:Player_Info,
 
+
+	skybox:tg.Procedural_Skybox,
+	
+	skybox_fullscreen_vert_shader:tg.Shader_Handle,
+	skybox_generate_frag_shader:tg.Shader_Handle,
+	skybox_display_frag_shader:tg.Shader_Handle,
+
 }
 
 Game_Info::struct{
@@ -129,6 +137,7 @@ init::proc(){
 	tg.set_defalt_networking_instance(&g.server)
 	tg.reg_input_events()
 	tg.reg_all_texture_from_loaded_directory_enum(Textures_Dir,&Textures_Dat)
+	tg.reg_all_texture_from_loaded_directory_enum(Ct_Dir,&Ct_Dat)
 	tg.gen_mipmaps()
 	init_defalt_ui_boxes()
 
@@ -141,7 +150,13 @@ init::proc(){
 	init_chunker_thread()
 	// s.ind_cmd_buff = tg.init_face_indirect_buffers()
 
-	
+	assert(ctm_47_tile_index(0x00) == 0)   // No neighbors
+	assert(ctm_47_tile_index(0x01) == 3)   // Left
+	assert(ctm_47_tile_index(0x04) == 12)  // Down
+	assert(ctm_47_tile_index(0x10) == 1)   // Right
+	assert(ctm_47_tile_index(0x40) == 36)  // Up
+	assert(ctm_47_tile_index(0xFF) == 26)  // All neighbors
+	assert(ctm_47_tile_index(0x55) == 46)  // All cardinals, no diagonals
 
 
 }
@@ -193,13 +208,34 @@ main :: proc(){
 
 	g.vox_comp_shader = tg.load_shader_file(file_path = "vox.comp")
 
+	g.skybox_fullscreen_vert_shader = tg.load_shader_file(file_path = "skybox_fullscreen.vert")
+	g.skybox_generate_frag_shader = tg.load_shader_file(file_path = "skybox_generate.frag")
+	g.skybox_display_frag_shader = tg.load_shader_file(file_path = "skybox_display.frag")
+
+
+	// g.pass = tg.create_render_pass(&g.frame_data, g.vert_shader, g.frag_shader, name = "Defalt_Pass")
+	// g.ui_pass = tg.create_render_pass(&g.frame_data, g.ui_vert_shader, g.ui_frag_shader, name = "UI_Pass")
+	// g.vox_pass = tg.create_render_pass(&g.frame_data, g.vox_vert_shader,  g.vox_frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "VOX_Pass")
+	// g.dynamic_vox_pass = tg.create_render_pass(&g.frame_data, g.dynamic_vox_vert_shader, g.vox_frag_shader, info = tg.DEFALT_OPAQUE_PASS, name = "Dynamic_VOX_Pass")
+	// g.vox_comp_pass = tg.create_compute_pass(&g.frame_data, g.vox_comp_shader, name = "VOX_COMP_Pass")
+
 
 
 	g.pass = tg.create_render_pass(&g.frame_data, g.vert_shader, g.frag_shader, name = "Defalt_Pass")
 	g.ui_pass = tg.create_render_pass(&g.frame_data, g.ui_vert_shader, g.ui_frag_shader, name = "UI_Pass")
-	g.vox_pass = tg.create_render_pass(&g.frame_data, g.vox_vert_shader,  g.vox_frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "VOX_Pass")
-	g.dynamic_vox_pass = tg.create_render_pass(&g.frame_data, g.dynamic_vox_vert_shader,  g.vox_frag_shader,info = tg.DEFALT_OPAQUE_PASS, name = "Dynamic_VOX_Pass")
+	g.vox_pass = tg.create_render_pass(&g.frame_data, g.vox_vert_shader, g.vox_frag_shader, info = tg.DEFALT_OPAQUE_PASS_REVERS_Z, name = "VOX_Pass")
+	g.dynamic_vox_pass = tg.create_render_pass(&g.frame_data, g.dynamic_vox_vert_shader, g.vox_frag_shader, info = tg.DEFALT_OPAQUE_PASS, name = "Dynamic_VOX_Pass")
 	g.vox_comp_pass = tg.create_compute_pass(&g.frame_data, g.vox_comp_shader, name = "VOX_COMP_Pass")
+	
+	skybox, skybox_ok := tg.create_procedural_skybox(
+		g.skybox_fullscreen_vert_shader,
+		g.skybox_generate_frag_shader,
+		g.skybox_display_frag_shader,
+		g.vox_pass.info,
+		256,
+	)
+	assert(skybox_ok, "Failed to create procedural skybox")
+	g.skybox = skybox
 
 	init()
 
@@ -257,15 +293,29 @@ cleane_up_game::proc(){
 	thread.join(g.server.net_thread)
 	thread.destroy(g.server.net_thread)
 	tg.cleane_up_input_handling(&s.input_events)
-	tg.delete_r_pass(&g.pass)
-	tg.delete_r_pass(&g.ui_pass)
-	tg.delete_r_pass(&g.vox_pass)
+	// tg.delete_r_pass(&g.pass)
+	// tg.delete_r_pass(&g.ui_pass)
+	// tg.delete_r_pass(&g.vox_pass)
 	// tg.delete_mesh(g.entitys_mesh)
 	tg.delete_camera(&g.cam)
 	delete(g.server.clients)
 	tg.delete_clay_instance(g.ui_clay_inst)
 	free(g)
 	tg.cleane_up_app()
+}
+
+SKY_DAY_LENGTH_SECONDS :: 1200.0
+SKY_TAU :: 6.28318530718
+SKY_START_ANGLE :: 1.57079632679
+
+update_game_sky_sun :: proc() {
+	phase := g.skybox.environment.time_seconds / SKY_DAY_LENGTH_SECONDS * SKY_TAU + SKY_START_ANGLE
+
+	g.skybox.environment.sun_direction = lin.normalize0(tg.Vec3{
+		math.cos(phase),
+		math.sin(phase),
+		-0.25,
+	})
 }
 
 do_mode_start::proc(){
@@ -317,23 +367,55 @@ do_rendering::proc(){
 
 	rendering_loop:for !s.app_should_close {
 
-		tg.update_camera(&g.cam)
+		tg.update_camera(&g.cam, n_plane=.1 ,f_plane=50000000,)
 		tg.update_camera(&g.cam_ui)
 		tg.start_frame(&g.frame_data)
+
+
+	
+		// Update the procedural sky.
+		// _______________________________________________________
+		sky_dt := cast(f32)s.time.frame_time
+		if sky_dt < 0 {
+			sky_dt = 0
+		}
+		if sky_dt > 0.1 {
+			sky_dt = 0.1
+		}
+		tg.procedural_skybox_tick(&g.skybox,sky_dt)
+		update_game_sky_sun()
+		tg.procedural_skybox_generate_if_dirty(
+			g.frame_data.render_cmd_buf,
+			&g.skybox,
+		)
+		// _______________________________________________________
+
+
 		
 		// tg.start_compute(&g.vox_comp_pass,{})
 		raw_cmd_buff:=tg.get_mesh(g.w_map.draw_cmd_buf_hd)
 		cmd_buff:=tg.get_mesh(g.w_map.draw_cmd_buf_comped_hd)
 		chunk_buff:=tg.get_mesh(g.w_map.chunk_shader_data.mesh_hd)
+		// cmd_count:=cmd_buff.gpu.index_count
+		cmd_count:=atom.atomic_load(&cmd_buff.gpu.index_count)
+
 	
+		// did_work:=atom.atomic_load(&g.w_map.did_work)
+		// if did_work{
+		// 	update_w_map_draw_cmds_buff(&g.w_map)
+		// }
 
 	
 	
 	
-		tg.frustum_cull_indirect(&g.vox_comp_pass,{chunk_buff.gpu.vertex_buf},{raw_cmd_buff.gpu.vertex_buf},cmd_buff.gpu.vertex_buf,&g.cam,cast(u32)(cmd_buff.gpu.index_count))
+		tg.frustum_cull_indirect(&g.vox_comp_pass,{chunk_buff.gpu.vertex_buf},{raw_cmd_buff.gpu.vertex_buf},cmd_buff.gpu.vertex_buf,&g.cam,cast(u32)(cmd_count))
 		// tg.submit_compute(&g.vox_comp_pass)
-		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE)
-		render_map(&g.w_map)
+		tg.start_render(&g.vox_pass ,&g.cam, g.window,   load_op = .CLEAR,  d_load_op = .CLEAR,  store_op = .RESOLVE_AND_STORE,clear_depth =0)
+
+		tg.procedural_skybox_draw(&g.vox_pass,&g.cam,&g.skybox,)
+
+
+		render_map(&g.w_map,cmd_count)
 		tg.submit_render(&g.vox_pass)
 
 		tg.start_render(&g.dynamic_vox_pass ,&g.cam, g.window,   load_op = .LOAD,  d_load_op = .LOAD,  store_op = .RESOLVE)

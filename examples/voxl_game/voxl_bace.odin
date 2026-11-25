@@ -86,7 +86,7 @@ draw_block_by_faces_item :: proc(
         face.pos={block_pos.pos.x,block_pos.pos.y,block_pos.pos.z,0}
         face.step={block_pos.step.x,block_pos.step.y,block_pos.step.z,0}
         face.light={full_light,full_light,full_light,full_light}
-        face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot]
+        face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot].index
         face.col=col
         face.geometry_face_index=cast(u16)geometry_index
         face_count+=1
@@ -112,7 +112,7 @@ draw_block_by_faces_item :: proc(
             face.pos={block_pos.pos.x,block_pos.pos.y,block_pos.pos.z,0}
             face.step={block_pos.step.x,block_pos.step.y,block_pos.step.z,0}
             face.light={full_light,full_light,full_light,full_light}
-            face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot]
+            face.texture_face_index=cast(u32)item.texture_data.sides[geometry.texture_slot].index
             face.col=col
             face.geometry_face_index=cast(u16)geometry_index
 

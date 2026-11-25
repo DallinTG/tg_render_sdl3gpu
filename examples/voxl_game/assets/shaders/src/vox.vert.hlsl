@@ -76,6 +76,7 @@ struct Output{
 	float2 face_uv : TEXCOORD6;
 	uint texture_face_index : TEXCOORD7;
 	nointerpolation uint4 packed_light : TEXCOORD8;
+	float fog_distance : TEXCOORD9;
 };
 
 
@@ -207,23 +208,85 @@ Output main(
 	// Camera-relative position
 	// ------------------------------------------------------------
 	
-	// Subtract integer coordinates BEFORE converting to float.
+// 	// Subtract integer coordinates BEFORE converting to float.
+// 	int3 chunk_step = int3(
+// 	    chunk.pos_x,
+// 	    chunk.pos_y,
+// 	    chunk.pos_z
+// 	);
+// 	
+// 	int3 step_delta = chunk_step - camera_step.xyz;
+// 	
+// 	// Scale the step difference and add local vertex position.
+// 	// float3 relative_pos = float3(step_delta) * step_size + final_pos.xyz * lod_size - camera_pos.xyz;
+// 
+// 	float3 chunk_relative =
+// 	    float3(step_delta) * step_size;
+// 	
+// 	float3 local_relative =
+// 	    final_pos.xyz * lod_size - camera_pos.xyz;
+// 	
+// 	float3 relative_pos = chunk_relative + local_relative;
+// 
+// 
+
+
+// ------------------------------------------------------------
+// Camera-relative position
+// ------------------------------------------------------------
+	
 	int3 chunk_step = int3(
 	    chunk.pos_x,
 	    chunk.pos_y,
 	    chunk.pos_z
 	);
 	
+	// Integer subtraction first.
 	int3 step_delta = chunk_step - camera_step.xyz;
 	
-	// Scale the step difference and add local vertex position.
-	float3 relative_pos = float3(step_delta) * step_size + final_pos.xyz * lod_size - camera_pos.xyz;
+	// Split the chunk position into two exactly representable
+	// integer components before converting to float.
+	//
+	// 65536 is a power of two. The high component is a multiple
+	// of 65536, and the low component remains within 65535.
+	int3 chunk_hi_steps = (step_delta / 65536) * 65536;
+	int3 chunk_lo_steps = step_delta - chunk_hi_steps;
+	
+	// Large chunk origin.
+	float3 chunk_hi_position = float3(chunk_hi_steps) * step_size;
+	float3 chunk_lo_position = float3(chunk_lo_steps) * step_size;
+	
+	// Keep the local vertex and camera subtraction together.
+	float3 local_relative_position =
+	    final_pos.xyz * lod_size - camera_pos.xyz;
+	
+	// Transform the large and small components separately.
+	float4 clip_hi = mul(
+	    mvp,
+	    float4(chunk_hi_position, 1.0)
+	);
+	
+	float4 clip_lo = mul(
+	    mvp,
+	    float4(chunk_lo_position, 0.0)
+	);
+	
+	float4 clip_local = mul(
+	    mvp,
+	    float4(local_relative_position, 0.0)
+	);
+	
+
+
+	// Combine in clip space.
+	float4 clip_pos = clip_hi + clip_lo + clip_local;
 
 	// ------------------------------------------------------------
 	// Vertex output
 	// ------------------------------------------------------------
 	output.packed_light = uint4(face.light_0,face.light_1,face.light_2,face.light_3);
-	output.position = mul(mvp, float4(relative_pos, 1.0));
+	output.position = clip_pos;
+	output.fog_distance = abs(clip_pos.w);
 	output.uv = final_uv;
 	output.size = lod_size;
 	output.texture_face_index = texture_face_index;

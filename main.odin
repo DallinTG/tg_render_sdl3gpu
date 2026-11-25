@@ -298,9 +298,9 @@ init :: proc(state:^State=nil,init_settings:Init_Settings=DF_INIT_SETTINGS, allo
 		}
 	}
 	s.g_render_settings.depth_texture_format = .D16_UNORM
-	try_depth_format(.D32_FLOAT)
 	try_depth_format(.D24_UNORM)
-	
+	try_depth_format(.D32_FLOAT)
+
 	s.copy_cmd_buf = sdl.AcquireGPUCommandBuffer(s.gpu_device)
 	init_texture_arr_groop()
 	s.defalt_font = load_font_from_data(font_id = "font_1",height = 16)
@@ -387,7 +387,7 @@ R_Pass ::struct{
 	
 	msaa_texture: ^sdl.GPUTexture,
 	
-	texture_sampler_binding:[dynamic]sdl.GPUTextureSamplerBinding,//this gets rebuilt per frame
+	texture_sampler_binding:[dynamic;100]sdl.GPUTextureSamplerBinding,//this gets rebuilt per frame
 
 	// win_size:[2]i32,
 	ubo:UBO,
@@ -509,7 +509,7 @@ create_render_pass :: proc (
 			},
 		})
 	}
-	resize_dynamic_array(&pass.texture_sampler_binding,5)
+	// resize_dynamic_array(&pass.texture_sampler_binding,5)
 	return pass
 }
 
@@ -550,18 +550,15 @@ Render_Type::enum{
 	face,
 }
 
-do_render_pass::proc(
+render_pass_setup::proc(
 	pass:^R_Pass,
 	cam:^Camera,
-	meshes_hd:[]Mesh_Handle,
-	indexed_gpu_data:[]^Indexed_GPU_Data,
-	indirect_cmds:[]Mesh_Handle,
-	type:Render_Type = .vertex,
 	pipeline_vs:GPU_Pipeline_Vs = .triangle_list,
-){
+	do_revers_z:bool=false,
+) ->(ok:bool){
 	if pass == nil {
 		log.log(.Warning,"\n",pass.name,"pass == nil\n")
-		return
+		return 
 	}
 	if pass.render_target == nil{
 		if !s.app_should_close{
@@ -573,7 +570,13 @@ do_render_pass::proc(
 	// proj_mat :Mat4= 1//lin.matrix4_perspective_f32(lin.to_radians(cast(f32)90), cast(f32)render_target.wh.x / cast(f32)render_target.wh.y, 0.001, 1000)
 	
 
-	mvp:=cam.mvp
+	mvp:Mat4
+	if !do_revers_z{
+		mvp=cam.p*cam.v
+	}else{
+		mvp=cam.r_p*cam.v
+	}
+
 	modl_mat := lin.matrix4_translate_f32({0,0,0})//*lin.matrix4_rotate_f32(rot, {0,0,0})
 	pass.ubo = {
 	    mvp = mvp * modl_mat,
@@ -589,14 +592,28 @@ do_render_pass::proc(
 	
 
 
-	clear_dynamic_array(&pass.texture_sampler_binding)
+	clear(&pass.texture_sampler_binding)
 	for &texture in  s.texture_arr_groop{
 		if texture != {}{
 			texture:=get_gpu_texture(texture.tex_hd)
-			append_elem(&pass.texture_sampler_binding ,sdl.GPUTextureSamplerBinding{ texture = texture.data, sampler = pass.sampler})
+			append(&pass.texture_sampler_binding ,sdl.GPUTextureSamplerBinding{ texture = texture.data, sampler = pass.sampler})
 		}
 	}
-	sdl.BindGPUFragmentSamplers(pass.render_pas, 0, raw_data(pass.texture_sampler_binding), cast(u32)len(pass.texture_sampler_binding))
+	sdl.BindGPUFragmentSamplers(pass.render_pas, 0, raw_data(pass.texture_sampler_binding[:]), cast(u32)len(pass.texture_sampler_binding))
+	return true
+}
+do_render_pass::proc(
+	pass:^R_Pass,
+	cam:^Camera,
+	meshes_hd:[]Mesh_Handle,
+	indexed_gpu_data:[]^Indexed_GPU_Data,
+	indirect_cmds:[]Mesh_Handle,
+	type:Render_Type = .vertex,
+	pipeline_vs:GPU_Pipeline_Vs = .triangle_list,
+	do_revers_z:bool = false,
+){
+	ok:= render_pass_setup(pass=pass,cam=cam,pipeline_vs=pipeline_vs,do_revers_z=do_revers_z)
+	if !ok {return}
 
 	switch type{
 	case .vertex:
@@ -673,6 +690,114 @@ do_render_pass::proc(
 	}
 }
 
+do_render_pass_vert::proc(
+	pass:^R_Pass,
+	cam:^Camera,
+	meshes_hd:[]Mesh_Handle,
+	pipeline_vs:GPU_Pipeline_Vs = .triangle_list,
+	do_revers_z:bool = false,
+){
+	ok:= render_pass_setup(pass=pass,cam=cam,pipeline_vs=pipeline_vs,do_revers_z=do_revers_z)
+	if !ok {return}
+	for mesh_hd in meshes_hd{
+		mesh:=get_mesh(mesh_hd)
+		sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
+		// sdl.BindGPUVertexStorageBuffers
+		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 0, &mesh.gpu.vertex_buf,1)
+		sdl.BindGPUVertexStorageBuffers(pass.render_pas, 1, &mesh.gpu.index_buf,1)	
+		sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.index_count, 1, 0, 0) 
+		
+	}
+}
+
+do_render_pass_face::proc(
+	pass:^R_Pass,
+	cam:^Camera,
+	meshes_hd:[]Mesh_Handle,
+	indexed_gpu_data:[]^Indexed_GPU_Data,
+	pipeline_vs:GPU_Pipeline_Vs = .triangle_list,
+	do_revers_z:bool = false,
+){
+	ok:= render_pass_setup(pass=pass,cam=cam,pipeline_vs=pipeline_vs,do_revers_z=do_revers_z)
+	if !ok {return}
+
+
+	for mesh_hd in meshes_hd{
+		mesh:=get_mesh(mesh_hd)
+		// sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
+		// sdl.BindGPUVertexStorageBuffers
+
+		vert_buffer_count:u32
+		frag_buffer_count:u32
+		sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &mesh.gpu.vertex_buf,1)
+		vert_buffer_count+=1
+		for data in indexed_gpu_data{
+			index_mesh :=get_mesh(data.mesh_hd)
+			if data.bind_to_vert{
+				sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &index_mesh.gpu.vertex_buf,1)
+				vert_buffer_count+=1
+			}
+			if data.bind_to_frag{
+				sdl.BindGPUFragmentStorageBuffers(pass.render_pas, frag_buffer_count, &index_mesh.gpu.vertex_buf,1)
+				frag_buffer_count+=1
+			}
+		}
+		face_count:=cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
+		sdl.DrawGPUPrimitives(pass.render_pas,mesh.gpu.vertex_count*6, 1, 0, 0) 
+	}
+}
+
+do_render_pass_face_inderect::proc(
+	pass:^R_Pass,
+	cam:^Camera,
+	meshes_hd:[]Mesh_Handle,
+	indexed_gpu_data:[]^Indexed_GPU_Data,
+	indirect_cmds:[]Mesh_Handle,
+	cmd_count:u32,
+	pipeline_vs:GPU_Pipeline_Vs = .triangle_list,
+	do_revers_z:bool = false,
+){
+	ok:= render_pass_setup(pass=pass,cam=cam,pipeline_vs=pipeline_vs,do_revers_z=do_revers_z)
+	if !ok {return}
+
+	assert(len(meshes_hd)==len(indirect_cmds), "number od meshes and indirect_cmds must be the same")
+	for mesh_hd,i in meshes_hd{
+		mesh:=get_mesh(mesh_hd)
+		// sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &mesh.mesh_mat,size_of(mesh.mesh_mat))
+		// new_mat:Mat4 = 1
+		// fmt.print(new_mat,"\n")
+		// sdl.PushGPUVertexUniformData(pass.frame_data.render_cmd_buf, 1, &new_mat,size_of(new_mat))
+		vert_buffer_count:u32
+		frag_buffer_count:u32
+
+		sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &mesh.gpu.vertex_buf,1)
+		// sdl.BindGPUFragmentStorageBuffers(pass.render_pas, frag_buffer_count, &mesh.gpu.vertex_buf,1)
+		vert_buffer_count+=1
+		// frag_buffer_count+=1
+		for data in indexed_gpu_data{
+			index_mesh :=get_mesh(data.mesh_hd)
+			if data.bind_to_vert{
+				sdl.BindGPUVertexStorageBuffers(pass.render_pas, vert_buffer_count, &index_mesh.gpu.vertex_buf,1)
+				vert_buffer_count+=1
+			}
+			if data.bind_to_frag{
+				sdl.BindGPUFragmentStorageBuffers(pass.render_pas, frag_buffer_count, &index_mesh.gpu.vertex_buf,1)
+				frag_buffer_count+=1
+			}
+		}
+		cmd:=get_mesh(indirect_cmds[i])
+	
+		sdl.DrawGPUPrimitivesIndirect(
+			pass.render_pas,
+			cmd.gpu.vertex_buf,
+			0,
+			cmd_count,
+		)
+	}
+
+	
+}
+
 Frustum_Cull_Params :: struct {
     mvp: Mat4,
     chunk_count: u32,
@@ -691,6 +816,7 @@ frustum_cull_indirect :: proc(
     culled_cmd_buf:^sdl.GPUBuffer,
     cam:^Camera,
     chunk_count:u32,
+    do_revers_z:bool = false,
 ) {
     if pass == nil || chunk_count == 0 {return}
 
@@ -702,9 +828,14 @@ frustum_cull_indirect :: proc(
     sdl.BindGPUComputeStorageBuffers(pass.compute_pas, 1, raw_data(chunk_data_buf), 1)
 
     do_chunk_back_face_culling := u32(1)
+	
 
+    mvp:=cam.p*cam.v
+    if do_revers_z{
+    	mvp = cam.r_p*cam.v
+    }
     params := Frustum_Cull_Params{
-        mvp = cam.mvp,
+        mvp = mvp,
         chunk_count = chunk_count,
         do_chunk_back_face_culling = do_chunk_back_face_culling,
         cam_chunk_pos = {cam.w_pos.step.x, cam.w_pos.step.y, cam.w_pos.step.z, 0},
@@ -819,6 +950,7 @@ start_render::proc(
 	store_op:   sdl.GPUStoreOp = .STORE,
 	d_store_op: sdl.GPUStoreOp = .STORE,
 	clear_color:[4]f32={.3,.3,.3,1},
+	clear_depth:f32 = 1,
 ){
 	if pass == nil {
 		log.log(.Warning,"\n",pass.name,"pass == nil\n")
@@ -863,7 +995,7 @@ start_render::proc(
 		depth_target_info:= sdl.GPUDepthStencilTargetInfo{
 			texture = cam.depth_texture,
 			load_op = d_load_op,
-			clear_depth = 1,
+			clear_depth = clear_depth,
 			store_op = .STORE,
 		}
 		pass.render_pas = sdl.BeginGPURenderPass(pass.frame_data.render_cmd_buf, &color_target, 1, &depth_target_info )
@@ -1011,7 +1143,10 @@ Camera :: struct {
 
 	zoom: f32,
 	look: Look_Dir,
-	mvp: Mat4,
+	v:Mat4,
+	p:Mat4,
+	r_p:Mat4,
+	// mvp: Mat4,
 	texture_size: [2]i32,
 	type: Camera_Types,
 	depth_texture_createinfo: sdl.GPUTextureCreateInfo,
@@ -1059,9 +1194,8 @@ screane_space_to_world_2d :: proc(cam:^Camera, pos:[2]f32) -> (world:World_Pos) 
     return world_pos_add(cam.w_pos, delta, cam.step_size)
 }
 
-update_camera::proc(cam:^Camera,){
-	v,p:=make_view_mat_proj_mat(cam)
-	cam.mvp = p*v
+update_camera::proc(cam:^Camera, n_plane:f32=.1 ,f_plane:f32=50000,){
+	cam.v,cam.p,cam.r_p=make_view_mat_proj_mat(cam, n_plane, f_plane)
 }
 
 normalize_camera_step :: proc(cam: ^Camera) {
@@ -1109,7 +1243,7 @@ update_camera_3d :: proc(cam:^Camera, dt:f32=1, sensitivity:f32=.25, speed:f32=.
     camera_add_pos_f32(cam, motion)
 }
 
-make_view_mat_proj_mat :: proc(cam:^Camera) -> (view_mat:Mat4, proj_mat:Mat4) {
+make_view_mat_proj_mat :: proc(cam:^Camera, n_plane:f32,f_plane:f32,) -> (view_mat:Mat4, proj_mat:Mat4, rv_proj_mat:Mat4) {
     switch cam.type {
     case .perspective:
         forward := camera_get_forward(cam)
@@ -1120,11 +1254,17 @@ make_view_mat_proj_mat :: proc(cam:^Camera) -> (view_mat:Mat4, proj_mat:Mat4) {
             {0, 1, 0},
         )
 
-        proj_mat = lin.matrix4_perspective_f32(
+        proj_mat = matrix4_perspective_f32(
             lin.to_radians(cast(f32)90 * cam.zoom),
             cast(f32)cam.texture_size.x / cast(f32)cam.texture_size.y,
-            0.1,
-            300000,
+            n_plane,
+            f_plane,
+        )
+        rv_proj_mat = matrix4_perspective_f32(
+            lin.to_radians(cast(f32)90 * cam.zoom),
+            cast(f32)cam.texture_size.x / cast(f32)cam.texture_size.y,
+            f_plane,
+            n_plane,
         )
 
     case .orthographic:
@@ -1135,12 +1275,39 @@ make_view_mat_proj_mat :: proc(cam:^Camera) -> (view_mat:Mat4, proj_mat:Mat4) {
             right = cast(f32)cam.texture_size.x * cam.zoom,
             bottom = -cast(f32)cam.texture_size.y * cam.zoom,
             top = 0,
-            near = -1.001,
-            far = 1000,
+            near = n_plane,
+            far = f_plane,
+        )
+        rv_proj_mat = lin.matrix_ortho3d_f32(
+            left = 0,
+            right = cast(f32)cam.texture_size.x * cam.zoom,
+            bottom = -cast(f32)cam.texture_size.y * cam.zoom,
+            top = 0,
+            near = f_plane,
+            far =  n_plane,
         )
     }
 
     return
+}
+
+matrix4_perspective_f32 :: proc "contextless" (fovy, aspect, near, far: f32, flip_z_axis := true) -> (m: lin.Matrix4f32) #no_bounds_check {
+	tan_half_fovy := math.tan(0.5 * fovy)
+
+	m[0, 0] = 1 / (aspect*tan_half_fovy)
+	m[1, 1] = 1 / tan_half_fovy
+
+	if flip_z_axis {
+		m[2, 2] = -far / (far - near)
+		m[3, 2] = -1
+	} else {
+		m[2, 2] = far / (far - near)
+		m[3, 2] = 1
+	}
+
+	m[2, 3] = -(far * near) / (far - near)
+
+	return
 }
 
 camera_get_forward :: proc(cam:^Camera) -> (forward:Vec3) {
@@ -1324,9 +1491,7 @@ cleane_up_app::proc(){
 	delete_all_themes()
 	free(s)
 }
-delete_r_pass::proc(pass:^R_Pass){
-	delete(pass.texture_sampler_binding)
-}
+
 
 
 

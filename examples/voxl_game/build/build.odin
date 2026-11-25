@@ -6,6 +6,7 @@ import "core:slice"
 import "core:path/filepath"
 import "core:fmt"
 import os "core:os"
+import ctm"../../../CTM"
 
 SHADER_CROSS_PATH::"../../../shader_cross/sc-linux-x64/bin/shadercross"
 
@@ -13,12 +14,14 @@ SHADER_SRC::"../assets/shaders/src"
 SHADER_OUT::"../assets/shaders"
 
 main :: proc() {
+	ctm.gen_conected_textures("../assets/textures")
 	start_code_gen_main()
 	context.logger = log.create_console_logger()
 	// fmt.println(os.get_working_directory(context.allocator))
 	EXE :: "hello-sdl3"
 	OUT :: EXE + ".exe" when ODIN_OS == .Windows else EXE
 	// run_str("odin build src -debug -out:" + OUT + " -error-pos-style:unix")
+	
 
 	files, err := os.read_all_directory_by_path(SHADER_SRC, context.temp_allocator)
 	if err != nil {

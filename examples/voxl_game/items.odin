@@ -195,14 +195,33 @@ Item_Rarity::enum{
 }
 
 
-// Texture_Data :: struct {
-// 	sides:[Model_Sides]int,
-// 	extra_count:int,
-// }
-
 Texture_Data :: struct {
-	sides:[MAX_MODEL_TEXTURES]int,
-	// extra_count:int,
+	sides:[MAX_MODEL_TEXTURES]Texture_Set,
+}
+
+//index is the starting point in the array of textures for this texture set all of the textures usind in a set are continues
+// so for exsammple full_ct has 47 textuers so it index is 100 and set_type == full_ct then that mesn the used textures go frome 100 to 146
+// extra_variant_count deturmas how meny sets of texturs there are so if this is 0 than nothing changes but if it is 1 then if there was going to be N now there is going N*2
+// variant_Type deturmas how the varent is desided
+Texture_Set::struct{
+	index:int,
+	set_type:Texture_Set_Type,
+	variant_type:Variant_Set_Type,
+	extra_variant_count:u8,
+}
+Texture_Set_Type::enum u8{
+	single, // defalt single textur			1 texture
+
+	//all of these only should be used on the 6 defalt faces
+	full_ct,// full conetected textures		47 textures
+	vert_ct,// conected textures but just verticly
+	hori_ct,// conected textures but just horisontily
+	top_ct,// conected textures but just on the top 	2 texture
+	bot_ct,// conected textures but just on the bot		2 texture
+}
+Variant_Set_Type::enum u8{
+	even,	//evenly distributes the varents
+	rare,	//every next veryent is less likly to apere 
 }
 
 
@@ -232,6 +251,8 @@ update_texture_facees::proc(){
 update_geometry_facees::proc(){
 	tg.update_indexed_gpu_data(&g.geometry_facees)
 }
+
+
 add_texture_face::proc(
 	tex_id:reg.Reg_ID,
 	tint:[4]f32={1,1,1,1},
@@ -240,7 +261,7 @@ add_texture_face::proc(
 	mask_tex_id:reg.Reg_ID=tg.BLANK_TEX_ID,
 	mask_tint_l:[4]f32={0,0,0,0},
 	mask_tint_d:[4]f32={0,0,0,0},
-)->(index:int){
+)->(set:Texture_Set){
 	data:DF_FACE_TYPE
 
 	// data.uv[0] =  {0,0}
@@ -266,18 +287,67 @@ add_texture_face::proc(
 	data.mask_tint_l = mask_tint_l
 	data.mask_tint_d = mask_tint_d
 
-	index=tg.add_indexed_gpu_data(&g.texture_facees,data)
+	set.index=tg.add_indexed_gpu_data(&g.texture_facees,data)
+	return
+}
+CT_Texture_Source :: union {
+	reg.Reg_ID,
+	[47]Ct,
+}
+get_ct_texture_id :: proc(source:CT_Texture_Source,index:int)->reg.Reg_ID {
+	switch value in source {
+	case reg.Reg_ID:
+		return value
+	case [47]Ct:
+		return reg.id(value[index])
+	}
+	return tg.BLANK_TEX_ID
+}
+
+add_full_ct_texture_set :: proc(
+	tex_id:CT_Texture_Source,
+	tint:[4]f32={1,1,1,1},
+	tex_id_2:CT_Texture_Source=tg.BLANK_TEX_ID,
+	tint_2:[4]f32={0,0,0,0},
+	mask_tex_id:CT_Texture_Source=tg.BLANK_TEX_ID,
+	mask_tint_l:[4]f32={0,0,0,0},
+	mask_tint_d:[4]f32={0,0,0,0},
+	// variant_type:Variant_Set_Type=.even,
+	// extra_variant_count:u8=0,
+)->(set:Texture_Set){
+
+	for i in 0..<47 {
+		face:=add_texture_face(
+			get_ct_texture_id(tex_id,i),
+			tint,
+			get_ct_texture_id(tex_id_2,i),
+			tint_2,
+			get_ct_texture_id(mask_tex_id,i),
+			mask_tint_l,
+			mask_tint_d,
+		)
+
+		if i == 0 {
+			set.index = face.index
+		}else{
+			assert(face.index == set.index+i,"CT textures must be contiguous")
+		}
+	}
+
+	set.set_type = .full_ct
+	// set.variant_type = variant_type
+	// set.extra_variant_count = extra_variant_count
 	return
 }
 
 // resends the data to the gpu
-fill_sides_all_1_t::proc(index:int) -> (sides:[MAX_MODEL_TEXTURES]int){
-	sides[cast(int)Model_Sides.pos_x] = index
-	sides[cast(int)Model_Sides.neg_x] = index
-	sides[cast(int)Model_Sides.pos_y] = index
-	sides[cast(int)Model_Sides.neg_y] = index
-	sides[cast(int)Model_Sides.pos_z] = index
-	sides[cast(int)Model_Sides.neg_z] = index
+fill_sides_all_1_t::proc(set:Texture_Set) -> (sides:[MAX_MODEL_TEXTURES]Texture_Set){
+	sides[cast(int)Model_Sides.pos_x] = set
+	sides[cast(int)Model_Sides.neg_x] = set
+	sides[cast(int)Model_Sides.pos_y] = set
+	sides[cast(int)Model_Sides.neg_y] = set
+	sides[cast(int)Model_Sides.pos_z] = set
+	sides[cast(int)Model_Sides.neg_z] = set
 	return
 }
 
@@ -291,6 +361,7 @@ DF_Items::enum{
 	glow_block_green,
 	glow_block_blue,
 	test,
+	test_dirt,
 	
 }
 creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
@@ -311,7 +382,7 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 	grass_side_t_id:=add_texture_face(reg.id(Textures.Dirt),{1,1,1,1},reg.id(Textures.Grass_Side_Overlay),{.2,.7,.3,1})
 	i[.grass] = Item_Info{
 		texture_data = {
-			sides = [MAX_MODEL_TEXTURES]int{
+			sides = [MAX_MODEL_TEXTURES]Texture_Set{
 				grass_side_t_id,
 				grass_side_t_id,
 				grass_t_id,
@@ -390,6 +461,17 @@ creae_df_items_info::proc()->(df_items_info:[DF_Items]Item_Info){
 		is_solid = true,
 		light_emission = {31,31,31},
 		name = "Test",
+	}
+
+	
+	dirt_test_t_id:=add_full_ct_texture_set(Dirt_CT)
+	i[.dirt] = Item_Info{
+		texture_data = {sides = fill_sides_all_1_t(dirt_test_t_id)},
+		model = g.cube_face_geometry,
+		is_occupied = true,
+		is_opaque = true,
+		is_solid = true,
+		name = "Dirt_test",
 	}
 	return
 }

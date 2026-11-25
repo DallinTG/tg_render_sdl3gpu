@@ -1,0 +1,26 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct type_Sky_Display_Params
+{
+    float4 camera_forward;
+    float4 camera_right;
+    float4 camera_up;
+    float4 viewport_fov;
+};
+
+struct main0_out
+{
+    float4 out_var_SV_Target0 [[color(0)]];
+};
+
+fragment main0_out main0(constant type_Sky_Display_Params& Sky_Display_Params [[buffer(0)]], texturecube<float> sky_cubemap [[texture(0)]], sampler sky_sampler [[sampler(0)]], float4 gl_FragCoord [[position]])
+{
+    main0_out out = {};
+    float2 _38 = gl_FragCoord.xy / Sky_Display_Params.viewport_fov.xy;
+    out.out_var_SV_Target0 = sky_cubemap.sample(sky_sampler, fast::normalize((Sky_Display_Params.camera_forward.xyz + (((Sky_Display_Params.camera_right.xyz * ((_38.x * 2.0) - 1.0)) * Sky_Display_Params.viewport_fov.z) * Sky_Display_Params.viewport_fov.w)) + ((Sky_Display_Params.camera_up.xyz * (1.0 - (_38.y * 2.0))) * Sky_Display_Params.viewport_fov.z)));
+    return out;
+}
+

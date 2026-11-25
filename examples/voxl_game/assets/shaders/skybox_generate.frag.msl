@@ -1,0 +1,126 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct type_Sky_Generate_Params
+{
+    float4 face_forward;
+    float4 face_right;
+    float4 face_up;
+    float4 sun_direction_time;
+    float4 cloud_params;
+    float4 day_horizon;
+    float4 day_zenith;
+    float4 night_horizon;
+    float4 night_zenith;
+    float4 sunset_color;
+    float4 sun_color;
+    float4 atmosphere_params;
+};
+
+struct main0_out
+{
+    float4 out_var_SV_Target0 [[color(0)]];
+};
+
+fragment main0_out main0(constant type_Sky_Generate_Params& Sky_Generate_Params [[buffer(0)]], float4 gl_FragCoord [[position]])
+{
+    main0_out out = {};
+    float2 _130 = gl_FragCoord.xy / float2(precise::max(Sky_Generate_Params.atmosphere_params.w, 1.0));
+    float3 _150 = fast::normalize((Sky_Generate_Params.face_forward.xyz + (Sky_Generate_Params.face_right.xyz * ((_130.x * 2.0) - 1.0))) + (Sky_Generate_Params.face_up.xyz * (1.0 - (_130.y * 2.0))));
+    float3 _154 = fast::normalize(Sky_Generate_Params.sun_direction_time.xyz);
+    float _155 = _154.y;
+    float _156 = smoothstep(-0.100000001490116119384765625, 0.119999997317790985107421875, _155);
+    float _161 = (1.0 - smoothstep(0.014999999664723873138427734375, 0.4199999868869781494140625, abs(_155))) * smoothstep(-0.25, 0.0199999995529651641845703125, _155);
+    float _162 = _150.y;
+    float3 _170 = float3(smoothstep(-0.100000001490116119384765625, 0.7200000286102294921875, _162));
+    float3 _179 = float3(_156);
+    float _183 = exp(abs(_162) * (-8.0));
+    float _184 = dot(_150, _154);
+    float _191 = _161 * _183;
+    float _200 = 1.0 - _156;
+    float _204 = fast::clamp(_184, 0.0, 1.0);
+    float _232 = Sky_Generate_Params.sun_direction_time.w * Sky_Generate_Params.cloud_params.z;
+    float3 _238 = (_150 * (precise::max(Sky_Generate_Params.cloud_params.y, 0.00999999977648258209228515625) * 9.0)) + float3(_232, _232 * 0.189999997615814208984375, ((-Sky_Generate_Params.sun_direction_time.w) * Sky_Generate_Params.cloud_params.z) * 0.10999999940395355224609375);
+    float3 _239 = floor(_238);
+    float3 _240 = fract(_238);
+    float3 _244 = (_240 * _240) * (float3(3.0) - (_240 * 2.0));
+    float3 _246 = fract(_239 * 0.103100001811981201171875);
+    float3 _251 = _246 + float3(dot(_246, _246.yzx + float3(33.3300018310546875)));
+    float3 _260 = fract((_239 + float3(1.0, 0.0, 0.0)) * 0.103100001811981201171875);
+    float3 _265 = _260 + float3(dot(_260, _260.yzx + float3(33.3300018310546875)));
+    float3 _274 = fract((_239 + float3(0.0, 1.0, 0.0)) * 0.103100001811981201171875);
+    float3 _279 = _274 + float3(dot(_274, _274.yzx + float3(33.3300018310546875)));
+    float3 _288 = fract((_239 + float3(1.0, 1.0, 0.0)) * 0.103100001811981201171875);
+    float3 _293 = _288 + float3(dot(_288, _288.yzx + float3(33.3300018310546875)));
+    float3 _302 = fract((_239 + float3(0.0, 0.0, 1.0)) * 0.103100001811981201171875);
+    float3 _307 = _302 + float3(dot(_302, _302.yzx + float3(33.3300018310546875)));
+    float3 _316 = fract((_239 + float3(1.0, 0.0, 1.0)) * 0.103100001811981201171875);
+    float3 _321 = _316 + float3(dot(_316, _316.yzx + float3(33.3300018310546875)));
+    float3 _330 = fract((_239 + float3(0.0, 1.0, 1.0)) * 0.103100001811981201171875);
+    float3 _335 = _330 + float3(dot(_330, _330.yzx + float3(33.3300018310546875)));
+    float3 _344 = fract((_239 + float3(1.0)) * 0.103100001811981201171875);
+    float3 _349 = _344 + float3(dot(_344, _344.yzx + float3(33.3300018310546875)));
+    float _356 = _244.x;
+    float _361 = _244.y;
+    float _366 = mix(mix(mix(fract((_251.x + _251.y) * _251.z), fract((_265.x + _265.y) * _265.z), _356), mix(fract((_279.x + _279.y) * _279.z), fract((_293.x + _293.y) * _293.z), _356), _361), mix(mix(fract((_307.x + _307.y) * _307.z), fract((_321.x + _321.y) * _321.z), _356), mix(fract((_335.x + _335.y) * _335.z), fract((_349.x + _349.y) * _349.z), _356), _361), _244.z) * 0.5;
+    float3 _368 = (_238 * 2.0299999713897705078125) + float3(17.1000003814697265625, 9.19999980926513671875, 13.69999980926513671875);
+    float3 _369 = floor(_368);
+    float3 _370 = fract(_368);
+    float3 _374 = (_370 * _370) * (float3(3.0) - (_370 * 2.0));
+    float3 _376 = fract(_369 * 0.103100001811981201171875);
+    float3 _381 = _376 + float3(dot(_376, _376.yzx + float3(33.3300018310546875)));
+    float3 _390 = fract((_369 + float3(1.0, 0.0, 0.0)) * 0.103100001811981201171875);
+    float3 _395 = _390 + float3(dot(_390, _390.yzx + float3(33.3300018310546875)));
+    float3 _404 = fract((_369 + float3(0.0, 1.0, 0.0)) * 0.103100001811981201171875);
+    float3 _409 = _404 + float3(dot(_404, _404.yzx + float3(33.3300018310546875)));
+    float3 _418 = fract((_369 + float3(1.0, 1.0, 0.0)) * 0.103100001811981201171875);
+    float3 _423 = _418 + float3(dot(_418, _418.yzx + float3(33.3300018310546875)));
+    float3 _432 = fract((_369 + float3(0.0, 0.0, 1.0)) * 0.103100001811981201171875);
+    float3 _437 = _432 + float3(dot(_432, _432.yzx + float3(33.3300018310546875)));
+    float3 _446 = fract((_369 + float3(1.0, 0.0, 1.0)) * 0.103100001811981201171875);
+    float3 _451 = _446 + float3(dot(_446, _446.yzx + float3(33.3300018310546875)));
+    float3 _460 = fract((_369 + float3(0.0, 1.0, 1.0)) * 0.103100001811981201171875);
+    float3 _465 = _460 + float3(dot(_460, _460.yzx + float3(33.3300018310546875)));
+    float3 _474 = fract((_369 + float3(1.0)) * 0.103100001811981201171875);
+    float3 _479 = _474 + float3(dot(_474, _474.yzx + float3(33.3300018310546875)));
+    float _486 = _374.x;
+    float _491 = _374.y;
+    float _496 = mix(mix(mix(fract((_381.x + _381.y) * _381.z), fract((_395.x + _395.y) * _395.z), _486), mix(fract((_409.x + _409.y) * _409.z), fract((_423.x + _423.y) * _423.z), _486), _491), mix(mix(fract((_437.x + _437.y) * _437.z), fract((_451.x + _451.y) * _451.z), _486), mix(fract((_465.x + _465.y) * _465.z), fract((_479.x + _479.y) * _479.z), _486), _491), _374.z) * 0.25;
+    float3 _499 = (_368 * 2.0099999904632568359375) + float3(5.69999980926513671875, 21.3999996185302734375, 3.099999904632568359375);
+    float3 _500 = floor(_499);
+    float3 _501 = fract(_499);
+    float3 _505 = (_501 * _501) * (float3(3.0) - (_501 * 2.0));
+    float3 _507 = fract(_500 * 0.103100001811981201171875);
+    float3 _512 = _507 + float3(dot(_507, _507.yzx + float3(33.3300018310546875)));
+    float3 _521 = fract((_500 + float3(1.0, 0.0, 0.0)) * 0.103100001811981201171875);
+    float3 _526 = _521 + float3(dot(_521, _521.yzx + float3(33.3300018310546875)));
+    float3 _535 = fract((_500 + float3(0.0, 1.0, 0.0)) * 0.103100001811981201171875);
+    float3 _540 = _535 + float3(dot(_535, _535.yzx + float3(33.3300018310546875)));
+    float3 _549 = fract((_500 + float3(1.0, 1.0, 0.0)) * 0.103100001811981201171875);
+    float3 _554 = _549 + float3(dot(_549, _549.yzx + float3(33.3300018310546875)));
+    float3 _563 = fract((_500 + float3(0.0, 0.0, 1.0)) * 0.103100001811981201171875);
+    float3 _568 = _563 + float3(dot(_563, _563.yzx + float3(33.3300018310546875)));
+    float3 _577 = fract((_500 + float3(1.0, 0.0, 1.0)) * 0.103100001811981201171875);
+    float3 _582 = _577 + float3(dot(_577, _577.yzx + float3(33.3300018310546875)));
+    float3 _591 = fract((_500 + float3(0.0, 1.0, 1.0)) * 0.103100001811981201171875);
+    float3 _596 = _591 + float3(dot(_591, _591.yzx + float3(33.3300018310546875)));
+    float3 _605 = fract((_500 + float3(1.0)) * 0.103100001811981201171875);
+    float3 _610 = _605 + float3(dot(_605, _605.yzx + float3(33.3300018310546875)));
+    float _617 = _505.x;
+    float _622 = _505.y;
+    float _627 = mix(mix(mix(fract((_512.x + _512.y) * _512.z), fract((_526.x + _526.y) * _526.z), _617), mix(fract((_540.x + _540.y) * _540.z), fract((_554.x + _554.y) * _554.z), _617), _622), mix(mix(fract((_568.x + _568.y) * _568.z), fract((_582.x + _582.y) * _582.z), _617), mix(fract((_596.x + _596.y) * _596.z), fract((_610.x + _610.y) * _610.z), _617), _622), _505.z) * 0.125;
+    float _632 = fast::clamp(Sky_Generate_Params.cloud_params.w, 0.0, 1.0) * 0.23999999463558197021484375;
+    float _647 = fast::clamp((_184 * 0.3499999940395355224609375) + 0.64999997615814208984375, 0.0, 1.0);
+    float3 _661 = -_154;
+    float _663 = fast::clamp(dot(_150, _661), 0.0, 1.0);
+    float _666 = _200 * smoothstep(-0.100000001490116119384765625, 0.0599999986588954925537109375, _661.y);
+    float3 _673 = mix((mix(mix(mix(Sky_Generate_Params.night_horizon.xyz, Sky_Generate_Params.night_zenith.xyz, _170), mix(Sky_Generate_Params.day_horizon.xyz, Sky_Generate_Params.day_zenith.xyz, _170), _179), Sky_Generate_Params.sunset_color.xyz, float3((_191 * fast::clamp((_184 * 0.5) + 0.5, 0.0, 1.0)) * 0.579999983310699462890625)) + ((((float3(0.100000001490116119384765625, 0.14000000059604644775390625, 0.2199999988079071044921875) * _183) * Sky_Generate_Params.atmosphere_params.y) * _200) * 0.23999999463558197021484375)) + ((mix(Sky_Generate_Params.sun_color.xyz, Sky_Generate_Params.sunset_color.xyz, float3(_161 * 0.7200000286102294921875)) * ((smoothstep(0.99954998493194580078125, 0.999880015850067138671875, _204) * 1.35000002384185791015625) + ((powr(_204, 48.0) * 0.180000007152557373046875) + (powr(_204, 9.0) * 0.054999999701976776123046875)))) * smoothstep(-0.100000001490116119384765625, 0.0350000001490116119384765625, _155)), mix(mix(float3(0.04500000178813934326171875, 0.0599999986588954925537109375, 0.104999996721744537353515625) * (0.64999997615814208984375 + (_647 * 0.449999988079071044921875)), mix(float3(0.4600000083446502685546875, 0.5299999713897705078125, 0.62000000476837158203125), float3(1.0, 0.9700000286102294921875, 0.910000026226043701171875), float3(_647)), _179), Sky_Generate_Params.sunset_color.xyz * 0.7799999713897705078125, float3(_191 * 0.64999997615814208984375)), float3(((smoothstep(0.689999997615814208984375 - _632, 0.85000002384185791015625 - _632, (_366 + _496) + _627) * (smoothstep(-0.119999997317790985107421875, 0.039999999105930328369140625, _162) * (1.0 - smoothstep(0.519999980926513671875, 0.7799999713897705078125, _162)))) * fast::clamp(Sky_Generate_Params.cloud_params.x, 0.0, 1.0)) * 0.87999999523162841796875)) + (((float3(0.560000002384185791015625, 0.699999988079071044921875, 0.920000016689300537109375) * smoothstep(0.999700009822845458984375, 0.99990999698638916015625, _663)) * _666) * Sky_Generate_Params.atmosphere_params.z);
+    float3 _680 = _150 * 260.0;
+    float3 _685 = fract(floor(_680) * 0.103100001811981201171875);
+    float3 _690 = _685 + float3(dot(_685, _685.yzx + float3(33.3300018310546875)));
+    out.out_var_SV_Target0 = float4((_673 + ((((float3(0.07999999821186065673828125, 0.119999997317790985107421875, 0.20000000298023223876953125) * powr(_663, 20.0)) * _666) * Sky_Generate_Params.atmosphere_params.z) * 0.1500000059604644775390625)) + (float3(0.7200000286102294921875, 0.819999992847442626953125, 1.0) * (((step(1.0 - (0.0035000001080334186553955078125 * fast::clamp(Sky_Generate_Params.atmosphere_params.x, 0.0, 1.0)), fract((_690.x + _690.y) * _690.z)) * (1.0 - smoothstep(0.100000001490116119384765625, 0.3400000035762786865234375, length(fract(_680) - float3(0.5))))) * smoothstep(-0.039999999105930328369140625, 0.23999999463558197021484375, _162)) * _200)), 1.0);
+    return out;
+}
+

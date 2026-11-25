@@ -1,5 +1,6 @@
 package tg_render
 
+import atom "core:sync"
 import sdl "vendor:sdl3"
 import "core:log"
 import "core:mem"
@@ -153,7 +154,7 @@ delete_mesh::proc(mesh_hd:Mesh_Handle){
 	hm.remove(&s.meshes,mesh_hd)
 	
 }
-update_mesh::proc(mesh_hd:Mesh_Handle, cycle := true){
+update_mesh::proc(mesh_hd:Mesh_Handle, cycle := true, command_buf:^sdl.GPUCommandBuffer=nil){
 	mesh:=get_mesh(mesh_hd)
 	vertices_byte_size := len(mesh.cpu.vertex_buf.buffer.buf)
 	indices_byte_size:=len(mesh.cpu.index_buf) * size_of(mesh.cpu.index_buf[0])
@@ -162,7 +163,10 @@ update_mesh::proc(mesh_hd:Mesh_Handle, cycle := true){
 	copy(transfer_mem[:vertices_byte_size],mesh.cpu.vertex_buf.buffer.buf[:])
 	mem.copy(transfer_mem[vertices_byte_size:], raw_data(mesh.cpu.index_buf), indices_byte_size)
 	sdl.UnmapGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
-	copy_cmd_buf:=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
+	copy_cmd_buf:=command_buf
+	if copy_cmd_buf == nil{
+		copy_cmd_buf=sdl.AcquireGPUCommandBuffer(s.gpu_device)	
+	}
 	copy_pass := sdl.BeginGPUCopyPass(copy_cmd_buf)
 	
 	// fmt.print("vertices_byte_size",mesh.cpu.name,vertices_byte_size,"\n")
@@ -198,8 +202,12 @@ update_mesh::proc(mesh_hd:Mesh_Handle, cycle := true){
 	}
 	mesh.gpu.vertex_count = cast(u32)(len(mesh.cpu.vertex_buf.buffer.buf)/mesh.cpu.attribute_size)
 	mesh.gpu.index_count = mesh.cpu.index_buf_used
+	atom.atomic_store(&mesh.gpu.index_count,mesh.cpu.index_buf_used)
 	sdl.EndGPUCopyPass(copy_pass)
-	ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
+	if command_buf == nil{
+
+		ok := sdl.SubmitGPUCommandBuffer(copy_cmd_buf);	assert(ok, "SDL SubmitGPUCommandBuffer Failed")
+	}
 	// sdl.ReleaseGPUTransferBuffer(s.gpu_device, mesh.gpu.transfer_buf)
 }
 get_mesh::proc(mesh_hd:Mesh_Handle, )->(mesh:^Mesh){

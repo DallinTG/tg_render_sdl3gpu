@@ -131,14 +131,25 @@ Image :: struct {
 `//Image_Name :: enum {`,
 )
 	for &dir in all_dir_info{
-		fmt.fprintfln(f,"%v :: enum {{",strings.to_ada_case(slashpath.name(dir.dir_name)))
+		// fmt.fprintfln(f,"%v :: enum {{",strings.to_ada_case(slashpath.name(dir.dir_name)))
+		// for file in dir.files{
+		// 	// new_string,ok:=strings.replace_all(strings.trim_suffix( strings.to_ada_case(slashpath.name(file.file_info.name)),file.suffix),".","_")
+		// 	
+		// 	fmt.fprint(f,"	",format_string(file.file_info.name,file.suffix),",\n")
+		// }
+		// fmt.fprintfln(f,"}}")
+		// fmt.fprintfln(f,"")
+// 
+		enum_name := strings.to_ada_case(slashpath.name(dir.dir_name))
+		
+		fmt.fprintfln(f,"%v :: enum {{",enum_name)
 		for file in dir.files{
-			// new_string,ok:=strings.replace_all(strings.trim_suffix( strings.to_ada_case(slashpath.name(file.file_info.name)),file.suffix),".","_")
-			
 			fmt.fprint(f,"	",format_string(file.file_info.name,file.suffix),",\n")
 		}
 		fmt.fprintfln(f,"}}")
 		fmt.fprintfln(f,"")
+		
+		print_ct_texture_lists(f,&dir,enum_name)
 
 		if dir.dir_name !="src"{
 			base_path, _ := filepath.abs(".")
@@ -228,4 +239,65 @@ Texture_ID_Types::union{
 	[2]string,
 	u32,
 	[2]u32,
+}
+
+
+parse_ct_file_name :: proc(file:F_Info)->(group:string,tile_index:int,ok:bool){
+	name := format_string(file.file_info.name,file.suffix)
+	if !strings.has_prefix(name,"Ct") {return}
+
+	i := 2
+	for i < len(name) {
+		digit := int(name[i])
+		if digit < 48 || digit > 57 {break}
+		tile_index = tile_index*10 + digit-48
+		i += 1
+	}
+
+	if i == 2 || i >= len(name) || name[i] != '_' {return}
+	group = name[i+1:]
+	ok = len(group) > 0
+	return
+}
+
+print_ct_texture_lists :: proc(f:^os.File,dir:^D_Info,enum_name:string){
+	for file_index in 0..<len(dir.files) {
+		file := dir.files[file_index]
+		group,_,is_ct := parse_ct_file_name(file)
+		if !is_ct {continue}
+
+		// Only generate one array per texture group.
+		group_already_written := false
+		for prev_index in 0..<file_index {
+			prev_group,_,prev_ok := parse_ct_file_name(dir.files[prev_index])
+			if prev_ok && prev_group == group {
+				group_already_written = true
+				break
+			}
+		}
+		if group_already_written {continue}
+
+		fmt.fprintfln(f,"%v_CT :: [47]%v {{",strings.to_ada_case(group),enum_name)
+
+		// Find each numbered texture explicitly, rather than relying on
+		// the order returned by the filesystem.
+		for tile_index in 0..<47 {
+			match_count := 0
+			match_name := ""
+
+			for candidate in dir.files {
+				candidate_group,candidate_index,candidate_ok := parse_ct_file_name(candidate)
+				if candidate_ok && candidate_group == group && candidate_index == tile_index {
+					match_count += 1
+					match_name = format_string(candidate.file_info.name,candidate.suffix)
+				}
+			}
+
+			assert(match_count == 1,fmt.tprint("Expected exactly one Ct",tile_index,"_",group,", found ",match_count))
+			fmt.fprintfln(f,"\t.%v,",match_name)
+		}
+
+		fmt.fprintfln(f,"}}")
+		fmt.fprintfln(f,"")
+	}
 }
